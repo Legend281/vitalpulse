@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "background": "#f9f9f9",
+                        "surface-container-highest": "#e2e2e2",
+                        "surface": "#f9f9f9",
+                        "on-secondary": "#ffffff",
+                        "secondary-fixed": "#ffdad6",
+                        "on-surface": "#1a1c1c",
+                        "secondary-fixed-dim": "#ffb3ac",
+                        "primary-fixed-dim": "#ffb3ac",
+                        "on-secondary-fixed-variant": "#802824",
+                        "outline-variant": "#e4beba",
+                        "surface-container": "#eeeeee",
+                        "inverse-on-surface": "#f1f1f1",
+                        "surface-container-lowest": "#ffffff",
+                        "surface-tint": "#ba1a20",
+                        "tertiary": "#005f7b",
+                        "surface-dim": "#dadada",
+                        "on-tertiary-fixed-variant": "#004d65",
+                        "on-primary-container": "#fff2f0",
+                        "on-primary-fixed": "#410003",
+                        "tertiary-fixed-dim": "#7bd1f8",
+                        "inverse-primary": "#ffb3ac",
+                        "on-background": "#1a1c1c",
+                        "on-error": "#ffffff",
+                        "primary-container": "#d32f2f",
+                        "primary-fixed": "#ffdad6",
+                        "surface-container-high": "#e8e8e8",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed": "#410003",
+                        "tertiary-fixed": "#bee9ff",
+                        "tertiary-container": "#00799c",
+                        "on-secondary-container": "#741e1c",
+                        "secondary-container": "#fd867d",
+                        "on-tertiary-fixed": "#001f2a",
+                        "surface-variant": "#e2e2e2",
+                        "on-primary-fixed-variant": "#930010",
+                        "surface-container-low": "#f3f3f3",
+                        "on-surface-variant": "#5b403d",
+                        "inverse-surface": "#2f3131",
+                        "on-tertiary": "#ffffff",
+                        "primary": "#af101a",
+                        "surface-bright": "#f9f9f9",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-container": "#e9f7ff",
+                        "outline": "#8f6f6c",
+                        "on-primary": "#ffffff",
+                        "secondary": "#9f3f39"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #af101a 0%, #d32f2f 100%);
+        }
+        .glass-header {
+            background: rgba(249, 249, 249, 0.8);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface">
+<!-- Focused Header (Excluded shared nav as per Rule 2) -->
+<nav class="sticky top-0 z-50 glass-header px-6 py-4 flex items-center justify-between border-b border-outline-variant/10">
+<div class="flex items-center gap-3">
+<button class="flex items-center justify-center p-2 rounded-full hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-on-surface">arrow_back</span>
+</button>
+<div class="flex items-center gap-2">
+<div class="size-6 text-primary">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M24 45.8096C19.6865 45.8096 15.4698 44.5305 11.8832 42.134C8.29667 39.7376 5.50128 36.3314 3.85056 32.3462C2.19985 28.361 1.76794 23.9758 2.60947 19.7452C3.451 15.5145 5.52816 11.6284 8.57829 8.5783C11.6284 5.52817 15.5145 3.45101 19.7452 2.60948C23.9758 1.76795 28.361 2.19986 32.3462 3.85057C36.3314 5.50129 39.7376 8.29668 42.134 11.8833C44.5305 15.4698 45.8096 19.6865 45.8096 24L24 24L24 45.8096Z" fill="currentColor"></path>
+</svg>
+</div>
+<span class="font-headline font-bold text-lg tracking-tight">Vitalis</span>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<span class="text-on-surface-variant text-sm">Already a member?</span>
+<button class="text-primary font-bold text-sm px-4 py-2 hover:bg-surface-container-low rounded-lg transition-all">Login</button>
+</div>
+</nav>
+<main class="max-w-[1200px] mx-auto px-6 py-12 md:py-20 grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
+<!-- Editorial Content Column -->
+<div class="space-y-12">
+<div class="space-y-6">
+<span class="uppercase tracking-[0.2em] text-xs font-bold text-primary">Join the movement</span>
+<h1 class="font-headline text-5xl md:text-6xl font-extrabold leading-[1.1] tracking-tight">
+                    The Pulse of <br/><span class="text-primary">Cameroon.</span>
+</h1>
+<p class="text-lg text-on-surface-variant leading-relaxed max-w-md">
+                    Connect with a network of life-savers. Whether you're here to give or to facilitate, every heartbeat counts.
+                </p>
+</div>
+<div class="relative overflow-hidden rounded-xl h-[300px] bg-surface-container-low group">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105" data-alt="Candid portrait of diverse Cameroonians smiling together in a bright, sunlit outdoor community setting, representing health and unity" style="background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(26,28,28,0.7) 100%), url('https://lh3.googleusercontent.com/aida-public/AB6AXuAS6Cp8Nm42ta7nnuUj5KipLpnIVHAslXiuEIWjaQL8TwSPyMvkkZn0p63VQ4e3Whk-PCDMDrTcV60IRcF3cahOeQgc9d2xRCp1_aEQ92yUqCGzmo0oSnmRu3JwRFI5K-jsfMVgeX5q_JPYE_i0gHgxiZL0V2KmDuD_Wh3_PuM724He7QEqqsn-UXPWY0cKL1_zLrMV-ZHwf9R3PnrJNjiEnLhnBedP4uB1eyOC_uDqNH7o75BBZDW8LzsNTtLLLflIwZF3aSGXBvo')">
+</div>
+<div class="absolute bottom-6 left-6 right-6">
+<div class="flex items-center gap-4">
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full border-2 border-surface-container-lowest bg-surface-container-highest flex items-center justify-center text-xs font-bold">BN</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface-container-lowest bg-surface-container-highest flex items-center justify-center text-xs font-bold">AL</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface-container-lowest bg-surface-container-highest flex items-center justify-center text-xs font-bold">EK</div>
+</div>
+<p class="text-white text-sm font-medium">Join 5,000+ life savers making an impact today.</p>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-8 pt-8 border-t border-outline-variant/20">
+<div>
+<span class="block font-headline text-2xl font-bold text-primary">24/7</span>
+<span class="text-sm text-on-surface-variant uppercase tracking-wider">Availability</span>
+</div>
+<div>
+<span class="block font-headline text-2xl font-bold text-primary">100+</span>
+<span class="text-sm text-on-surface-variant uppercase tracking-wider">Clinics</span>
+</div>
+</div>
+</div>
+<!-- Form Column -->
+<div class="bg-surface-container-low p-8 md:p-12 rounded-xl">
+<form class="space-y-8">
+<!-- Role Selection -->
+<div class="space-y-4">
+<label class="text-xs uppercase font-bold tracking-widest text-on-surface-variant">I want to register as</label>
+<div class="grid grid-cols-2 gap-4">
+<label class="relative flex flex-col items-center justify-center p-6 bg-surface-container-lowest rounded-xl border-2 border-transparent cursor-pointer hover:border-outline-variant/30 transition-all has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+<input checked="" class="sr-only" name="role" type="radio" value="donor"/>
+<span class="material-symbols-outlined text-primary mb-2" data-icon="volunteer_activism">volunteer_activism</span>
+<span class="font-bold text-sm">Blood Donor</span>
+</label>
+<label class="relative flex flex-col items-center justify-center p-6 bg-surface-container-lowest rounded-xl border-2 border-transparent cursor-pointer hover:border-outline-variant/30 transition-all has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+<input class="sr-only" name="role" type="radio" value="hospital"/>
+<span class="material-symbols-outlined text-tertiary mb-2" data-icon="local_hospital">local_hospital</span>
+<span class="font-bold text-sm">Hospital</span>
+</label>
+</div>
+</div>
+<!-- Input Groups -->
+<div class="space-y-6">
+<div class="group">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Full Name</label>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="John Doe" type="text"/>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="group">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Email or Phone</label>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="+237 6xx xxx xxx" type="text"/>
+</div>
+<div class="group">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Blood Type</label>
+<select class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all text-on-surface font-medium">
+<option disabled="" selected="" value="">Select Type</option>
+<option>A+</option>
+<option>A-</option>
+<option>B+</option>
+<option>B-</option>
+<option>O+</option>
+<option>O-</option>
+<option>AB+</option>
+<option>AB-</option>
+<option>Unknown</option>
+</select>
+</div>
+</div>
+<div class="group">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Location (City)</label>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="Yaoundé" type="text"/>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="group">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Password</label>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="••••••••" type="password"/>
+</div>
+<div class="group">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Confirm Password</label>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="••••••••" type="password"/>
+</div>
+</div>
+</div>
+<!-- Terms -->
+<div class="flex items-start gap-3">
+<input class="mt-1 rounded text-primary focus:ring-primary" id="terms" type="checkbox"/>
+<label class="text-xs text-on-surface-variant leading-relaxed" for="terms">
+                        By creating an account, you agree to our <a class="text-primary font-bold" href="#">Terms of Service</a> and <a class="text-primary font-bold" href="#">Privacy Policy</a> regarding donor data handling.
+                    </label>
+</div>
+<!-- Action Button -->
+<button class="primary-gradient w-full py-5 rounded-lg text-white font-headline font-extrabold text-sm uppercase tracking-widest shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all flex items-center justify-center gap-2" type="submit">
+                    Create Account
+                    <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</form>
+</div>
+</main>
+<footer class="max-w-[1200px] mx-auto px-6 py-12 border-t border-outline-variant/10 text-center">
+<p class="text-on-surface-variant text-sm font-medium">
+            © 2024 Vitalis Cameroon. Committed to a healthier tomorrow.
+        </p>
+</footer>
+</body></html>

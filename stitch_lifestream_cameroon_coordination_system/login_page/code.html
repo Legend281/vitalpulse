@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-highest": "#e2e2e2",
+                    "on-primary-container": "#fff2f0",
+                    "primary-fixed-dim": "#ffb3ac",
+                    "surface-container": "#eeeeee",
+                    "surface-variant": "#e2e2e2",
+                    "surface-dim": "#dadada",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-tint": "#ba1a20",
+                    "on-primary-fixed-variant": "#930010",
+                    "on-error": "#ffffff",
+                    "on-primary-fixed": "#410003",
+                    "on-primary": "#ffffff",
+                    "on-secondary-fixed": "#410003",
+                    "tertiary-fixed": "#bee9ff",
+                    "tertiary-fixed-dim": "#7bd1f8",
+                    "outline-variant": "#e4beba",
+                    "outline": "#8f6f6c",
+                    "primary-fixed": "#ffdad6",
+                    "on-secondary-container": "#741e1c",
+                    "secondary-fixed": "#ffdad6",
+                    "secondary-container": "#fd867d",
+                    "on-surface": "#1a1c1c",
+                    "on-error-container": "#93000a",
+                    "error-container": "#ffdad6",
+                    "on-secondary": "#ffffff",
+                    "primary-container": "#d32f2f",
+                    "surface-container-high": "#e8e8e8",
+                    "error": "#ba1a1a",
+                    "surface": "#f9f9f9",
+                    "on-tertiary-fixed": "#001f2a",
+                    "on-background": "#1a1c1c",
+                    "background": "#f9f9f9",
+                    "surface-container-low": "#f3f3f3",
+                    "on-tertiary-container": "#e9f7ff",
+                    "tertiary-container": "#00799c",
+                    "primary": "#af101a",
+                    "on-secondary-fixed-variant": "#802824",
+                    "surface-bright": "#f9f9f9",
+                    "inverse-primary": "#ffb3ac",
+                    "secondary-fixed-dim": "#ffb3ac",
+                    "on-tertiary": "#ffffff",
+                    "inverse-surface": "#2f3131",
+                    "on-tertiary-fixed-variant": "#004d65",
+                    "inverse-on-surface": "#f1f1f1",
+                    "on-surface-variant": "#5b403d",
+                    "tertiary": "#005f7b",
+                    "secondary": "#9f3f39"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+        .glass-header {
+            background: rgba(249, 249, 249, 0.8);
+            backdrop-filter: blur(12px);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #af101a 0%, #d32f2f 100%);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+<!-- Top Navigation Suppression: As per rules, navigation shell is suppressed for login flow to prioritize focus -->
+<main class="flex-grow flex flex-col md:flex-row min-h-screen">
+<!-- Left Side: Editorial Content & Visual -->
+<section class="hidden md:flex md:w-1/2 lg:w-3/5 bg-surface-container relative overflow-hidden items-center justify-center p-12 lg:p-24">
+<div class="absolute inset-0 z-0">
+<img class="w-full h-full object-cover opacity-15 grayscale" data-alt="Modern medical facility with clean minimalist lines and soft daylight creating a professional and calm atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkRiE0MfYIydC9rLM5HCq2Q4Q56wU-gwwuYgdrgSR99epsFIWQ159HYIyoLz1QqhXM-7Ca6Rbuysr46T2sVDWXQfVti7XPdTJCdhAGmoLBy-7ifJD-9hkU2BA5HJKelpZ1-wxuLAmkJ2WI6lRihtr5YckNQYG9ZFLiSARWUCm37Ix14pvMDwCuOrtl7B476VAwB2JDrv3N_XEwe35n1ZkFFczeCHjzUfPpwKGvdWIOTuwmsJvyezDaEagv3-ygsfl5IExe9zMBnpQ"/>
+</div>
+<!-- Abstract Shapes for Visual Interest -->
+<div class="absolute top-[-10%] right-[-10%] w-96 h-96 rounded-full bg-secondary-container/10 blur-3xl"></div>
+<div class="absolute bottom-[-5%] left-[-5%] w-64 h-64 rounded-full bg-primary/5 blur-2xl"></div>
+<div class="relative z-10 max-w-xl">
+<div class="flex items-center gap-3 mb-8">
+<div class="w-12 h-12 primary-gradient rounded-xl flex items-center justify-center shadow-lg">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
+</div>
+<span class="text-2xl font-extrabold tracking-tighter font-headline text-primary">The Pulse</span>
+</div>
+<h1 class="text-5xl lg:text-7xl font-extrabold font-headline leading-[1.1] mb-6 tracking-tight text-on-surface">
+                    Your contribution, <br/>
+<span class="text-primary">their survival.</span>
+</h1>
+<p class="text-lg lg:text-xl text-on-surface-variant font-body leading-relaxed mb-12 max-w-md">
+                    Coordinating blood donation across Cameroon with surgical precision and editorial elegance. Log in to manage your vital impact.
+                </p>
+<div class="flex items-center gap-6">
+<div class="flex flex-col">
+<span class="text-3xl font-extrabold font-headline text-on-surface">15k+</span>
+<span class="text-xs font-bold font-label uppercase tracking-widest text-on-surface-variant opacity-60">Donors Active</span>
+</div>
+<div class="w-px h-10 bg-outline-variant/30"></div>
+<div class="flex flex-col">
+<span class="text-3xl font-extrabold font-headline text-on-surface">100%</span>
+<span class="text-xs font-bold font-label uppercase tracking-widest text-on-surface-variant opacity-60">Impact Verified</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Side: Login Form -->
+<section class="w-full md:w-1/2 lg:w-2/5 flex items-center justify-center p-6 lg:p-16 bg-surface">
+<div class="w-full max-w-md">
+<!-- Mobile Logo Branding -->
+<div class="md:hidden flex items-center gap-2 mb-12">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
+<span class="text-xl font-bold font-headline text-primary tracking-tighter">The Pulse</span>
+</div>
+<div class="mb-10">
+<h2 class="text-3xl font-bold font-headline text-on-surface mb-2">Welcome Back</h2>
+<p class="text-on-surface-variant font-body">Please enter your credentials to access the system.</p>
+</div>
+<form class="space-y-8">
+<!-- Email/Phone Field -->
+<div class="relative group">
+<label class="block text-xs font-bold font-label uppercase tracking-wider text-on-surface-variant mb-1 ml-1 opacity-70" for="identity">Email or Phone Number</label>
+<div class="flex items-center">
+<span class="material-symbols-outlined text-on-surface-variant/40 mr-3 text-xl">alternate_email</span>
+<input class="block w-full py-3 px-0 bg-transparent border-0 border-b border-outline-variant focus:ring-0 focus:border-primary transition-all font-body text-on-surface placeholder:text-on-surface-variant/30" id="identity" name="identity" placeholder="name@vitalis.cm" type="text"/>
+</div>
+</div>
+<!-- Password Field -->
+<div class="relative group">
+<div class="flex justify-between items-end mb-1 ml-1">
+<label class="block text-xs font-bold font-label uppercase tracking-wider text-on-surface-variant opacity-70" for="password">Password</label>
+<a class="text-xs font-bold font-label text-primary hover:text-primary-container transition-colors" href="#">Forgot Password?</a>
+</div>
+<div class="flex items-center">
+<span class="material-symbols-outlined text-on-surface-variant/40 mr-3 text-xl">lock</span>
+<input class="block w-full py-3 px-0 bg-transparent border-0 border-b border-outline-variant focus:ring-0 focus:border-primary transition-all font-body text-on-surface placeholder:text-on-surface-variant/30" id="password" name="password" placeholder="••••••••" type="password"/>
+</div>
+</div>
+<!-- Remember Me Toggle -->
+<div class="flex items-center space-x-3">
+<div class="relative inline-flex items-center cursor-pointer">
+<input class="sr-only peer" type="checkbox" value=""/>
+<div class="w-10 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+</div>
+<span class="text-sm font-medium text-on-surface-variant font-body">Remember me for 30 days</span>
+</div>
+<!-- Action Button -->
+<div class="pt-4">
+<button class="w-full primary-gradient text-on-primary font-headline font-bold py-4 px-6 rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2" type="submit">
+                            Sign In
+                            <span class="material-symbols-outlined text-lg">login</span>
+</button>
+</div>
+</form>
+<!-- Social Login Alternative (Subtle) -->
+<div class="mt-12 text-center">
+<div class="relative mb-8">
+<div class="absolute inset-0 flex items-center">
+<div class="w-full border-t border-outline-variant/30"></div>
+</div>
+<div class="relative flex justify-center text-xs font-bold font-label uppercase tracking-widest text-on-surface-variant bg-surface px-4">
+                            Or continue with
+                        </div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<button class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-colors font-body font-semibold text-sm">
+<img alt="Google" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOO63Tn9OGrrGh6eskcY8V2MdYycYlNMOCe72m0JEJF-eqfczH_3AYoyAoqAnffec4Ssf_aq9X8bIxQd8Xzfo09NIuc6dD4A1EdYvjUyz3mHr-uMWqRSDmwQMc4quC0_Tun5uI2MRCPUOblDvfqNNd_aMe_yyO-2nN6x_CJL7jlNNnMyF8BWSxCrOx99B_JKaVdc21QOlPI8NKlAN8-vfhCJAPaU2HOxfWIHGE67cY84CTHkbTqn7SVx7m6tGvE3XNmMFGs_F9RPc"/>
+                            Google
+                        </button>
+<button class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-colors font-body font-semibold text-sm">
+<img alt="Microsoft" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFacFqBwaZX633SAdf_LhfYHHM0xthZyJOWNb9inv4rEo5tT0wnFwhO1VTpk-QgupzBoXjC6lwljPqT9mN9NacPIAaR23i4TL87RZ0YyVYt8z2CgDO3XElnTJMOSfBfUNF5_uoxWpLKT36MmRBN1-ODvYwxXUOcI3gM8oZ0brNFk0oyc60Y_Ihuo7wBU7ARhVZXm_DqwUCs1HMYi3m7KJm7W0PqTVLAALrpAk_dgR2OA_R6lo4lHHGf0wD9Do2YJ1J5RHZr4-bcZQ"/>
+                            Outlook
+                        </button>
+</div>
+</div>
+<!-- Footer Sign Up Link -->
+<p class="mt-12 text-center text-on-surface-variant font-body text-sm">
+                    New to Vitalis? 
+                    <a class="text-primary font-bold hover:underline underline-offset-4 ml-1" href="#">Create an account</a>
+</p>
+</div>
+</section>
+</main>
+<!-- Contextual Footer (Minimal) -->
+<footer class="p-6 bg-surface text-center md:hidden border-t border-outline-variant/10">
+<p class="text-[10px] font-bold font-label uppercase tracking-widest text-on-surface-variant opacity-40">
+            © 2024 Vitalis Cameroon • Emergency Blood Coordination
+        </p>
+</footer>
+</body></html>

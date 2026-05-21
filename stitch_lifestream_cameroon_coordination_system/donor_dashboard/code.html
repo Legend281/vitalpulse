@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>VitalPulse | Donor Dashboard</title>
+<!-- Google Fonts: Manrope & Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-highest": "#e2e2e2",
+                    "tertiary-container": "#00799c",
+                    "on-surface": "#1a1c1c",
+                    "on-primary-fixed-variant": "#930010",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-container": "#d32f2f",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed": "#410003",
+                    "surface-dim": "#dadada",
+                    "on-surface-variant": "#5b403d",
+                    "surface-container": "#eeeeee",
+                    "on-error-container": "#93000a",
+                    "secondary": "#9f3f39",
+                    "secondary-fixed": "#ffdad6",
+                    "error-container": "#ffdad6",
+                    "tertiary": "#005f7b",
+                    "on-secondary-fixed": "#410003",
+                    "secondary-fixed-dim": "#ffb3ac",
+                    "on-tertiary-container": "#e9f7ff",
+                    "surface-container-low": "#f3f3f3",
+                    "primary-fixed-dim": "#ffb3ac",
+                    "error": "#ba1a1a",
+                    "outline": "#8f6f6c",
+                    "primary": "#af101a",
+                    "on-primary": "#ffffff",
+                    "surface-container-high": "#e8e8e8",
+                    "primary-fixed": "#ffdad6",
+                    "surface": "#f9f9f9",
+                    "on-secondary-container": "#741e1c",
+                    "outline-variant": "#e4beba",
+                    "inverse-surface": "#2f3131",
+                    "on-background": "#1a1c1c",
+                    "on-tertiary-fixed-variant": "#004d65",
+                    "surface-tint": "#ba1a20",
+                    "inverse-on-surface": "#f1f1f1",
+                    "on-error": "#ffffff",
+                    "on-tertiary-fixed": "#001f2a",
+                    "background": "#f9f9f9",
+                    "on-secondary-fixed-variant": "#802824",
+                    "on-tertiary": "#ffffff",
+                    "surface-variant": "#e2e2e2",
+                    "inverse-primary": "#ffb3ac",
+                    "tertiary-fixed-dim": "#7bd1f8",
+                    "secondary-container": "#fd867d",
+                    "on-primary-container": "#fff2f0",
+                    "tertiary-fixed": "#bee9ff",
+                    "surface-bright": "#f9f9f9"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+        .glass-header {
+            background: rgba(249, 249, 249, 0.8);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface">
+<div class="flex min-h-screen">
+<!-- Sidebar Navigation (Desktop) -->
+<aside class="hidden md:flex flex-col h-screen w-64 sticky top-0 bg-white dark:bg-slate-900 border-r-0 py-6 gap-2">
+<div class="px-6 mb-10">
+<span class="font-headline font-extrabold text-primary text-2xl tracking-tighter">VitalPulse</span>
+<p class="text-[10px] uppercase tracking-widest text-outline mt-1 font-semibold">Hospital Portal</p>
+</div>
+<nav class="flex flex-col flex-1 gap-2">
+<!-- Dashboard is active -->
+<a class="bg-red-50 dark:bg-red-900/20 text-primary dark:text-red-400 font-bold rounded-r-full px-6 py-3 flex items-center gap-3 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="text-sm font-inter">Dashboard</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 px-6 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="bloodtype">bloodtype</span>
+<span class="text-sm font-inter">My Donations</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 px-6 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="map">map</span>
+<span class="text-sm font-inter">Map</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 px-6 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="redeem">redeem</span>
+<span class="text-sm font-inter">Rewards</span>
+</a>
+<a class="text-slate-500 dark:text-slate-400 px-6 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="text-sm font-inter">Settings</span>
+</a>
+</nav>
+<div class="px-6 mt-auto">
+<button class="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary py-3 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 transition-transform active:scale-95">
+                    Urgent Request
+                </button>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 min-w-0 bg-surface-container-low overflow-x-hidden pb-24 md:pb-8">
+<!-- Mobile Top Bar -->
+<header class="md:hidden glass-header sticky top-0 z-40 flex items-center justify-between px-6 py-4">
+<span class="font-headline font-black text-primary text-xl tracking-tighter">VitalPulse</span>
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center overflow-hidden border-2 border-white shadow-sm">
+<img alt="User Profile" data-alt="Portrait of a young male blood donor with a kind and confident expression in a bright clinical setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCRcp1oexfrOf_OCzOp6BUf2PDovduaj9yPBjzTlsbPyOHyvd44OOcGJw8k2V_Mu-GM9feoFCLuDuiq0x6ZWeNa54kNDEXEPRqDdfYQGCBQls5AuHBqBjvKxJOxW-LnN-Kdl-OC8tNdklhaLP86HvL61SXYixMTJZ34efjhncB_JADr8n7kOsh16fKmHYACgDtIsPDNBXe_OWKWFz9XtBr59ognosjU-0u9pSb5-v9s1xjKeT6mD4pdptvEM-_4vqgKQxKKsy2iw8A"/>
+</div>
+</header>
+<div class="max-w-6xl mx-auto px-6 py-8">
+<!-- Hero Greeting & Availability -->
+<section class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+<div>
+<p class="text-sm font-bold text-tertiary uppercase tracking-[0.2em] mb-2">Welcome Back</p>
+<h1 class="text-4xl md:text-5xl font-headline font-extrabold text-on-surface tracking-tight">Samuel Eto'o</h1>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-2xl flex items-center justify-between gap-8 md:min-w-[300px]">
+<div>
+<p class="text-[10px] font-bold text-outline uppercase tracking-widest">Live Status</p>
+<p class="text-sm font-bold text-on-surface">Available to Donate</p>
+</div>
+<label class="relative inline-flex items-center cursor-pointer">
+<input checked="" class="sr-only peer" type="checkbox"/>
+<div class="w-11 h-6 bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+</label>
+</div>
+</section>
+<!-- Personal Stats Bento Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+<!-- Stat 1 -->
+<div class="bg-surface-container-lowest p-8 rounded-2xl relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 group-hover:scale-110 transition-transform duration-500"></div>
+<p class="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Pulse Points</p>
+<div class="flex items-baseline gap-2">
+<span class="text-4xl font-headline font-black text-primary">2,450</span>
+<span class="text-xs font-bold text-tertiary">LVL 4</span>
+</div>
+<div class="mt-6 w-full bg-surface-container h-1 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-3/4"></div>
+</div>
+</div>
+<!-- Stat 2 -->
+<div class="bg-surface-container-lowest p-8 rounded-2xl relative overflow-hidden group">
+<p class="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Current Badge</p>
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 bg-error-container rounded-full flex items-center justify-center text-on-error-container">
+<span class="material-symbols-outlined text-3xl" data-icon="volunteer_activism" style="font-variation-settings: 'FILL' 1;">volunteer_activism</span>
+</div>
+<div>
+<span class="block text-xl font-headline font-bold text-on-surface leading-tight">Life Saver</span>
+<span class="text-xs text-outline">Since May 2023</span>
+</div>
+</div>
+</div>
+<!-- Stat 3 -->
+<div class="bg-surface-container-lowest p-8 rounded-2xl relative overflow-hidden group">
+<p class="text-[10px] font-bold text-outline uppercase tracking-widest mb-4">Last Donation</p>
+<div class="flex items-baseline gap-2">
+<span class="text-4xl font-headline font-black text-on-surface">42</span>
+<span class="text-sm font-bold text-outline">DAYS AGO</span>
+</div>
+<p class="mt-4 text-xs font-medium text-tertiary flex items-center gap-1">
+<span class="material-symbols-outlined text-base" data-icon="event">event</span>
+                            Oct 12, 2023
+                        </p>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12">
+<!-- Left: Emergency Feed -->
+<div class="lg:col-span-7">
+<div class="flex items-center justify-between mb-8">
+<h2 class="text-2xl font-headline font-extrabold text-on-surface">Nearby Emergency Requests</h2>
+<span class="bg-error-container text-on-error-container px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">Live Updates</span>
+</div>
+<div class="space-y-6">
+<!-- Request Card 1 -->
+<div class="bg-surface-container-lowest p-1 rounded-3xl group">
+<div class="p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
+<div class="w-20 h-20 shrink-0 bg-primary-container text-on-primary-container rounded-2xl flex flex-col items-center justify-center">
+<span class="text-xs font-bold opacity-80">TYPE</span>
+<span class="text-3xl font-headline font-black">O-</span>
+</div>
+<div class="flex-1">
+<h3 class="text-lg font-headline font-bold text-on-surface">Yaoundé General Hospital</h3>
+<p class="text-sm text-outline flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                                            2.4 km away • 3 units needed
+                                        </p>
+<div class="mt-4 flex gap-3">
+<button class="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-2.5 rounded-xl font-bold text-sm transition-all hover:shadow-lg hover:shadow-primary/20 active:scale-95">Accept</button>
+<button class="text-primary font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-surface-container transition-colors">Details</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Request Card 2 -->
+<div class="bg-surface-container-lowest p-1 rounded-3xl group">
+<div class="p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
+<div class="w-20 h-20 shrink-0 bg-surface-container-highest text-on-surface rounded-2xl flex flex-col items-center justify-center">
+<span class="text-xs font-bold opacity-80">TYPE</span>
+<span class="text-3xl font-headline font-black">B+</span>
+</div>
+<div class="flex-1">
+<h3 class="text-lg font-headline font-bold text-on-surface">Clinique Bastos</h3>
+<p class="text-sm text-outline flex items-center gap-1 mt-1">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                                            0.8 km away • 1 unit needed
+                                        </p>
+<div class="mt-4 flex gap-3">
+<button class="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-2.5 rounded-xl font-bold text-sm transition-all hover:shadow-lg hover:shadow-primary/20 active:scale-95">Accept</button>
+<button class="text-primary font-bold text-sm px-4 py-2.5 rounded-xl hover:bg-surface-container transition-colors">Details</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right: Campaigns & Map -->
+<div class="lg:col-span-5 space-y-12">
+<!-- Upcoming Campaigns -->
+<section>
+<h2 class="text-xl font-headline font-extrabold text-on-surface mb-6">Campaigns in Yaoundé</h2>
+<div class="space-y-4">
+<div class="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm group">
+<div class="h-32 bg-slate-200 relative">
+<img class="w-full h-full object-cover" data-alt="Close-up of modern medical blood donation bags and high-tech equipment in a clean, minimalist laboratory setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCN6XVeQ8WT9NlDLO61quromImHnRcEOfM68M9BTGlSdccpYJoOTEwrZcC624RkdHhcngv0gnc3yFU3vCj_eDh8OZGf7BIfJBSWi78SB2mjQ6ZxEK0blHO4hQNBw2IeHB6oUQW8uudH_qLaGdheyIeIO3oV87AXYbTWlBh3OP50yPD4bc3rA38Pgqba34lrfpWKXd-WctufpqNeIQYR7jkIHA5pGrCbT4e-3c1tUWVU-bZPrTPnAjPhNs6rPiExU8fQ58mg8Bgf_RQ"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+<div class="absolute bottom-4 left-4">
+<span class="bg-primary text-on-primary text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest">Active Now</span>
+</div>
+</div>
+<div class="p-6">
+<h3 class="font-headline font-bold text-on-surface">Annual University Drive</h3>
+<p class="text-xs text-outline mt-1">University of Yaoundé I • Dec 20-22</p>
+<div class="mt-4 flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border-2 border-white bg-slate-200 overflow-hidden"><img alt="" data-alt="Portrait of a female volunteer smiling" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAebzRXtrqd85lGQU3VHAKEpNjGHe8AxtW-3cZIeneZ4d9EiVhEUy8MrL1cPQ2bnAzCQGEvNmO_Zfsj9Zx91u01G90wimEIJnRbLqFK-BBnkJWtV_R6UTQcJt7J1KfqEiaTqT58502YXZKJ8cg1Nxl_rNkVHBySmqDJVjOP2A9YqM5bdgkwye8tTz8lDgLG2I8xLXk5rEeq5OK3l861fjcjF4HzHG5iaLt-JY8v4Ig3XJPiDYTBI5xfUAf8UHQXXobHjbU0YRLgFHU"/></div>
+<div class="w-6 h-6 rounded-full border-2 border-white bg-slate-200 overflow-hidden"><img alt="" data-alt="Portrait of a male volunteer" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAS3obNQcXeFIziriD1fU6o65_QT0YhVKaReKlp-u0b3-IQ-YY086FfT2vUixa_yVdXPgAnm1ENEg_-NkczCt2yLTKnu1XCUGqaCQwxeOjSFgwBLws3p67Ge_dY4nTfnXHAQ0fYoImvT4XfTp1bRr2m-YCcWGFSuGHg3A9qGTKGiAYSGnBnu-YkRiY-K3D73p5U_qO3uKowGj6i5Gix8k4hTSyCc7I5b_gUOkie-NIqdKMBstwc5QApA3uoB9sYmNmgVBOqcP-IZO0"/></div>
+<div class="w-6 h-6 rounded-full border-2 border-white bg-slate-400 flex items-center justify-center text-[8px] text-white font-bold">+12</div>
+</div>
+<button class="text-tertiary text-xs font-bold hover:underline">Join Campaign</button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Map Preview -->
+<section>
+<div class="flex items-center justify-between mb-4">
+<h2 class="text-lg font-headline font-bold text-on-surface">Donation Map</h2>
+<button class="text-primary text-xs font-bold uppercase tracking-widest">Expand</button>
+</div>
+<div class="aspect-video bg-surface-container rounded-2xl overflow-hidden relative border border-outline-variant/10">
+<img class="w-full h-full object-cover opacity-50 grayscale contrast-125" data-alt="Stylized map view of Yaoundé city with clean UI markers for medical centers and donation points" data-location="Yaoundé" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDigg8xYBHbBe8oC-0JR3uHVYnN5DzsIR1Pp9QwpBaB_5_aMXCFPI3YtE7LeTFBVEToZECthypNAqY62oZWf4B95GXjgky55BRbbgVPF7nshd9m1BXpW8sgwIKZHzEmiFiyVQCzp69IA3g5IfYBb1fBl9tHrgDrW5bU59Q-RSJMwnsR7D9ztkjKr1q8IAMBooRt-l2uFb-RL8IItwPJ5W2T0wN6H1GbebV9uKP_HVMZ4KHWT1tfW5SijOrzGzXScYA8cTD3MHdMkTE"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center animate-pulse">
+<div class="w-6 h-6 bg-primary rounded-full border-2 border-white"></div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Mobile Bottom Navigation -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl flex justify-around items-center px-4 pb-6 pt-3 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] border-t border-slate-100 dark:border-slate-800">
+<a class="flex flex-col items-center justify-center text-primary dark:text-red-400 bg-red-50 dark:bg-red-900/30 rounded-xl px-4 py-2 transition-all tap-highlight-transparent" href="#">
+<span class="material-symbols-outlined" data-icon="home" style="font-variation-settings: 'FILL' 1;">home</span>
+<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 transition-all tap-highlight-transparent active:bg-slate-50" href="#">
+<span class="material-symbols-outlined" data-icon="emergency">emergency</span>
+<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Requests</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 transition-all tap-highlight-transparent active:bg-slate-50" href="#">
+<span class="material-symbols-outlined" data-icon="map">map</span>
+<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Map</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 px-4 py-2 transition-all tap-highlight-transparent active:bg-slate-50" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Profile</span>
+</a>
+</nav>
+<!-- FAB (Contextual for Dashboard) -->
+<button class="fixed right-6 bottom-24 md:bottom-8 z-40 bg-gradient-to-br from-primary to-primary-container text-on-primary w-14 h-14 rounded-2xl shadow-xl shadow-primary/30 flex items-center justify-center transition-transform active:scale-90">
+<span class="material-symbols-outlined text-3xl" data-icon="add">add</span>
+</button>
+</body></html>

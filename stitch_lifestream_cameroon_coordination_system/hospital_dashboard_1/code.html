@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>VitalPulse | Douala Referral Hospital Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-highest": "#e2e2e2",
+                    "tertiary-container": "#00799c",
+                    "on-surface": "#1a1c1c",
+                    "on-primary-fixed-variant": "#930010",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-container": "#d32f2f",
+                    "on-secondary": "#ffffff",
+                    "on-primary-fixed": "#410003",
+                    "surface-dim": "#dadada",
+                    "on-surface-variant": "#5b403d",
+                    "surface-container": "#eeeeee",
+                    "on-error-container": "#93000a",
+                    "secondary": "#9f3f39",
+                    "secondary-fixed": "#ffdad6",
+                    "error-container": "#ffdad6",
+                    "tertiary": "#005f7b",
+                    "on-secondary-fixed": "#410003",
+                    "secondary-fixed-dim": "#ffb3ac",
+                    "on-tertiary-container": "#e9f7ff",
+                    "surface-container-low": "#f3f3f3",
+                    "primary-fixed-dim": "#ffb3ac",
+                    "error": "#ba1a1a",
+                    "outline": "#8f6f6c",
+                    "primary": "#af101a",
+                    "on-primary": "#ffffff",
+                    "surface-container-high": "#e8e8e8",
+                    "primary-fixed": "#ffdad6",
+                    "surface": "#f9f9f9",
+                    "on-secondary-container": "#741e1c",
+                    "outline-variant": "#e4beba",
+                    "inverse-surface": "#2f3131",
+                    "on-background": "#1a1c1c",
+                    "on-tertiary-fixed-variant": "#004d65",
+                    "surface-tint": "#ba1a20",
+                    "inverse-on-surface": "#f1f1f1",
+                    "on-error": "#ffffff",
+                    "on-tertiary-fixed": "#001f2a",
+                    "background": "#f9f9f9",
+                    "on-secondary-fixed-variant": "#802824",
+                    "on-tertiary": "#ffffff",
+                    "surface-variant": "#e2e2e2",
+                    "inverse-primary": "#ffb3ac",
+                    "tertiary-fixed-dim": "#7bd1f8",
+                    "secondary-container": "#fd867d",
+                    "on-primary-container": "#fff2f0",
+                    "tertiary-fixed": "#bee9ff",
+                    "surface-bright": "#f9f9f9"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .brand-font { font-family: 'Manrope', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .signature-gradient {
+            background: linear-gradient(135deg, #af101a 0%, #d32f2f 100%);
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface flex min-h-screen overflow-hidden">
+<!-- SideNavBar Anchor -->
+<aside class="hidden md:flex flex-col h-screen w-64 bg-white dark:bg-slate-900 border-r-0 bg-slate-50 dark:bg-slate-800/50 flex flex-col h-full gap-2 py-6 shrink-0 z-40">
+<div class="px-6 mb-8">
+<h1 class="font-manrope font-extrabold text-red-700 text-2xl tracking-tighter">VitalPulse</h1>
+<div class="mt-4 flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden">
+<img alt="Hospital Profile" class="w-full h-full object-cover" data-alt="Professional architectural shot of a modern clean hospital facade with glass windows and a clinical atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9rRRYKvkY7_1r7wwRQ8CpGpyz5AspkUR1TW4Ei64CP-7w-wQYx-JaQLeKMBlRzJdPegY4sUvq06tsE1v3AEC3FCJBs_DGFXrJ_sywiKpYUQPeNZfMr-_o0GzSU3okeZ7NAu3-5yd_UMkG5WDCnr68A1hi_xhe0D1KRgkB1J5TgL8t6wwEYfxrv8jTXqKLOhiPPeladXyeWz8avqcD_il5O94CfJl-ufuD2GCK_PUWKRvGQeAQc8QpgQQcC1xtw7EetfZgJx27Mak"/>
+</div>
+<div>
+<p class="font-inter text-sm font-bold text-on-surface">Douala Referral</p>
+<p class="font-inter text-[10px] text-slate-500 uppercase tracking-wider">Hospital Portal</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<!-- Active: Dashboard -->
+<a class="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 font-bold rounded-r-full px-6 py-3 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-inter text-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 dark:text-slate-400 px-6 py-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="bloodtype">bloodtype</span>
+<span class="font-inter text-sm">My Requests</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 dark:text-slate-400 px-6 py-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-inter text-sm">Inventory</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 dark:text-slate-400 px-6 py-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="local_hospital">local_hospital</span>
+<span class="font-inter text-sm">Incoming Donors</span>
+</a>
+<a class="flex items-center gap-3 text-slate-500 dark:text-slate-400 px-6 py-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-inter text-sm">Settings</span>
+</a>
+</nav>
+<div class="px-6 mt-auto">
+<button class="w-full signature-gradient text-on-primary py-3 px-4 rounded-xl font-bold text-sm shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm" data-icon="add_circle">add_circle</span>
+                Urgent Request
+            </button>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="flex-1 h-screen overflow-y-auto bg-surface-container-low p-4 md:p-8 hide-scrollbar">
+<!-- Header Section -->
+<header class="flex flex-col md:flex-row md:items-center justify-between mb-10 gap-4">
+<div>
+<h2 class="text-display-sm md:text-headline-md font-extrabold text-on-surface tracking-tight">Hospital Dashboard</h2>
+<p class="text-label-md text-slate-500 flex items-center gap-2 mt-1">
+<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span>
+                    Douala, Littoral Region • Yaoundé General Network
+                </p>
+</div>
+<button class="signature-gradient text-on-primary px-6 py-3 rounded-lg font-bold flex items-center gap-2 transition-transform active:scale-95">
+<span class="material-symbols-outlined" data-icon="emergency">emergency</span>
+                Create Emergency Request
+            </button>
+</header>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<!-- Left Column: Inventory Grid (Bento Style) -->
+<section class="lg:col-span-8 space-y-8">
+<div class="flex items-center justify-between">
+<h3 class="font-headline font-bold text-xl text-on-surface">Blood Inventory</h3>
+<span class="text-xs font-label uppercase tracking-widest text-primary font-bold bg-primary-fixed px-3 py-1 rounded-full">Real-time monitoring</span>
+</div>
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+<!-- Inventory Card O- (Low) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">O-</span>
+<span class="bg-error-container text-on-error-container text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Critical</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-error h-full rounded-full" style="width: 12%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">12 Units (Min 50)</p>
+</div>
+</div>
+<!-- Inventory Card O+ -->
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">O+</span>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Stable</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full rounded-full" style="width: 65%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">142 Units</p>
+</div>
+</div>
+<!-- Inventory Card A- (Low) -->
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">A-</span>
+<span class="bg-error-container text-on-error-container text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Low</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-error h-full rounded-full" style="width: 28%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">21 Units (Min 40)</p>
+</div>
+</div>
+<!-- Inventory Card A+ -->
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">A+</span>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Stable</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full rounded-full" style="width: 82%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">210 Units</p>
+</div>
+</div>
+<!-- Row 2 -->
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">B-</span>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Stable</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full rounded-full" style="width: 45%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">38 Units</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">B+</span>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Stable</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full rounded-full" style="width: 70%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">115 Units</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">AB-</span>
+<span class="bg-error-container text-on-error-container text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Critical</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-error h-full rounded-full" style="width: 8%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">4 Units (Min 15)</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-5 rounded-xl flex flex-col gap-4 shadow-sm border border-outline-variant/10">
+<div class="flex justify-between items-start">
+<span class="font-headline text-2xl font-black text-on-surface">AB+</span>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">Stable</span>
+</div>
+<div class="space-y-1">
+<div class="w-full bg-surface-container-highest h-2 rounded-full overflow-hidden">
+<div class="bg-tertiary h-full rounded-full" style="width: 55%"></div>
+</div>
+<p class="text-[10px] text-slate-500 font-medium">28 Units</p>
+</div>
+</div>
+</div>
+<!-- Active Requests Table -->
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden border border-outline-variant/10">
+<div class="px-6 py-4 border-b border-surface-container-low flex items-center justify-between">
+<h3 class="font-headline font-bold text-lg text-on-surface">Active Requests</h3>
+<a class="text-primary text-xs font-bold hover:underline" href="#">View All</a>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead class="bg-surface-container-low text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+<tr>
+<th class="px-6 py-4">Request ID</th>
+<th class="px-6 py-4">Type</th>
+<th class="px-6 py-4">Units Needed</th>
+<th class="px-6 py-4">Status</th>
+<th class="px-6 py-4">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-low">
+<tr class="hover:bg-slate-50 transition-colors">
+<td class="px-6 py-4 font-manrope font-bold text-sm">#REQ-4029</td>
+<td class="px-6 py-4"><span class="font-black text-primary">O-</span></td>
+<td class="px-6 py-4 text-sm">4 Units</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+<span class="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-1 rounded-md">Matching</span>
+</div>
+</td>
+<td class="px-6 py-4"><button class="text-tertiary font-bold text-xs">Track</button></td>
+</tr>
+<tr class="hover:bg-slate-50 transition-colors">
+<td class="px-6 py-4 font-manrope font-bold text-sm">#REQ-4028</td>
+<td class="px-6 py-4"><span class="font-black text-primary">AB-</span></td>
+<td class="px-6 py-4 text-sm">2 Units</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span class="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md">Donor En Route</span>
+</div>
+</td>
+<td class="px-6 py-4"><button class="text-tertiary font-bold text-xs">Track</button></td>
+</tr>
+<tr class="hover:bg-slate-50 transition-colors">
+<td class="px-6 py-4 font-manrope font-bold text-sm">#REQ-4025</td>
+<td class="px-6 py-4"><span class="font-black text-on-surface">A+</span></td>
+<td class="px-6 py-4 text-sm">10 Units</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-blue-500"></span>
+<span class="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-1 rounded-md">Fulfilled</span>
+</div>
+</td>
+<td class="px-6 py-4"><button class="text-slate-400 font-bold text-xs" disabled="">Closed</button></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<!-- Right Column: Incoming Donors & Map -->
+<aside class="lg:col-span-4 space-y-8">
+<!-- Incoming Donors List -->
+<div class="bg-white rounded-xl p-6 shadow-sm border border-outline-variant/10">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-headline font-bold text-lg">Incoming Donors</h3>
+<span class="material-symbols-outlined text-tertiary" data-icon="route">route</span>
+</div>
+<div class="space-y-6">
+<!-- Donor 1 -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center font-bold text-secondary">
+                                    JE
+                                </div>
+<div>
+<p class="text-sm font-bold">Jean Eto'o</p>
+<p class="text-[10px] text-slate-500">O- Negative</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-xs font-black text-primary">12 min</p>
+<p class="text-[9px] uppercase tracking-tighter text-slate-400">ETA</p>
+</div>
+</div>
+<!-- Donor 2 -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-tertiary-fixed flex items-center justify-center font-bold text-tertiary">
+                                    SM
+                                </div>
+<div>
+<p class="text-sm font-bold">Sarah Mbarga</p>
+<p class="text-[10px] text-slate-500">AB- Negative</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-xs font-black text-primary">24 min</p>
+<p class="text-[9px] uppercase tracking-tighter text-slate-400">ETA</p>
+</div>
+</div>
+<!-- Donor 3 -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center font-bold text-on-surface">
+                                    PK
+                                </div>
+<div>
+<p class="text-sm font-bold">Paul Kamga</p>
+<p class="text-[10px] text-slate-500">A+ Positive</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-xs font-black text-slate-400">Arrived</p>
+<p class="text-[9px] uppercase tracking-tighter text-slate-400">Now</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Live Map Preview (Glassmorphism) -->
+<div class="relative rounded-xl overflow-hidden h-64 shadow-sm border border-outline-variant/10">
+<img alt="Donation Map" class="w-full h-full object-cover" data-alt="Modern minimalist map interface showing navigation routes in a city with soft UI pins and subtle data overlays" data-location="Douala" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB26qhMoqSrE4AWEGkkcavZTdnUsd2fo2WQKX2niWay42qcc-Jd8s-DMU1Y4AQVRLmgMHfvZUJz5djISIlpbMHzxYN5GJ3gSuS5i1L24Y3R7glhbPcN7FDCeXeUtq3DSzlBurdTVdoEqLQQdK4K38_cLE4sXZaoWf0p8UMATsI3ofimQXtVXFh2qYIbeCj7wTfwJ7mtrk7TjYgk5kahna0mFL5Zigm_5Ytvwr-b8_HRf1lFwKj3GvWO7740SpPixSXAlz9Z_9CV4m8"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/60 to-transparent"></div>
+<div class="absolute bottom-4 left-4 right-4 bg-surface/80 backdrop-blur-md p-3 rounded-lg flex items-center justify-between">
+<div>
+<p class="text-[10px] font-bold text-on-surface uppercase">Live Tracking</p>
+<p class="text-xs text-slate-600">3 Donors en route to Hospital</p>
+</div>
+<span class="material-symbols-outlined text-primary" data-icon="explore">explore</span>
+</div>
+</div>
+<!-- Quick Impact Stats -->
+<div class="bg-tertiary-container text-on-tertiary-container p-6 rounded-xl">
+<p class="text-[10px] uppercase font-bold tracking-widest opacity-80">Daily Impact</p>
+<h4 class="text-2xl font-black mt-2">124 Lives</h4>
+<p class="text-sm opacity-90 mt-1">Units distributed across Littoral Region today.</p>
+<div class="mt-4 pt-4 border-t border-white/10 flex gap-4">
+<div class="flex-1">
+<p class="text-xl font-bold">18</p>
+<p class="text-[9px] uppercase">Hospitals Helped</p>
+</div>
+<div class="flex-1 border-l border-white/10 pl-4">
+<p class="text-xl font-bold">42</p>
+<p class="text-[9px] uppercase">New Donors</p>
+</div>
+</div>
+</div>
+</aside>
+</div>
+</main>
+<!-- BottomNavBar Anchor (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-6 pt-3 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800 shadow-[0_-4px_24px_rgba(0,0,0,0.04)]">
+<a class="flex flex-col items-center justify-center text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/30 rounded-xl px-3 py-1" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-inter text-[10px] uppercase tracking-widest">Home</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="emergency">emergency</span>
+<span class="font-inter text-[10px] uppercase tracking-widest">Requests</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="map">map</span>
+<span class="font-inter text-[10px] uppercase tracking-widest">Map</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-inter text-[10px] uppercase tracking-widest">Profile</span>
+</a>
+</nav>
+</body></html>

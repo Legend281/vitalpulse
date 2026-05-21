@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#fd867d",
+                        "inverse-on-surface": "#f1f1f1",
+                        "on-background": "#1a1c1c",
+                        "outline-variant": "#e4beba",
+                        "outline": "#8f6f6c",
+                        "secondary-fixed": "#ffdad6",
+                        "surface-container-low": "#f3f3f3",
+                        "background": "#f9f9f9",
+                        "error": "#ba1a1a",
+                        "on-error": "#ffffff",
+                        "inverse-primary": "#ffb3ac",
+                        "on-primary": "#ffffff",
+                        "inverse-surface": "#2f3131",
+                        "on-secondary-fixed-variant": "#802824",
+                        "secondary": "#9f3f39",
+                        "surface-container-lowest": "#ffffff",
+                        "on-surface-variant": "#5b403d",
+                        "tertiary-container": "#00799c",
+                        "primary-container": "#d32f2f",
+                        "surface-dim": "#dadada",
+                        "on-tertiary": "#ffffff",
+                        "surface-variant": "#e2e2e2",
+                        "primary-fixed-dim": "#ffb3ac",
+                        "on-primary-fixed": "#410003",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed-dim": "#ffb3ac",
+                        "tertiary-fixed-dim": "#7bd1f8",
+                        "surface-tint": "#ba1a20",
+                        "surface": "#f9f9f9",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed-variant": "#004d65",
+                        "on-surface": "#1a1c1c",
+                        "tertiary-fixed": "#bee9ff",
+                        "on-primary-container": "#fff2f0",
+                        "on-error-container": "#93000a",
+                        "on-secondary-fixed": "#410003",
+                        "surface-container-high": "#e8e8e8",
+                        "surface-bright": "#f9f9f9",
+                        "tertiary": "#005f7b",
+                        "primary": "#af101a",
+                        "on-tertiary-container": "#e9f7ff",
+                        "surface-container-highest": "#e2e2e2",
+                        "on-primary-fixed-variant": "#930010",
+                        "on-secondary-container": "#741e1c",
+                        "surface-container": "#eeeeee",
+                        "primary-fixed": "#ffdad6",
+                        "on-tertiary-fixed": "#001f2a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            line-height: 1;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3, .font-headline { font-family: 'Manrope', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md shadow-sm dark:shadow-none docked full-width top-0 sticky z-40 flex justify-between items-center px-6 py-4 w-full">
+<div class="flex items-center gap-4">
+<span class="text-xl font-black text-red-700 dark:text-red-500 uppercase tracking-widest font-headline">Vital Pulse</span>
+</div>
+<div class="flex items-center gap-6">
+<nav class="hidden md:flex gap-8">
+<a class="text-red-700 dark:text-red-500 font-bold font-headline transition-colors" href="#">Inventory</a>
+<a class="text-slate-500 dark:text-slate-400 font-headline transition-colors hover:bg-slate-50 dark:hover:bg-slate-800" href="#">Donors</a>
+<a class="text-slate-500 dark:text-slate-400 font-headline transition-colors hover:bg-slate-50 dark:hover:bg-slate-800" href="#">Clinics</a>
+<a class="text-slate-500 dark:text-slate-400 font-headline transition-colors hover:bg-slate-50 dark:hover:bg-slate-800" href="#">Analytics</a>
+</nav>
+<div class="flex items-center gap-3">
+<button class="p-2 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined text-slate-500">notifications</span>
+</button>
+<button class="p-2 rounded-full hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors active:scale-95 duration-200">
+<span class="material-symbols-outlined text-slate-500">settings</span>
+</button>
+</div>
+</div>
+</header>
+<!-- Dashboard Content (Dimmed Background) -->
+<main class="flex-grow p-6 lg:p-10 opacity-40 select-none pointer-events-none">
+<div class="max-w-7xl mx-auto space-y-12">
+<header class="flex justify-between items-end">
+<div>
+<p class="text-label uppercase tracking-widest text-secondary font-semibold text-xs mb-2">Central Hospital</p>
+<h1 class="text-4xl font-extrabold font-headline tracking-tight text-on-surface">Inventory Dashboard</h1>
+</div>
+</header>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm space-y-2">
+<p class="text-sm font-label text-on-surface-variant">Total Units</p>
+<p class="text-3xl font-headline font-bold text-primary">1,240</p>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm space-y-2 border-l-4 border-red-600">
+<p class="text-sm font-label text-on-surface-variant">Low Stock Alert</p>
+<p class="text-3xl font-headline font-bold text-on-surface">O- Negative</p>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm space-y-2">
+<p class="text-sm font-label text-on-surface-variant">Last Delivery</p>
+<p class="text-3xl font-headline font-bold text-on-surface">2h Ago</p>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm space-y-2">
+<p class="text-sm font-label text-on-surface-variant">Donors Today</p>
+<p class="text-3xl font-headline font-bold text-tertiary">42</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
+<div class="px-6 py-4 border-b border-surface-container-high bg-surface-container-low/50">
+<h2 class="font-headline font-bold text-lg">Active Inventory</h2>
+</div>
+<div class="p-6">
+<div class="h-64 bg-surface-container-low rounded-lg flex items-center justify-center text-on-surface-variant italic">
+                        Visual inventory data loading...
+                    </div>
+</div>
+</div>
+</div>
+</main>
+<!-- Modal Backdrop -->
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-on-background/30 backdrop-blur-sm p-4 overflow-y-auto">
+<!-- Modal Window: New Batch Arrival -->
+<section class="bg-surface-container-lowest w-full max-w-2xl rounded-xl shadow-[0_24px_48px_rgba(0,0,0,0.1)] overflow-hidden">
+<!-- Modal Header -->
+<header class="px-8 pt-8 pb-4 flex justify-between items-start">
+<div>
+<h2 class="text-2xl md:text-3xl font-extrabold font-headline tracking-tight text-on-surface">Add New Blood Batch</h2>
+<p class="text-on-surface-variant text-sm mt-1">Register newly received units into the central inventory system.</p>
+</div>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors">
+<span class="material-symbols-outlined">close</span>
+</button>
+</header>
+<!-- Temperature Alert -->
+<div class="mx-8 mb-6 p-4 bg-tertiary/10 rounded-lg flex gap-3 items-center border-l-4 border-tertiary">
+<span class="material-symbols-outlined text-tertiary">thermostat</span>
+<p class="text-sm font-medium text-on-tertiary-fixed-variant leading-relaxed">
+                    Critical: Ensure all units are inspected for temperature integrity (+2°C to +6°C) immediately upon arrival.
+                </p>
+</div>
+<!-- Form Content -->
+<form class="px-8 pb-8 space-y-8">
+<!-- Blood Type Chips -->
+<div class="space-y-3">
+<label class="text-xs font-bold uppercase tracking-widest text-secondary-fixed-dim">Select Blood Type</label>
+<div class="grid grid-cols-4 md:grid-cols-8 gap-2">
+<!-- Chip Item -->
+<label class="cursor-pointer">
+<input checked="" class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">A+</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">A-</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">B+</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">B-</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">O+</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">O-</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">AB+</div>
+</label>
+<label class="cursor-pointer">
+<input class="peer hidden" name="blood_type" type="radio"/>
+<div class="h-12 flex items-center justify-center border-2 border-surface-container-high rounded-lg font-headline font-bold text-on-surface-variant peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary transition-all">AB-</div>
+</label>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+<!-- Units Received -->
+<div class="relative">
+<label class="absolute -top-2.5 left-0 bg-surface-container-lowest px-1 text-xs font-bold text-outline uppercase tracking-wider">Units Received</label>
+<input class="w-full pt-4 pb-2 bg-transparent border-b border-outline-variant focus:border-primary focus:ring-0 text-on-surface font-headline font-bold text-lg placeholder:text-surface-dim outline-none transition-colors" type="number" value="5"/>
+</div>
+<!-- Donor Reference ID -->
+<div class="relative">
+<label class="absolute -top-2.5 left-0 bg-surface-container-lowest px-1 text-xs font-bold text-outline uppercase tracking-wider">Donor Reference ID</label>
+<input class="w-full pt-4 pb-2 bg-transparent border-b border-outline-variant focus:border-primary focus:ring-0 text-on-surface font-headline font-bold text-lg placeholder:text-surface-dim outline-none transition-colors" placeholder="REF-2023-9842" type="text"/>
+</div>
+<!-- Collection Date -->
+<div class="relative">
+<label class="absolute -top-2.5 left-0 bg-surface-container-lowest px-1 text-xs font-bold text-outline uppercase tracking-wider">Collection Date</label>
+<div class="flex items-center">
+<input class="w-full pt-4 pb-2 bg-transparent border-b border-outline-variant focus:border-primary focus:ring-0 text-on-surface font-headline font-bold text-lg outline-none transition-colors" type="date"/>
+<span class="material-symbols-outlined text-outline-variant absolute right-0 bottom-2 pointer-events-none">calendar_today</span>
+</div>
+</div>
+<!-- Expiry Date -->
+<div class="relative">
+<label class="absolute -top-2.5 left-0 bg-surface-container-lowest px-1 text-xs font-bold text-outline uppercase tracking-wider">Expiry Date</label>
+<div class="flex items-center">
+<input class="w-full pt-4 pb-2 bg-transparent border-b border-outline-variant focus:border-primary focus:ring-0 text-on-surface font-headline font-bold text-lg outline-none transition-colors" type="date"/>
+<span class="material-symbols-outlined text-outline-variant absolute right-0 bottom-2 pointer-events-none">event_busy</span>
+</div>
+</div>
+<!-- Storage Location -->
+<div class="relative md:col-span-2">
+<label class="absolute -top-2.5 left-0 bg-surface-container-lowest px-1 text-xs font-bold text-outline uppercase tracking-wider">Storage Location</label>
+<select class="w-full pt-4 pb-2 bg-transparent border-b border-outline-variant focus:border-primary focus:ring-0 text-on-surface font-headline font-bold text-lg outline-none transition-colors appearance-none">
+<option>Main Freezer - Wing A</option>
+<option>Emergency Unit 4</option>
+<option>Mobile Transit Case #02</option>
+<option>Pediatric Reserve Box</option>
+</select>
+<span class="material-symbols-outlined text-outline-variant absolute right-0 bottom-2 pointer-events-none">keyboard_arrow_down</span>
+</div>
+</div>
+<!-- Footer Actions -->
+<div class="pt-6 flex flex-col md:flex-row-reverse gap-4">
+<button class="w-full md:w-auto px-10 py-4 rounded-xl bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold text-sm tracking-wide shadow-lg shadow-primary/20 active:scale-95 transition-all" type="submit">
+                        Save Batch
+                    </button>
+<button class="w-full md:w-auto px-10 py-4 rounded-xl text-primary font-headline font-bold text-sm tracking-wide hover:bg-surface-container-high active:scale-95 transition-all" type="button">
+                        Cancel
+                    </button>
+</div>
+</form>
+</section>
+</div>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full flex justify-around items-center px-4 py-3 pb-safe bg-white dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] z-50">
+<a class="flex flex-col items-center justify-center text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl px-3 py-1 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="bloodtype">bloodtype</span>
+<span class="font-inter text-xs font-semibold uppercase tracking-tighter">Inventory</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-inter text-xs font-semibold uppercase tracking-tighter">Donors</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="location_on">location_on</span>
+<span class="font-inter text-xs font-semibold uppercase tracking-tighter">Clinics</span>
+</a>
+<a class="flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 hover:text-red-600 dark:hover:text-red-400 transition-all duration-300 ease-in-out" href="#">
+<span class="material-symbols-outlined" data-icon="insert_chart">insert_chart</span>
+<span class="font-inter text-xs font-semibold uppercase tracking-tighter">Analytics</span>
+</a>
+</nav>
+</body></html>

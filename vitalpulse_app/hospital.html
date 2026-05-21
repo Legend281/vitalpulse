@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<title>VitalPulse | Hospital Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+</head>
+<body class="bg-surface text-on-surface flex min-h-screen overflow-hidden">
+<!-- Sidebar -->
+<aside class="hidden md:flex flex-col h-screen w-64 bg-white border-r border-outline-variant/10 shrink-0 z-40">
+  <div class="px-6 py-6 mb-2">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-700 to-red-500 flex items-center justify-center shadow-lg shadow-red-200">
+        <span class="material-symbols-outlined text-white text-lg" style="font-variation-settings:'FILL' 1">bloodtype</span>
+      </div>
+      <div>
+        <h1 class="font-extrabold text-red-700 text-xl tracking-tighter leading-none">VitalPulse</h1>
+        <p class="text-[9px] uppercase tracking-[0.2em] text-slate-400 font-bold mt-0.5">Hospital Portal</p>
+      </div>
+    </div>
+  </div>
+  <div class="px-4 mb-4 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-full bg-slate-100 overflow-hidden shrink-0 ring-2 ring-white shadow-sm">
+      <img class="w-full h-full object-cover" alt="" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9rRRYKvkY7_1r7wwRQ8CpGpyz5AspkUR1TW4Ei64CP-7w-wQYx-JaQLeKMBlRzJdPegY4sUvq06tsE1v3AEC3FCJBs_DGFXrJ_sywiKpYUQPeNZfMr-_o0GzSU3okeZ7NAu3-5yd_UMkG5WDCnr68A1hi_xhe0D1KRgkB1J5TgL8t6wwEYfxrv8jTXqKLOhiPPeladXyeWz8avqcD_il5O94CfJl-ufuD2GCK_PUWKRvGQeAQc8QpgQQcC1xtw7EetfZgJx27Mak"/>
+    </div>
+    <div class="min-w-0">
+      <p id="hospitalSidebarName" class="font-bold text-sm text-on-surface truncate">Hospital</p>
+      <p id="hospitalSidebarLocation" class="text-[10px] text-slate-500 truncate">Loading...</p>
+    </div>
+  </div>
+  <nav class="flex-1 overflow-y-auto px-3 space-y-0.5">
+    <a id="nav-dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer">
+      <span class="material-symbols-outlined text-lg">dashboard</span>
+      <span class="text-sm font-semibold">Dashboard</span>
+    </a>
+    <a id="nav-requests" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer">
+      <span class="material-symbols-outlined text-lg">assignment</span>
+      <span class="text-sm font-semibold">My Requests</span>
+    </a>
+    <a id="nav-inventory" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer">
+      <span class="material-symbols-outlined text-lg">inventory_2</span>
+      <span class="text-sm font-semibold">Inventory</span>
+    </a>
+    <a id="nav-donors" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer">
+      <span class="material-symbols-outlined text-lg">groups</span>
+      <span class="text-sm font-semibold">Incoming Donors</span>
+    </a>
+    <a id="nav-settings" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer">
+      <span class="material-symbols-outlined text-lg">settings</span>
+      <span class="text-sm font-semibold">Settings</span>
+    </a>
+    <a id="nav-campaigns" class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-700 transition-all duration-200 cursor-pointer">
+      <span class="material-symbols-outlined text-lg">campaign</span>
+      <span class="text-sm font-semibold">Campaigns</span>
+    </a>
+  </nav>
+  <div class="px-4 pb-6 mt-auto">
+    <button id="btnUrgentRequest" class="w-full bg-gradient-to-br from-red-600 to-red-700 text-white py-3 px-4 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+      <span class="material-symbols-outlined text-sm">emergency</span>
+      Urgent Request
+    </button>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="flex-1 h-screen overflow-y-auto bg-slate-50/50">
+  <!-- Top Bar -->
+  <header class="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-100 px-4 md:px-8 py-3 flex items-center justify-between">
+    <div>
+      <h2 id="globalHeaderTitle" class="text-lg md:text-xl font-extrabold text-on-surface tracking-tight">Dashboard</h2>
+      <p id="globalHeaderSubtitle" class="text-xs text-slate-500 font-medium">Hospital Control Center</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="btnRefresh" class="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-lg">refresh</span>
+      </button>
+      <button id="btnHospitalLogout" class="logout-btn flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-slate-500 hover:bg-slate-100 transition-colors">
+        <span class="material-symbols-outlined text-lg">logout</span>
+        <span class="hidden md:inline">Logout</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="p-4 md:p-8 space-y-6">
+
+    <!-- ============================== -->
+    <!-- VIEW: DASHBOARD                -->
+    <!-- ============================== -->
+    <div id="view-dashboard" class="space-y-6">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-start gap-4">
+          <div class="w-11 h-11 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-red-600 text-lg">local_police</span>
+          </div>
+          <div>
+            <p class="text-2xl font-black text-on-surface" id="dashActiveRequests">-</p>
+            <p class="text-xs text-slate-500 font-medium">Active Requests</p>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-start gap-4">
+          <div class="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-amber-600 text-lg">inventory</span>
+          </div>
+          <div>
+            <p class="text-2xl font-black text-on-surface" id="dashLowStock">-</p>
+            <p class="text-xs text-slate-500 font-medium">Low Stock Items</p>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-start gap-4">
+          <div class="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-emerald-600 text-lg">groups</span>
+          </div>
+          <div>
+            <p class="text-2xl font-black text-on-surface" id="dashIncomingDonors">-</p>
+            <p class="text-xs text-slate-500 font-medium">Incoming Donors</p>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-start gap-4">
+          <div class="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-blue-600 text-lg">history</span>
+          </div>
+          <div>
+            <p class="text-2xl font-black text-on-surface" id="dashTotalUnits">-</p>
+            <p class="text-xs text-slate-500 font-medium">Total Stock Units</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard Mini Chart (Feature 9) -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-slate-600">trending_up</span>
+            <h3 class="font-extrabold text-lg text-on-surface">Request Trends (7 Days)</h3>
+          </div>
+          <span class="text-xs text-slate-400 font-medium">Your hospital</span>
+        </div>
+        <div class="h-48">
+          <canvas id="dashChart"></canvas>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <div class="flex items-center justify-between mb-5">
+            <h3 class="font-extrabold text-lg text-on-surface">Active Requests</h3>
+            <span class="text-xs text-slate-400 font-medium">Real-time feed</span>
+          </div>
+          <div id="dashRequestsFeed" class="space-y-3 min-h-[200px]">
+            <div class="flex items-center justify-center py-12 text-slate-400">
+              <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+              <span class="text-sm">Loading requests...</span>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-6">
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+            <h3 class="font-extrabold text-lg text-on-surface mb-4">Recent Activity</h3>
+            <div id="dashActivityFeed" class="space-y-3">
+              <div class="flex items-center justify-center py-8 text-slate-400">
+                <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+                <span class="text-sm">Loading...</span>
+              </div>
+            </div>
+          </div>
+          <div class="bg-gradient-to-br from-red-700 to-red-600 rounded-2xl p-6 shadow-lg shadow-red-200 text-white">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="material-symbols-outlined">campaign</span>
+              <span class="text-xs font-bold uppercase tracking-wider opacity-80">Quick Action</span>
+            </div>
+            <h4 class="text-xl font-black mb-2">Need Blood Urgently?</h4>
+            <p class="text-sm opacity-90 mb-4">Submit an emergency request and notify donors in your area instantly.</p>
+            <button id="dashUrgentBtn" class="w-full bg-white/20 hover:bg-white/30 backdrop-blur-md text-white py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-sm">emergency</span>
+              Place Emergency Request
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hospital Activity Log + Compatibility Guide -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-slate-600">history</span>
+              <h3 class="font-extrabold text-lg text-on-surface">Hospital Activity Log</h3>
+            </div>
+            <span class="text-xs text-slate-400 font-medium" id="dashLogCount">Latest</span>
+          </div>
+          <div id="dashHospitalLog" class="space-y-2 max-h-[320px] overflow-y-auto">
+            <div class="flex items-center justify-center py-8 text-slate-400">
+              <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+              <span class="text-sm">Loading activity...</span>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-6">
+          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+            <div class="flex items-center gap-2 mb-4">
+              <span class="material-symbols-outlined text-slate-600">medical_services</span>
+              <h3 class="font-extrabold text-lg text-on-surface">Compatibility Guide</h3>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Quick reference for blood type compatibility</p>
+            <button id="btnOpenCompatGuide" class="w-full bg-slate-50 hover:bg-slate-100 text-slate-700 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-sm">visibility</span>
+              View Compatibility Chart
+            </button>
+          </div>
+          <div class="bg-gradient-to-br from-amber-600 to-amber-700 rounded-2xl p-6 shadow-lg shadow-amber-200 text-white">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="material-symbols-outlined">info</span>
+              <span class="text-xs font-bold uppercase tracking-wider opacity-80">Tip</span>
+            </div>
+            <h4 class="text-lg font-black mb-2">Track Every Unit</h4>
+            <p class="text-sm opacity-90 mb-4">Use the Inventory view to record when blood is issued to a patient. This helps maintain accurate stock levels.</p>
+            <button id="dashInventoryBtn" class="w-full bg-white/20 hover:bg-white/30 backdrop-blur-md text-white py-2.5 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-sm">inventory_2</span>
+              Go to Inventory
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- VIEW: MY REQUESTS              -->
+    <!-- ============================== -->
+    <div id="view-requests" class="hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 class="text-xl font-extrabold text-on-surface">Blood Requests</h3>
+          <p class="text-sm text-slate-500">Manage and track all your blood requests</p>
+        </div>
+        <button id="btnNewRequest" class="bg-gradient-to-br from-red-600 to-red-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm">add_circle</span>
+          New Request
+        </button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-on-surface" id="reqTotal">-</p>
+          <p class="text-xs text-slate-500 font-medium">Total Requests</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-amber-600" id="reqPending">-</p>
+          <p class="text-xs text-slate-500 font-medium">Open / Matching</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-emerald-600" id="reqResolved">-</p>
+          <p class="text-xs text-slate-500 font-medium">Resolved</p>
+        </div>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left">
+            <thead class="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+              <tr>
+                <th class="px-6 py-4">Request ID</th>
+                <th class="px-6 py-4">Blood Type</th>
+                <th class="px-6 py-4">Units</th>
+                <th class="px-6 py-4">Urgency</th>
+                <th class="px-6 py-4">Status</th>
+                <th class="px-6 py-4">Date</th>
+                <th class="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="requestsTableBody" class="divide-y divide-slate-100">
+              <tr><td colspan="7" class="px-6 py-12 text-center text-slate-400">
+                <span class="material-symbols-outlined animate-spin block text-2xl mb-2">sync</span>
+                <span class="text-sm">Loading requests...</span>
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- VIEW: INVENTORY                -->
+    <!-- ============================== -->
+    <div id="view-inventory" class="hidden space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 class="text-xl font-extrabold text-on-surface">Blood Inventory</h3>
+          <p class="text-sm text-slate-500">Monitor and manage your blood stock</p>
+        </div>
+        <div class="flex gap-2">
+          <button id="btnExportInventory" class="border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all flex items-center gap-2">
+            <span class="material-symbols-outlined text-sm">download</span>
+            Export
+          </button>
+          <button id="btnAddStock" class="bg-gradient-to-br from-red-600 to-red-700 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all flex items-center gap-2">
+            <span class="material-symbols-outlined text-sm">add</span>
+            Add Stock
+          </button>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-on-surface" id="invTotalUnits">-</p>
+          <p class="text-xs text-slate-500 font-medium">Total Units</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-red-600" id="invLowStock">-</p>
+          <p class="text-xs text-slate-500 font-medium">Low Stock Types</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-amber-600" id="invExpiring">-</p>
+          <p class="text-xs text-slate-500 font-medium">Expiring Soon</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-emerald-600" id="invHealthy">-</p>
+          <p class="text-xs text-slate-500 font-medium">Healthy Types</p>
+        </div>
+      </div>
+      <div id="inventoryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="col-span-full flex items-center justify-center py-16 text-slate-400">
+          <span class="material-symbols-outlined animate-spin mr-3 text-2xl">sync</span>
+          <span class="text-sm">Loading inventory...</span>
+        </div>
+      </div>
+      <div id="lowStockAlerts"></div>
+
+      <!-- Movement History (Feature 7) -->
+      <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+        <div class="flex items-center justify-between mb-5">
+          <div class="flex items-center gap-3">
+            <span class="material-symbols-outlined text-slate-600">swap_vert</span>
+            <h3 class="font-extrabold text-lg text-on-surface">Inventory Movement History</h3>
+          </div>
+          <span class="text-xs text-slate-400 font-medium">Recent</span>
+        </div>
+        <div id="movementHistoryBody" class="space-y-2 max-h-[400px] overflow-y-auto">
+          <div class="flex items-center justify-center py-8 text-slate-400">
+            <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+            <span class="text-sm">Loading movements...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- VIEW: INCOMING DONORS           -->
+    <!-- ============================== -->
+    <div id="view-donors" class="hidden space-y-6">
+      <div>
+        <h3 class="text-xl font-extrabold text-on-surface">Incoming Donors</h3>
+        <p class="text-sm text-slate-500">Donors matched to your requests and en route</p>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-on-surface" id="donTotal">-</p>
+          <p class="text-xs text-slate-500 font-medium">Total Incoming</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-emerald-600" id="donEnRoute">-</p>
+          <p class="text-xs text-slate-500 font-medium">En Route</p>
+        </div>
+        <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-100 text-center">
+          <p class="text-2xl font-black text-blue-600" id="donArrived">-</p>
+          <p class="text-xs text-slate-500 font-medium">Completed</p>
+        </div>
+      </div>
+      <div id="donorsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="col-span-full flex items-center justify-center py-16 text-slate-400">
+          <span class="material-symbols-outlined animate-spin mr-3 text-2xl">sync</span>
+          <span class="text-sm">Loading incoming donors...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- VIEW: SETTINGS                 -->
+    <!-- ============================== -->
+    <div id="view-settings" class="hidden space-y-6 max-w-3xl">
+      <div>
+        <h3 class="text-xl font-extrabold text-on-surface">Hospital Settings</h3>
+        <p class="text-sm text-slate-500">Manage your hospital profile and preferences</p>
+      </div>
+      <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100">
+        <h4 class="font-extrabold text-lg text-on-surface mb-6 flex items-center gap-2">
+          <span class="material-symbols-outlined text-red-600">local_hospital</span>
+          Profile Information
+        </h4>
+        <form id="settingsForm" class="space-y-5">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Hospital Name</label>
+              <input id="setHospitalName" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" type="text" placeholder="Your hospital name"/>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">City / Location</label>
+              <input id="setHospitalCity" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" type="text" placeholder="e.g. Yaoundé"/>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Email Address</label>
+              <input id="setHospitalEmail" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" type="email" placeholder="hospital@example.cm"/>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+              <input id="setHospitalPhone" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" type="tel" placeholder="+237 6XX XXX XXX"/>
+            </div>
+          </div>
+          <div class="pt-2">
+            <button type="submit" class="bg-gradient-to-br from-red-600 to-red-700 text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all">
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- SMS/WhatsApp Notification Settings -->
+      <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100">
+        <div class="flex items-center justify-between mb-6">
+          <h4 class="font-extrabold text-lg text-on-surface flex items-center gap-2">
+            <span class="material-symbols-outlined text-slate-600">notifications</span>
+            Notification Preferences
+          </h4>
+          <span class="material-symbols-outlined text-slate-400" title="SMS and WhatsApp simulation">phone_android</span>
+        </div>
+        <div class="space-y-4">
+          <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+            <div>
+              <p class="font-bold text-sm text-on-surface">Urgent Request Alerts</p>
+              <p class="text-xs text-slate-500">Get notified when urgent blood requests are broadcast</p>
+            </div>
+            <div class="relative inline-flex items-center cursor-pointer">
+              <input id="notifUrgent" type="checkbox" class="sr-only peer" checked/>
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:bg-red-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
+            </div>
+          </label>
+          <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+            <div>
+              <p class="font-bold text-sm text-on-surface">Donor Match Notifications</p>
+              <p class="text-xs text-slate-500">Receive updates when donors accept your requests</p>
+            </div>
+            <div class="relative inline-flex items-center cursor-pointer">
+              <input id="notifDonor" type="checkbox" class="sr-only peer" checked/>
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:bg-red-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
+            </div>
+          </label>
+          <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+            <div>
+              <p class="font-bold text-sm text-on-surface">Low Stock Warnings</p>
+              <p class="text-xs text-slate-500">Get alerted when blood supply drops below threshold</p>
+            </div>
+            <div class="relative inline-flex items-center cursor-pointer">
+              <input id="notifStock" type="checkbox" class="sr-only peer" checked/>
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:bg-red-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
+            </div>
+          </label>
+          <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+            <div>
+              <p class="font-bold text-sm text-on-surface">SMS Notifications</p>
+              <p class="text-xs text-slate-500">Receive SMS alerts at your registered phone number</p>
+            </div>
+            <div class="relative inline-flex items-center cursor-pointer">
+              <input id="notifSms" type="checkbox" class="sr-only peer" checked/>
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:bg-red-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
+            </div>
+          </label>
+          <label class="flex items-center justify-between p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+            <div>
+              <p class="font-bold text-sm text-on-surface">WhatsApp Notifications</p>
+              <p class="text-xs text-slate-500">Receive WhatsApp messages for critical updates</p>
+            </div>
+            <div class="relative inline-flex items-center cursor-pointer">
+              <input id="notifWhatsapp" type="checkbox" class="sr-only peer"/>
+              <div class="w-10 h-5 bg-slate-300 rounded-full peer peer-checked:bg-red-600 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5"></div>
+            </div>
+          </label>
+        </div>
+        <div class="mt-4 p-3 bg-blue-50 rounded-xl flex items-center gap-3">
+          <span class="material-symbols-outlined text-blue-600 text-sm">info</span>
+          <p class="text-xs text-blue-700">Notifications are simulated. Enable SMS/WhatsApp to log messages in the notification history.</p>
+        </div>
+      </div>
+
+      <!-- Notification History -->
+      <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-slate-100">
+        <div class="flex items-center justify-between mb-6">
+          <h4 class="font-extrabold text-lg text-on-surface flex items-center gap-2">
+            <span class="material-symbols-outlined text-slate-600">history</span>
+            Notification History
+          </h4>
+          <button id="btnSendTestNotification" class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">send</span>
+            Send Test SMS
+          </button>
+        </div>
+        <div id="notificationHistoryBody" class="space-y-2 max-h-64 overflow-y-auto">
+          <div class="flex items-center justify-center py-8 text-slate-400">
+            <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+            <span class="text-sm">Loading...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================== -->
+    <!-- VIEW: CAMPAIGNS                -->
+    <!-- ============================== -->
+    <div id="view-campaigns" class="hidden space-y-6">
+      <div>
+        <h3 class="text-xl font-extrabold text-on-surface">Donation Campaigns</h3>
+        <p class="text-sm text-slate-500">Join and participate in blood donation drives</p>
+      </div>
+      <div id="campaignsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="col-span-full flex items-center justify-center py-16 text-slate-400">
+          <span class="material-symbols-outlined animate-spin mr-3 text-2xl">sync</span>
+          <span class="text-sm">Loading campaigns...</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- NEW REQUEST MODAL -->
+<div id="newRequestModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="newRequestBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <div>
+        <h3 class="text-lg font-extrabold text-on-surface">New Blood Request</h3>
+        <p class="text-xs text-slate-500">Request blood from the donor network</p>
+      </div>
+      <button id="btnCloseNewRequest" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <form id="newRequestForm" class="p-6 space-y-4">
+      <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Patient & Request Details</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Patient Name</label>
+            <input id="reqPatientName" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Patient full name"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ward / Department</label>
+            <input id="reqWard" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="e.g. Emergency, Surgery, ICU"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Requesting Doctor</label>
+            <input id="reqDoctor" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Dr. name"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Diagnosis / Reason</label>
+            <select id="reqDiagnosis" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+              <option value="Surgery">Surgery</option>
+              <option value="Accident/Trauma">Accident / Trauma</option>
+              <option value="Anemia">Anemia</option>
+              <option value="Maternal/Childbirth">Maternal / Childbirth</option>
+              <option value="Cancer/Oncology">Cancer / Oncology</option>
+              <option value="Sickle Cell">Sickle Cell Crisis</option>
+              <option value="Internal Bleeding">Internal Bleeding</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Component Type</label>
+          <select id="reqComponent" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+            <option value="Whole Blood">Whole Blood</option>
+            <option value="PRBC">Packed Red Blood Cells (PRBC)</option>
+            <option value="Plasma">Fresh Frozen Plasma (FFP)</option>
+            <option value="Platelets">Platelets</option>
+            <option value="Cryoprecipitate">Cryoprecipitate</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Required By</label>
+          <input id="reqRequiredBy" type="date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Blood Type Needed</label>
+        <div id="requestBloodTypeGroup" class="flex flex-wrap gap-2">
+          <button type="button" data-type="A+" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">A+</button>
+          <button type="button" data-type="A-" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">A-</button>
+          <button type="button" data-type="B+" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">B+</button>
+          <button type="button" data-type="B-" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">B-</button>
+          <button type="button" data-type="O+" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">O+</button>
+          <button type="button" data-type="O-" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">O-</button>
+          <button type="button" data-type="AB+" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">AB+</button>
+          <button type="button" data-type="AB-" class="px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-bold hover:border-red-300 hover:text-red-700 transition-all">AB-</button>
+        </div>
+        <input id="requestSelectedType" type="hidden" value=""/>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Units Needed</label>
+          <input id="requestUnits" type="number" min="1" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Urgency Level</label>
+          <select id="requestUrgency" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+            <option value="standard">Standard</option>
+            <option value="urgent">Urgent</option>
+            <option value="critical">Critical</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Additional Notes</label>
+        <textarea id="requestNotes" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Any specific requirements..."></textarea>
+      </div>
+      <div class="pt-2">
+        <button type="submit" class="w-full bg-gradient-to-br from-red-600 to-red-700 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all flex items-center justify-center gap-2">
+          <span class="material-symbols-outlined text-sm">send</span>
+          Submit Request
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- URGENT REQUEST MODAL -->
+<div id="urgentModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="urgentBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-red-600">emergency</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Emergency Broadcast</h3>
+          <p class="text-xs text-slate-500">This will alert all compatible donors immediately</p>
+        </div>
+      </div>
+      <button id="btnCloseUrgent" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <form id="urgentRequestForm" class="p-6 space-y-4">
+      <div class="p-4 bg-red-50 rounded-xl border border-red-100">
+        <p class="text-xs text-red-700 font-medium flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm">emergency</span>
+          Emergency broadcast — all compatible donors in the network will be notified immediately.
+        </p>
+      </div>
+      <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+        <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Patient Details</p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Patient Name</label>
+            <input id="urgPatientName" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Patient full name"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ward / Department</label>
+            <input id="urgWard" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="e.g. Emergency, ICU"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Requesting Doctor</label>
+            <input id="urgDoctor" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Dr. name"/>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Diagnosis / Reason</label>
+            <select id="urgDiagnosis" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+              <option value="Accident/Trauma">Accident / Trauma</option>
+              <option value="Surgery">Surgery</option>
+              <option value="Maternal/Childbirth">Maternal / Childbirth</option>
+              <option value="Internal Bleeding">Internal Bleeding</option>
+              <option value="Sickle Cell">Sickle Cell Crisis</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Component Type</label>
+          <select id="urgComponent" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+            <option value="Whole Blood">Whole Blood</option>
+            <option value="PRBC">Packed Red Blood Cells (PRBC)</option>
+            <option value="Plasma">Fresh Frozen Plasma (FFP)</option>
+            <option value="Platelets">Platelets</option>
+            <option value="Cryoprecipitate">Cryoprecipitate</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Blood Type Needed</label>
+          <div id="urgentBloodTypeGroup" class="flex flex-wrap gap-1">
+            <button type="button" data-type="A+" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">A+</button>
+            <button type="button" data-type="A-" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">A-</button>
+            <button type="button" data-type="B+" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">B+</button>
+            <button type="button" data-type="B-" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">B-</button>
+            <button type="button" data-type="O+" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">O+</button>
+            <button type="button" data-type="O-" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">O-</button>
+            <button type="button" data-type="AB+" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">AB+</button>
+            <button type="button" data-type="AB-" class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 text-xs font-bold hover:border-red-300 hover:text-red-700 transition-all">AB-</button>
+          </div>
+          <input id="urgentSelectedType" type="hidden" value=""/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Units Needed</label>
+          <input id="urgentUnits" type="number" min="1" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Urgency Level</label>
+          <select id="urgentLevel" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+            <option value="urgent">Urgent</option>
+            <option value="critical" selected>Critical</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Notes for Donors</label>
+        <textarea id="urgentNotes" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Critical details for donors..."></textarea>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-br from-red-600 to-red-700 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-sm">broadcast_on_personal</span>
+        Broadcast Emergency
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ADD STOCK MODAL -->
+<div id="addStockModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="addStockBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <h3 class="text-lg font-extrabold text-on-surface">Add Inventory Stock</h3>
+      <button id="btnCancelStock" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <form id="addStockForm" class="p-6 space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Blood Type</label>
+        <select id="stockBloodType" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+          <option value="A+">A+</option>
+          <option value="A-">A-</option>
+          <option value="B+">B+</option>
+          <option value="B-">B-</option>
+          <option value="O+">O+</option>
+          <option value="O-">O-</option>
+          <option value="AB+">AB+</option>
+          <option value="AB-">AB-</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Units to Add</label>
+        <input id="stockUnits" type="number" min="1" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Source / Reference</label>
+        <input id="stockSource" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="e.g. Donor drive, Batch #"/>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-br from-red-600 to-red-700 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all">Add to Inventory</button>
+    </form>
+  </div>
+</div>
+
+<!-- ISSUE TO PATIENT MODAL -->
+<div id="issueModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="issueBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-amber-600">bloodtype</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Issue Blood to Patient</h3>
+          <p class="text-xs text-slate-500">Record blood usage and update inventory</p>
+        </div>
+      </div>
+      <button id="btnCloseIssue" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <form id="issueForm" class="p-6 space-y-4">
+      <div class="p-3 bg-amber-50 rounded-xl border border-amber-100 flex items-center gap-3">
+        <span class="material-symbols-outlined text-amber-600">inventory_2</span>
+        <div>
+          <p class="text-sm font-bold text-on-surface" id="issueBloodTypeLabel">Select a blood type</p>
+          <p class="text-xs text-slate-500" id="issueCurrentStock">Current stock: - units</p>
+        </div>
+      </div>
+      <input id="issueBloodType" type="hidden"/>
+      <input id="issueCurrentQty" type="hidden"/>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Units to Issue</label>
+          <input id="issueUnits" type="number" min="1" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Patient ID</label>
+          <input id="issuePatientId" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Optional ID #"/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Patient Name</label>
+        <input id="issuePatientName" type="text" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Full name of patient"/>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Ward / Department</label>
+          <input id="issueWard" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="e.g. Surgery, ICU"/>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Requesting Doctor</label>
+          <input id="issueDoctor" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all" placeholder="Dr. name"/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Diagnosis / Reason for Transfusion</label>
+        <select id="issueDiagnosis" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+          <option value="Surgery">Surgery</option>
+          <option value="Accident/Trauma">Accident / Trauma</option>
+          <option value="Anemia">Anemia</option>
+          <option value="Maternal/Childbirth">Maternal / Childbirth</option>
+          <option value="Cancer/Oncology">Cancer / Oncology</option>
+          <option value="Sickle Cell">Sickle Cell Crisis</option>
+          <option value="Internal Bleeding">Internal Bleeding</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-br from-amber-600 to-amber-700 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-amber-200 hover:shadow-amber-300 transition-all flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-sm">check_circle</span>
+        Confirm Issue to Patient
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- COMPATIBILITY GUIDE MODAL -->
+<div id="compatModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="compatBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-red-600">medical_services</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Blood Type Compatibility</h3>
+          <p class="text-xs text-slate-500">Quick reference guide for transfusion</p>
+        </div>
+      </div>
+      <button id="btnCloseCompat" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <div class="p-6 space-y-6">
+      <div>
+        <h4 class="font-bold text-sm text-on-surface mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-emerald-600">arrow_downward</span>
+          Donor → Recipient (Who can receive from this type)
+        </h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="compatDonorGrid"></div>
+      </div>
+      <div class="border-t border-slate-100 pt-6">
+        <h4 class="font-bold text-sm text-on-surface mb-3 flex items-center gap-2">
+          <span class="material-symbols-outlined text-sm text-blue-600">arrow_upward</span>
+          Recipient ← Donor (Who can donate to this type)
+        </h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" id="compatRecipientGrid"></div>
+      </div>
+      <div class="p-4 bg-blue-50 rounded-xl border border-blue-100">
+        <p class="text-xs text-blue-700 flex items-start gap-2">
+          <span class="material-symbols-outlined text-sm shrink-0">info</span>
+          <span><strong>O-</strong> is the universal donor (can donate to all). <strong>AB+</strong> is the universal recipient (can receive from all). Always perform crossmatching before transfusion.</span>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DONOR ENGAGEMENT MODAL -->
+<div id="donorEngagementModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="donorEngagementBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-amber-600">military_tech</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Donor Profile</h3>
+          <p class="text-xs text-slate-500" id="donorEngagementName">-</p>
+        </div>
+      </div>
+      <button id="btnCloseDonorEngagement" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <div id="donorEngagementContent" class="p-6 space-y-6">
+      <div class="flex items-center justify-center py-12 text-slate-400">
+        <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+        <span class="text-sm">Loading donor profile...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- THRESHOLD SETTINGS MODAL -->
+<div id="thresholdModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="thresholdBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-slate-600">tune</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Set Minimum Threshold</h3>
+          <p class="text-xs text-slate-500">Alert when stock falls below this level</p>
+        </div>
+      </div>
+      <button id="btnCloseThreshold" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <form id="thresholdForm" class="p-6 space-y-4">
+      <div class="p-4 bg-slate-50 rounded-xl flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center text-red-700 font-black text-xl" id="thresholdTypeDisplay">O+</div>
+        <div>
+          <p class="text-sm font-bold text-on-surface">Set threshold for <span id="thresholdTypeLabel">O+</span></p>
+          <p class="text-xs text-slate-500">Current stock will be checked against this value</p>
+        </div>
+      </div>
+      <input id="thresholdBloodType" type="hidden"/>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Minimum Units</label>
+        <input id="thresholdValue" type="number" min="0" max="999" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-2xl font-black text-center focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-br from-red-600 to-red-700 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all">Save Threshold</button>
+    </form>
+  </div>
+</div>
+
+<!-- REQUEST TIMELINE MODAL (Feature 6) -->
+<div id="timelineModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="timelineBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-slate-600">timeline</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Request Timeline</h3>
+          <p class="text-xs text-slate-500" id="timelineRequestId">-</p>
+        </div>
+      </div>
+      <button id="btnCloseTimeline" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <div class="p-6">
+      <div id="timelineContent" class="space-y-0">
+        <div class="flex items-center justify-center py-12 text-slate-400">
+          <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+          <span class="text-sm">Loading timeline...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- REMOVE STOCK MODAL (Feature 8) -->
+<div id="removeStockModal" class="fixed inset-0 z-50 hidden items-center justify-center">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="removeStockBackdrop"></div>
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+    <div class="p-6 border-b border-slate-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+          <span class="material-symbols-outlined text-red-600">remove_circle</span>
+        </div>
+        <div>
+          <h3 class="text-lg font-extrabold text-on-surface">Remove Stock</h3>
+          <p class="text-xs text-slate-500">Deduct expired or damaged blood units</p>
+        </div>
+      </div>
+      <button id="btnCloseRemoveStock" class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors">
+        <span class="material-symbols-outlined text-sm">close</span>
+      </button>
+    </div>
+    <form id="removeStockForm" class="p-6 space-y-4">
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Blood Type</label>
+        <select id="removeStockBloodType" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+          <option value="A+">A+</option>
+          <option value="A-">A-</option>
+          <option value="B+">B+</option>
+          <option value="B-">B-</option>
+          <option value="O+">O+</option>
+          <option value="O-">O-</option>
+          <option value="AB+">AB+</option>
+          <option value="AB-">AB-</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Units to Remove</label>
+        <input id="removeStockUnits" type="number" min="1" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all"/>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Reason for Removal</label>
+        <select id="removeStockReason" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none transition-all">
+          <option value="Expired">Expired</option>
+          <option value="Damaged">Damaged / Contaminated</option>
+          <option value="Wastage">Wastage / Discarded</option>
+          <option value="Returned">Returned to blood bank</option>
+          <option value="Adjustment">Inventory Adjustment</option>
+        </select>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-br from-red-600 to-red-700 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-red-200 hover:shadow-red-300 transition-all flex items-center justify-center gap-2">
+        <span class="material-symbols-outlined text-sm">remove_circle</span>
+        Remove from Inventory
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- PRINT SLIP CONTAINER (Feature 10) -->
+<div id="printSlipContainer" class="hidden">
+  <div id="printSlipContent" class="bg-white p-8 max-w-lg mx-auto" style="font-family: 'Courier New', monospace;">
+    <div style="text-align: center; border-bottom: 2px dashed #333; padding-bottom: 16px; margin-bottom: 16px;">
+      <h1 style="font-size: 24px; font-weight: 900; color: #991b1b;">VITALPULSE</h1>
+      <p style="font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px;">Blood Request Slip</p>
+    </div>
+    <div id="printSlipBody"></div>
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; font-size: 10px; color: #999; text-align: center;">
+      <p>VitalPulse Blood Donation System — vitalpulse.cm</p>
+      <p>Generated: <span id="printSlipDate"></span></p>
+    </div>
+  </div>
+</div>
+
+<!-- SUCCESS TOAST -->
+<div id="successToast" class="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform translate-y-20 opacity-0 transition-all duration-500">
+  <span class="material-symbols-outlined text-sm">check_circle</span>
+  <span id="toastMessage" class="text-sm font-bold">Success!</span>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-5 pt-2 bg-white/95 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
+  <button data-nav="dashboard" class="mobile-nav-btn flex flex-col items-center justify-center text-red-600 px-3 py-1 rounded-xl">
+    <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">dashboard</span>
+    <span class="text-[9px] uppercase tracking-wider font-bold mt-0.5">Home</span>
+  </button>
+  <button data-nav="requests" class="mobile-nav-btn flex flex-col items-center justify-center text-slate-400 px-3 py-1 rounded-xl">
+    <span class="material-symbols-outlined text-lg">assignment</span>
+    <span class="text-[9px] uppercase tracking-wider font-medium mt-0.5">Requests</span>
+  </button>
+  <button data-nav="inventory" class="mobile-nav-btn flex flex-col items-center justify-center text-slate-400 px-3 py-1 rounded-xl">
+    <span class="material-symbols-outlined text-lg">inventory_2</span>
+    <span class="text-[9px] uppercase tracking-wider font-medium mt-0.5">Inventory</span>
+  </button>
+  <button data-nav="donors" class="mobile-nav-btn flex flex-col items-center justify-center text-slate-400 px-3 py-1 rounded-xl">
+    <span class="material-symbols-outlined text-lg">groups</span>
+    <span class="text-[9px] uppercase tracking-wider font-medium mt-0.5">Donors</span>
+  </button>
+  <button data-nav="settings" class="mobile-nav-btn flex flex-col items-center justify-center text-slate-400 px-3 py-1 rounded-xl">
+    <span class="material-symbols-outlined text-lg">settings</span>
+    <span class="text-[9px] uppercase tracking-wider font-medium mt-0.5">Settings</span>
+  </button>
+  <button data-nav="campaigns" class="mobile-nav-btn flex flex-col items-center justify-center text-slate-400 px-3 py-1 rounded-xl">
+    <span class="material-symbols-outlined text-lg">campaign</span>
+    <span class="text-[9px] uppercase tracking-wider font-medium mt-0.5">Campaigns</span>
+  </button>
+</nav>
+
+<!-- PADDING FOR MOBILE NAV -->
+<div class="md:hidden h-20"></div>
+
+<script type="module" src="/src/main.js"></script>
+</body></html>

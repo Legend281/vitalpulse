@@ -1,0 +1,24 @@
+{
+  "name": "vitalpulse_app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@tailwindcss/container-queries": "^0.1.1",
+    "@tailwindcss/forms": "^0.5.11",
+    "@tailwindcss/postcss": "^4.2.2",
+    "autoprefixer": "^10.5.0",
+    "firebase": "^12.12.0",
+    "postcss": "^8.5.9",
+    "tailwindcss": "^4.2.2",
+    "vite": "^8.0.4"
+  },
+  "dependencies": {
+    "chart.js": "^4.5.1"
+  }
+}

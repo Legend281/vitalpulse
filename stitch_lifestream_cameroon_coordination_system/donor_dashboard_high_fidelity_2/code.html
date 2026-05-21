@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Pulse - Command Center Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "error": "#ba1a1a",
+                        "outline": "#8f6f6c",
+                        "primary-fixed-dim": "#ffb3ac",
+                        "primary": "#af101a",
+                        "tertiary": "#005f7b",
+                        "surface-container-low": "#f3f3f3",
+                        "on-tertiary-container": "#e9f7ff",
+                        "secondary-fixed-dim": "#ffb3ac",
+                        "on-secondary-fixed": "#410003",
+                        "outline-variant": "#e4beba",
+                        "on-secondary-container": "#741e1c",
+                        "inverse-surface": "#2f3131",
+                        "surface": "#f9f9f9",
+                        "on-primary": "#ffffff",
+                        "surface-container-high": "#e8e8e8",
+                        "primary-fixed": "#ffdad6",
+                        "on-primary-fixed-variant": "#930010",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-container": "#00799c",
+                        "surface-container-highest": "#e2e2e2",
+                        "on-surface": "#1a1c1c",
+                        "on-error-container": "#93000a",
+                        "surface-container": "#eeeeee",
+                        "error-container": "#ffdad6",
+                        "secondary-fixed": "#ffdad6",
+                        "secondary": "#9f3f39",
+                        "primary-container": "#d32f2f",
+                        "on-secondary": "#ffffff",
+                        "surface-dim": "#dadada",
+                        "on-surface-variant": "#5b403d",
+                        "on-primary-fixed": "#410003",
+                        "inverse-primary": "#ffb3ac",
+                        "tertiary-fixed-dim": "#7bd1f8",
+                        "on-tertiary": "#ffffff",
+                        "on-secondary-fixed-variant": "#802824",
+                        "surface-variant": "#e2e2e2",
+                        "surface-bright": "#f9f9f9",
+                        "on-primary-container": "#fff2f0",
+                        "tertiary-fixed": "#bee9ff",
+                        "secondary-container": "#fd867d",
+                        "on-tertiary-fixed-variant": "#004d65",
+                        "surface-tint": "#ba1a20",
+                        "on-background": "#1a1c1c",
+                        "background": "#f9f9f9",
+                        "on-tertiary-fixed": "#001f2a",
+                        "on-error": "#ffffff",
+                        "inverse-on-surface": "#f1f1f1"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "fontFamily": {
+                        "headline": ["Manrope"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #af101a 0%, #d32f2f 100%);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9f9f9;
+            color: #1a1c1c;
+        }
+        h1, h2, h3, .font-headline {
+            font-family: 'Manrope', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-surface selection:bg-primary-fixed selection:text-on-primary-fixed">
+<div class="relative flex min-h-screen w-full flex-col bg-surface group/design-root overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<header class="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap bg-surface/80 backdrop-blur-md border-b border-outline-variant/15 px-6 lg:px-40 py-4">
+<div class="flex items-center gap-3 text-on-surface">
+<div class="size-6 text-primary">
+<svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M4 42.4379C4 42.4379 14.0962 36.0744 24 41.1692C35.0664 46.8624 44 42.2078 44 42.2078L44 7.01134C44 7.01134 35.068 11.6577 24.0031 5.96913C14.0971 0.876274 4 7.27094 4 7.27094L4 42.4379Z" fill="currentColor"></path>
+</svg>
+</div>
+<h2 class="text-on-surface text-xl font-extrabold leading-tight tracking-tight font-headline">The Pulse</h2>
+</div>
+<div class="flex flex-1 justify-end gap-4 lg:gap-8 items-center">
+<div class="flex gap-2">
+<button class="relative flex items-center justify-center rounded-xl size-10 bg-surface-container-low text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 size-2 bg-primary rounded-full"></span>
+</button>
+</div>
+<div class="h-10 w-10 rounded-full bg-cover bg-center border border-outline-variant/30" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBMflSLKVHHtkqO8Ib-s13z1iFVPOL2vy_vakOMmeIQgjF7WIGvuldCV_AvaPwyovC1jhN9auQcJtE4gdTyxDZqa_aycB3Xw1tOsgGQjbDebRqJDJDlt0vt4uAFAqDX7ebh7ZejNX3-aY3KFJ3RW4bMywbfX5RPdBSpfIp0ADc5fQR6s_rUgbgHoFiMwU1p6NQdjkd3roMBpdCq6YK_k-ygSl6VQfIIYsuBTzytBOSqOwaV53Ai9Y-Ts2jP3Wypi4mhfIRp8dN4ea8");'></div>
+</div>
+</header>
+<main class="flex flex-1 flex-col px-6 lg:px-40 py-8 max-w-[1440px] mx-auto w-full">
+<section class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+<div class="flex flex-col gap-1">
+<h1 class="text-on-surface text-3xl md:text-4xl font-extrabold font-headline tracking-tight">Welcome back, Jean 👋</h1>
+<p class="text-on-surface-variant text-lg font-medium">You can save lives today in Yaoundé.</p>
+</div>
+<div class="flex items-center gap-3 bg-surface-container-low p-2 rounded-full pr-4 border border-outline-variant/10">
+<div class="flex items-center justify-center size-10 rounded-full bg-tertiary/10 text-tertiary">
+<span class="material-symbols-outlined" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Status</span>
+<span class="text-sm font-bold text-tertiary">Available to donate</span>
+</div>
+<div class="ml-4 flex items-center">
+<div class="relative inline-block w-12 h-6 transition duration-200 ease-in rounded-full bg-tertiary">
+<span class="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform translate-x-6"></span>
+</div>
+</div>
+</div>
+</section>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
+<div class="bg-surface-container-low p-6 rounded-xl border border-outline-variant/10 shadow-sm hover:bg-surface-container-high transition-colors">
+<span class="text-on-surface-variant font-bold text-xs uppercase tracking-widest mb-4 block">Total Donations</span>
+<div class="flex items-baseline gap-2">
+<span class="text-4xl font-black font-headline text-primary">08</span>
+<span class="material-symbols-outlined text-primary" data-icon="bloodtype" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl border border-outline-variant/10 shadow-sm hover:bg-surface-container-high transition-colors">
+<span class="text-on-surface-variant font-bold text-xs uppercase tracking-widest mb-4 block">Lives Saved</span>
+<div class="flex items-baseline gap-2">
+<span class="text-4xl font-black font-headline text-tertiary">24</span>
+<span class="material-symbols-outlined text-tertiary" data-icon="volunteer_activism" style="font-variation-settings: 'FILL' 1;">volunteer_activism</span>
+</div>
+</div>
+<div class="bg-surface-container-low p-6 rounded-xl border border-outline-variant/10 shadow-sm hover:bg-surface-container-high transition-colors">
+<span class="text-on-surface-variant font-bold text-xs uppercase tracking-widest mb-4 block">Last Donation</span>
+<div class="flex items-baseline gap-2">
+<span class="text-xl font-black font-headline text-on-surface">May 12</span>
+<span class="text-xs font-medium text-on-surface-variant">2023</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+<div class="lg:col-span-8 flex flex-col gap-10">
+<div class="relative overflow-hidden rounded-xl bg-error-container/40 border border-error-container p-6 md:p-8">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-9xl" data-icon="emergency">emergency</span>
+</div>
+<div class="relative z-10">
+<div class="flex items-center gap-2 text-error font-bold text-sm uppercase tracking-widest mb-4">
+<span class="material-symbols-outlined text-sm" data-icon="emergency_home">emergency_home</span>
+                                Critical Alert
+                            </div>
+<h2 class="text-on-error-container text-2xl md:text-3xl font-extrabold font-headline mb-2">🚨 Urgent Blood Needed Near You</h2>
+<div class="flex flex-wrap items-center gap-x-6 gap-y-2 mb-8">
+<div class="flex items-center gap-2">
+<span class="text-error font-black text-xl font-headline">O+</span>
+<span class="text-on-surface-variant text-sm">Blood Type</span>
+</div>
+<div class="w-px h-4 bg-outline-variant/50 hidden md:block"></div>
+<div class="text-on-surface-variant font-medium">Yaoundé • Central Hospital</div>
+<div class="w-px h-4 bg-outline-variant/50 hidden md:block"></div>
+<div class="text-error font-semibold text-sm">2 mins ago</div>
+</div>
+<div class="flex flex-col sm:flex-row gap-3">
+<button class="primary-gradient text-on-primary font-bold px-8 py-3 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+                                    Respond Now
+                                    <span class="material-symbols-outlined text-base" data-icon="arrow_forward">arrow_forward</span>
+</button>
+<button class="bg-surface-container-lowest text-on-surface-variant font-bold px-8 py-3 rounded-xl border border-outline-variant/20 hover:bg-surface-container-low transition-colors">
+                                    View Details
+                                </button>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6">
+<div class="flex items-center justify-between">
+<h3 class="text-2xl font-extrabold font-headline text-on-surface">Nearby Requests</h3>
+<button class="text-primary font-bold text-sm hover:underline">See all map</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="group bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 hover:shadow-lg transition-all flex flex-col justify-between">
+<div class="flex justify-between items-start mb-4">
+<div class="flex flex-col items-center justify-center size-12 rounded-lg bg-error/10 text-error border border-error/5 group-hover:bg-error group-hover:text-white transition-colors">
+<span class="text-xl font-black font-headline">B-</span>
+</div>
+<span class="bg-error-container text-on-error-container text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Critical</span>
+</div>
+<div class="mb-4">
+<p class="font-bold text-sm text-on-surface leading-tight mb-1">General Hospital Yaoundé</p>
+<p class="text-[11px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[10px]" data-icon="location_on">location_on</span> 1.2 km away
+                                    </p>
+</div>
+<div class="flex gap-2">
+<button class="flex-1 py-2 rounded-lg bg-surface-container-low text-on-surface-variant font-bold text-xs hover:bg-surface-container-high transition-colors">View</button>
+<button class="flex-1 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 transition-opacity">Accept</button>
+</div>
+</div>
+<div class="group bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 hover:shadow-lg transition-all flex flex-col justify-between">
+<div class="flex justify-between items-start mb-4">
+<div class="flex flex-col items-center justify-center size-12 rounded-lg bg-surface-container-low text-on-surface-variant border border-outline-variant/10 group-hover:bg-primary group-hover:text-white transition-colors">
+<span class="text-xl font-black font-headline">A+</span>
+</div>
+<span class="bg-surface-container-high text-on-surface-variant text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Normal</span>
+</div>
+<div class="mb-4">
+<p class="font-bold text-sm text-on-surface leading-tight mb-1">University Hospital (CHU)</p>
+<p class="text-[11px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[10px]" data-icon="location_on">location_on</span> 3.8 km away
+                                    </p>
+</div>
+<div class="flex gap-2">
+<button class="flex-1 py-2 rounded-lg bg-surface-container-low text-on-surface-variant font-bold text-xs hover:bg-surface-container-high transition-colors">View</button>
+<button class="flex-1 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 transition-opacity">Accept</button>
+</div>
+</div>
+<div class="group bg-surface-container-lowest p-5 rounded-xl border border-outline-variant/10 hover:shadow-lg transition-all flex flex-col justify-between">
+<div class="flex justify-between items-start mb-4">
+<div class="flex flex-col items-center justify-center size-12 rounded-lg bg-surface-container-low text-on-surface-variant border border-outline-variant/10 group-hover:bg-primary group-hover:text-white transition-colors">
+<span class="text-xl font-black font-headline">O-</span>
+</div>
+<span class="bg-error-container/40 text-on-error-container text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-tighter">Urgent</span>
+</div>
+<div class="mb-4">
+<p class="font-bold text-sm text-on-surface leading-tight mb-1">Maternité Principale</p>
+<p class="text-[11px] text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[10px]" data-icon="location_on">location_on</span> 5.1 km away
+                                    </p>
+</div>
+<div class="flex gap-2">
+<button class="flex-1 py-2 rounded-lg bg-surface-container-low text-on-surface-variant font-bold text-xs hover:bg-surface-container-high transition-colors">View</button>
+<button class="flex-1 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 transition-opacity">Accept</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="lg:col-span-4 flex flex-col gap-6">
+<div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+<button class="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm" data-icon="person">person</span>
+<span class="font-bold text-xs text-on-surface">Profile</span>
+</button>
+<button class="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm" data-icon="history">history</span>
+<span class="font-bold text-xs text-on-surface">History</span>
+</button>
+<button class="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-surface-container-low rounded-lg hover:bg-surface-container-high transition-colors border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm" data-icon="map">map</span>
+<span class="font-bold text-xs text-on-surface">Centers</span>
+</button>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/10">
+<h3 class="text-lg font-extrabold font-headline text-on-surface mb-6">Badges &amp; Progress</h3>
+<div class="flex items-center gap-4 mb-6">
+<div class="flex items-center justify-center size-16 rounded-full bg-primary-fixed text-primary shadow-inner">
+<span class="material-symbols-outlined text-3xl" data-icon="rewarded_ads">rewarded_ads</span>
+</div>
+<div class="flex flex-col">
+<p class="font-black font-headline text-lg text-on-surface leading-tight">Life Saver 🩸</p>
+<p class="text-xs text-on-surface-variant font-medium">Top 5% Donor in Yaoundé</p>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<div class="flex justify-between text-[10px] font-bold uppercase tracking-tighter">
+<span class="text-on-surface">Silver Tier</span>
+<span class="text-primary">Next: Gold Tier</span>
+</div>
+<div class="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 75%"></div>
+</div>
+<p class="text-[10px] text-on-surface-variant mt-1 text-center font-medium">2 more donations to reach Gold Status!</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-6 rounded-xl shadow-sm border border-outline-variant/10">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-lg font-extrabold font-headline text-on-surface">Recent Alerts</h3>
+<button class="text-primary font-bold text-[10px] uppercase tracking-widest hover:underline">View All</button>
+</div>
+<div class="flex flex-col gap-5">
+<div class="flex gap-4">
+<div class="size-2 mt-1.5 bg-primary rounded-full shrink-0"></div>
+<div class="flex flex-col gap-0.5">
+<p class="text-sm font-bold text-on-surface leading-tight">New request near you</p>
+<p class="text-xs text-on-surface-variant">General Hospital needs AB- blood type.</p>
+<span class="text-[10px] font-medium text-outline">10 mins ago</span>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="size-2 mt-1.5 bg-surface-container-highest rounded-full shrink-0"></div>
+<div class="flex flex-col gap-0.5">
+<p class="text-sm font-bold text-on-surface leading-tight">Eligibility reminder</p>
+<p class="text-xs text-on-surface-variant">You are eligible to donate again tomorrow.</p>
+<span class="text-[10px] font-medium text-outline">Yesterday</span>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="size-2 mt-1.5 bg-surface-container-highest rounded-full shrink-0"></div>
+<div class="flex flex-col gap-0.5">
+<p class="text-sm font-bold text-on-surface leading-tight">Donation Verified</p>
+<p class="text-xs text-on-surface-variant">Your May 12 donation has been processed.</p>
+<span class="text-[10px] font-medium text-outline">3 days ago</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<nav class="sticky bottom-0 z-50 bg-surface/90 backdrop-blur-xl border-t border-outline-variant/15 px-6 py-2 flex items-center justify-around md:hidden">
+<button class="flex flex-col items-center gap-1 p-2 text-primary">
+<span class="material-symbols-outlined" data-icon="dashboard" style="font-variation-settings: 'FILL' 1;">dashboard</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Dash</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="bloodtype">bloodtype</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Requests</span>
+</button>
+<button class="relative -top-6 flex items-center justify-center size-14 primary-gradient text-white rounded-full shadow-lg shadow-primary/30">
+<span class="material-symbols-outlined text-3xl" data-icon="add">add</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="military_tech">military_tech</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Badges</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="text-[10px] font-bold uppercase tracking-widest">Profile</span>
+</button>
+</nav>
+</div>
+</div>
+
+</body></html>
