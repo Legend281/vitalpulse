@@ -1,9 +1,11 @@
 import './style.css'
-import { registerUser, loginUser, getCurrentUser, logoutUser } from './auth';
+import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified } from './auth';
 import { doc, getDoc } from "firebase/firestore";
 import { db } from './firebase';
-import { fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, fetchAllSystemRequests, fetchInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, fetchPendingDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchHospitalActivityLogs, fetchIssuanceLogs, fetchRequestTimeline, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb } from './db';
+import { fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, fetchPendingDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations } from './donor-dashboard.js';
+import { injectLangToggle, getLang } from './i18n';
+import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
 import Chart from 'chart.js/auto';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -51,6 +53,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 submitBtn.innerHTML = 'Log In <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
             }
         });
+
+        // Forgot Password handler
+        const forgotLink = document.querySelector('#loginForm a[href="#"]');
+        if (forgotLink) {
+            forgotLink.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                if (!email || !email.includes('@')) {
+                    showToast('Please enter your email address first');
+                    return;
+                }
+                try {
+                    await sendPasswordReset(email);
+                    showToast('Password reset link sent to your email');
+                } catch (err) {
+                    console.error('Reset password error:', err);
+                    showToast('Failed to send reset email. Please try again.');
+                }
+            });
+        }
     }
 
     // Handle Signup Form
@@ -98,13 +120,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 const user = await registerUser(email, password, role, extraData);
-                
-                if (user.role === 'admin') window.location.href = '/admin.html';
-                else if (user.role === 'hospital') window.location.href = '/hospital.html';
-                else window.location.href = '/donor.html';
+
+                showToast('Account created! A verification email has been sent. Please verify your email before donating.');
+
+                setTimeout(() => {
+                    if (user.role === 'admin') window.location.href = '/admin.html';
+                    else if (user.role === 'hospital') window.location.href = '/hospital.html';
+                    else window.location.href = '/donor.html';
+                }, 2000);
 
             } catch (error) {
-                errorMsg.textContent = "Registration failed. Try again.";
+                const msg = error.code === 'auth/email-already-in-use' ? 'This email is already registered. Try logging in instead.'
+                    : error.code === 'auth/weak-password' ? 'Password must be at least 6 characters.'
+                    : error.code === 'auth/invalid-email' ? 'Invalid email address.'
+                    : error.code === 'auth/operation-not-allowed' ? 'Email/password sign-up is currently disabled.'
+                    : error.message || 'Registration failed. Try again.';
+                errorMsg.textContent = msg;
                 errorMsg.classList.remove('hidden');
             } finally {
                 submitBtn.disabled = false;
@@ -145,16 +176,63 @@ document.addEventListener('DOMContentLoaded', () => {
         // Data hydration logic
         try {
             if (path.includes('donor.html')) {
+                // Email verification check (async: reloads user from Firebase first)
+                window.sendEmailVerificationLink = sendEmailVerificationLink;
+                (async () => {
+                    try {
+                        const verified = await isEmailVerified();
+                        if (verified) return;
+                        const heroContainer = document.getElementById('donorHeroMessage')?.parentElement;
+                        if (!heroContainer || document.getElementById('emailVerifyBanner')) return;
+                        async function handleVerifyResend() {
+                            try {
+                                const nowVerified = await isEmailVerified();
+                                if (nowVerified) {
+                                    const b = document.getElementById('emailVerifyBanner');
+                                    if (b) b.remove();
+                                    showToast('Email verified!');
+                                    return;
+                                }
+                                await sendEmailVerificationLink();
+                                showToast('Verification email sent!');
+                            } catch (e) {
+                                showToast('Failed to send verification email.');
+                            }
+                        }
+                        window.handleVerifyResend = handleVerifyResend;
+                        const banner = document.createElement('div');
+                        banner.id = 'emailVerifyBanner';
+                        banner.className = 'flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3';
+                        banner.innerHTML = '<span class="material-symbols-outlined text-amber-600 shrink-0">mark_email_unread</span><div class="flex-1 min-w-0"><p class="text-xs font-bold text-amber-800">Email not verified</p><p class="text-[10px] text-amber-600">Please check your inbox and verify your email to receive donation requests.</p></div><button onclick="handleVerifyResend()" class="text-[10px] font-bold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors shrink-0">Verify</button>';
+                        heroContainer.after(banner);
+                    } catch (e) {
+                        console.warn('Email verification check failed:', e);
+                    }
+                })();
                 initDonorNavigation();
                 loadDonorDashboard();
                 initDonorDonationFlow();
                 window.switchDonorView = switchDonorView;
                 window.loadDonorDonations = loadDonorDonations;
+                window.markOnboardingComplete = markOnboardingComplete;
             } else if (path.includes('hospital.html')) {
                 initHospitalNavigation();
                 loadHospitalDashboard();
+                initHospitalNotifications();
+                window.markOnboardingComplete = markOnboardingComplete;
+                if (shouldShowOnboarding()) startOnboarding('hospital');
             } else if (path.includes('admin.html')) {
                 loadAdminDashboard();
+            }
+            // After auth check, inject language toggle and onboarding for donor
+            if (path.includes('donor.html')) {
+                injectLangToggle();
+                if (shouldShowOnboarding()) startOnboarding('donor');
+            }
+
+            // Inject lang toggle for hospital too
+            if (path.includes('hospital.html')) {
+                injectLangToggle();
             }
         } catch (initError) {
             console.error('Dashboard init failed:', initError);
@@ -371,7 +449,7 @@ async function loadHospitalDashboard() {
     try {
         const [allRequests, inventory, recentLogs] = await Promise.all([
             fetchActiveRequests(),
-            fetchInventory(),
+            fetchInventory(hospitalName),
             fetchRecentLogs(5)
         ]);
 
@@ -379,21 +457,22 @@ async function loadHospitalDashboard() {
         const totalUnits = Object.values(inventory).reduce((s, i) => s + (i.unitsAvailable || 0), 0);
         const lowStockTypes = Object.values(inventory).filter(i => (i.unitsAvailable || 0) <= (i.minimumThreshold || 5));
 
-        document.getElementById('dashActiveRequests').textContent = allRequests.length;
+        document.getElementById('dashActiveRequests').textContent = myRequests.length;
         document.getElementById('dashLowStock').textContent = lowStockTypes.length;
-        document.getElementById('dashIncomingDonors').textContent = myRequests.filter(r => r.status === 'Matching').length;
+        document.getElementById('dashIncomingDonors').textContent = myRequests.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
         document.getElementById('dashTotalUnits').textContent = totalUnits;
 
-        // Requests feed
+        // Requests feed — show only this hospital's requests
         const feedEl = document.getElementById('dashRequestsFeed');
         if (feedEl) {
-            if (allRequests.length === 0) {
-                feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests in the system</p></div>';
+            const myActiveRequests = allRequests.filter(r => r.hospital === hospitalName);
+            if (myActiveRequests.length === 0) {
+                feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests from your hospital</p></div>';
             } else {
-                feedEl.innerHTML = allRequests.slice(0, 8).map(req => {
-                    const isMine = req.hospital === hospitalName;
-                    const statusColor = req.status === 'Matching' ? 'bg-amber-500' : 'bg-blue-500';
-                    const statusLabel = req.status === 'Matching' ? 'Matching' : 'Open';
+                feedEl.innerHTML = myActiveRequests.slice(0, 8).map(req => {
+                    const isMine = true;
+                    const statusColor = req.status === 'Donor Assigned' || req.status === 'Donor En Route' ? 'bg-amber-500' : 'bg-blue-500';
+                    const statusLabel = ['Donor Assigned', 'Donor En Route'].includes(req.status) ? req.status : 'Open';
                     return `
                     <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors ${isMine ? 'ring-2 ring-red-200' : ''}">
                         <div class="flex items-center gap-3 min-w-0">
@@ -404,7 +483,7 @@ async function loadHospitalDashboard() {
                             </div>
                         </div>
                         <div class="flex items-center gap-2 shrink-0">
-                            <span class="w-2 h-2 rounded-full ${statusColor} ${req.status === 'Matching' ? 'animate-pulse' : ''}"></span>
+                            <span class="w-2 h-2 rounded-full ${statusColor} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
                             <span class="text-[10px] font-bold text-slate-500 uppercase">${statusLabel}</span>
                         </div>
                     </div>
@@ -462,8 +541,8 @@ async function loadHospitalRequests() {
         const requests = await fetchHospitalRequests(hospitalName);
 
         document.getElementById('reqTotal').textContent = requests.length;
-        document.getElementById('reqPending').textContent = requests.filter(r => r.status === 'Open' || r.status === 'Matching').length;
-        document.getElementById('reqResolved').textContent = requests.filter(r => r.status === 'resolved').length;
+        document.getElementById('reqPending').textContent = requests.filter(r => ['Open', 'Matching', 'Donor Assigned', 'Donor En Route'].includes(r.status)).length;
+        document.getElementById('reqResolved').textContent = requests.filter(r => r.status === 'Resolved').length;
 
         if (requests.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-12 text-center text-slate-400"><span class="material-symbols-outlined block text-3xl mb-2">assignment</span><p class="text-sm">No requests yet. Click "New Request" to create one.</p></td></tr>';
@@ -474,7 +553,9 @@ async function loadHospitalRequests() {
             const statusColors = {
                 'Open': { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
                 'Matching': { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
-                'resolved': { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' }
+                'Donor Assigned': { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
+                'Donor En Route': { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500' },
+                'Resolved': { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' }
             };
             const sc = statusColors[req.status] || { bg: 'bg-slate-100', text: 'text-slate-700', dot: 'bg-slate-500' };
             const urgencyColor = req.urgency === 'critical' ? 'text-red-600 bg-red-50' : req.urgency === 'urgent' ? 'text-amber-600 bg-amber-50' : 'text-slate-600 bg-slate-50';
@@ -486,7 +567,7 @@ async function loadHospitalRequests() {
                 <td class="px-6 py-4"><span class="text-[10px] font-bold uppercase ${urgencyColor} px-2 py-1 rounded-lg">${req.urgency || 'standard'}</span></td>
                 <td class="px-6 py-4">
                     <div class="flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full ${sc.dot} ${req.status === 'Matching' ? 'animate-pulse' : ''}"></span>
+                        <span class="w-2 h-2 rounded-full ${sc.dot} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
                         <span class="text-xs font-bold ${sc.text} ${sc.bg} px-2 py-1 rounded-md">${req.status}</span>
                     </div>
                 </td>
@@ -499,7 +580,7 @@ async function loadHospitalRequests() {
                         <button onclick="window.printRequestSlip('${req.id}')" class="text-[9px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors" title="Print Slip">
                             <span class="material-symbols-outlined text-xs">print</span>
                         </button>
-                        ${req.status === 'resolved' ? '<span class="text-xs text-emerald-600 font-medium ml-1">Done</span>' : '<span class="text-xs text-slate-400 ml-1">Open</span>'}
+                        ${req.status === 'Resolved' ? '<span class="text-xs text-emerald-600 font-medium ml-1">Done</span>' : req.status === 'Donor En Route' ? '<span class="text-xs text-indigo-600 font-medium ml-1 animate-pulse">🔄 En Route</span>' : '<span class="text-xs text-slate-400 ml-1">Open</span>'}
                     </div>
                 </td>
             </tr>
@@ -515,18 +596,24 @@ async function loadHospitalInventoryData() {
     const gridEl = document.getElementById('inventoryGrid');
     if (!gridEl) return;
 
+    const currentUser = getCurrentUser();
+    const hospitalName = currentUser?.name || 'General Hospital';
+
     try {
-        const inventory = await fetchInventory();
+        const inventory = await fetchInventory(hospitalName);
         const allTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
         let totalUnits = 0;
         let lowStockCount = 0;
         let healthyCount = 0;
 
+        let totalExpiring = 0;
+
         gridEl.innerHTML = allTypes.map(type => {
-            const inv = inventory[type] || { unitsAvailable: 0, minimumThreshold: 5 };
+            const inv = inventory[type] || { unitsAvailable: 0, minimumThreshold: 5, batches: [], componentTotals: {}, expiringSoon: 0, expiredUnits: 0 };
             const info = getBloodTypeDisplayInfo(type);
             totalUnits += inv.unitsAvailable || 0;
+            totalExpiring += inv.expiringSoon || 0;
             const isLow = (inv.unitsAvailable || 0) <= (inv.minimumThreshold || 5);
             if (isLow) lowStockCount++; else healthyCount++;
 
@@ -534,7 +621,18 @@ async function loadHospitalInventoryData() {
             const borderColor = isLow ? 'border-red-200' : 'border-slate-100';
             const bgCard = isLow ? 'bg-red-50' : 'bg-white';
             const barColor = isLow ? 'bg-red-500' : pct > 75 ? 'bg-emerald-500' : 'bg-amber-500';
-            const badge = isLow ? '<span class="text-[9px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Low Stock</span>' : '<span class="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider">In Stock</span>';
+
+            let badge = '';
+            if (inv.expiredUnits > 0) badge = '<span class="text-[9px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Expired</span>';
+            else if (inv.expiringSoon > 0) badge = '<span class="text-[9px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Expiring</span>';
+            else if (isLow) badge = '<span class="text-[9px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Low Stock</span>';
+            else badge = '<span class="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider">In Stock</span>';
+
+            const comps = inv.componentTotals && Object.keys(inv.componentTotals).length > 0
+                ? Object.entries(inv.componentTotals).filter(([_, u]) => u > 0).map(([comp, u]) =>
+                    `<span class="text-[9px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${comp.slice(0, 6)} ${u}u</span>`
+                  ).join('')
+                : '';
 
             return `
             <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${borderColor} hover:shadow-md transition-all group">
@@ -548,6 +646,7 @@ async function loadHospitalInventoryData() {
                     </div>
                     ${badge}
                 </div>
+                ${comps ? `<div class="flex flex-wrap gap-1 mb-2">${comps}</div>` : ''}
                 <div class="space-y-2">
                     <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                         <div class="${barColor} h-full rounded-full" style="width: ${pct}%"></div>
@@ -557,6 +656,8 @@ async function loadHospitalInventoryData() {
                         <span class="font-bold">${pct}%</span>
                     </div>
                 </div>
+                ${inv.expiringSoon > 0 ? `<div class="mt-2 text-[9px] font-bold text-amber-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">schedule</span>${inv.expiringSoon} unit(s) expiring within 30 days</div>` : ''}
+                ${inv.expiredUnits > 0 ? `<div class="mt-2 text-[9px] font-bold text-red-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">dangerous</span>${inv.expiredUnits} unit(s) expired</div>` : ''}
                 <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-4 gap-1">
                     <button onclick="window.openHospitalAddStock('${type}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Add</button>
                     <button onclick="window.openHospitalIssueBlood('${type}', ${inv.unitsAvailable || 0})" class="text-[9px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 py-1.5 rounded-lg transition-colors">Issue</button>
@@ -570,7 +671,7 @@ async function loadHospitalInventoryData() {
         document.getElementById('invTotalUnits').textContent = totalUnits;
         document.getElementById('invLowStock').textContent = lowStockCount;
         document.getElementById('invHealthy').textContent = healthyCount;
-        document.getElementById('invExpiring').textContent = Math.floor(totalUnits * 0.05);
+        document.getElementById('invExpiring').textContent = totalExpiring;
 
         // Low stock alerts
         const alertsEl = document.getElementById('lowStockAlerts');
@@ -886,11 +987,18 @@ function initHospitalAddStockModal() {
             btn.innerHTML = 'Adding...';
             btn.disabled = true;
 
+            const currentUser = getCurrentUser();
+            const hospName = currentUser?.name || 'General Hospital';
             try {
                 await updateInventoryStock(
                     document.getElementById('stockBloodType').value,
                     document.getElementById('stockUnits').value,
-                    'add'
+                    'add',
+                    hospName,
+                    {
+                        componentType: document.getElementById('stockComponent')?.value || 'Whole Blood',
+                        expiresAt: document.getElementById('stockExpiry')?.value || null
+                    }
                 );
                 await logActivity('Inventory Added', `${document.getElementById('stockUnits').value} units of ${document.getElementById('stockBloodType').value} added via hospital portal`, 'success');
                 close();
@@ -953,6 +1061,7 @@ function showToast(message) {
         toast.classList.add('opacity-0', 'translate-y-20');
     }, 3000);
 }
+window.showToast = showToast;
 
 async function loadAdminDashboard() {
     try {
@@ -963,7 +1072,7 @@ async function loadAdminDashboard() {
 
         // Calculate True Avg Response Time
         const allRequests = await fetchAllSystemRequests();
-        const resolvedReqs = allRequests.filter(r => r.status === 'resolved' && r.timestamp && r.resolvedAt);
+        const resolvedReqs = allRequests.filter(r => (r.status === 'Resolved' || r.status === 'resolved') && r.timestamp && r.resolvedAt);
         const avgResponseEl = document.getElementById('adminAvgResponse');
         
         if (avgResponseEl) {
@@ -1523,9 +1632,9 @@ window.renderRequestLogsTab = async (tab) => {
         const allRequests = await fetchAllSystemRequests();
         let filtered = [];
         if (tab === 'open') {
-            filtered = allRequests.filter(r => r.status === 'open' || r.status === 'matched');
+            filtered = allRequests.filter(r => ['Open', 'open', 'Matching', 'matched', 'Donor Assigned', 'Donor En Route'].includes(r.status));
         } else if (tab === 'resolved') {
-            filtered = allRequests.filter(r => r.status === 'resolved');
+            filtered = allRequests.filter(r => r.status === 'Resolved' || r.status === 'resolved');
         } else {
             filtered = allRequests;
         }
@@ -1537,11 +1646,13 @@ window.renderRequestLogsTab = async (tab) => {
 
         tableBody.innerHTML = filtered.map(r => {
              let statusUI = '';
-             if (r.status === 'open') {
+             if (r.status === 'Open' || r.status === 'open') {
                  statusUI = '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Open (Searching)</span>';
-             } else if (r.status === 'matched') {
-                 statusUI = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Matched (En Route)</span>';
-             } else if (r.status === 'resolved') {
+             } else if (r.status === 'Donor Assigned' || r.status === 'Matching' || r.status === 'matched') {
+                 statusUI = '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Donor Assigned</span>';
+             } else if (r.status === 'Donor En Route') {
+                 statusUI = '<span class="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Donor En Route</span>';
+             } else if (r.status === 'Resolved' || r.status === 'resolved') {
                  statusUI = '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Resolved</span>';
              } else {
                  statusUI = `<span class="px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold tracking-widest uppercase">${r.status}</span>`;
@@ -2066,7 +2177,7 @@ async function loadInventoryDashboard() {
     if (!gridEl) return;
     
     try {
-        const inventory = await fetchInventory();
+        const inventory = await fetchGlobalInventory();
         const allBloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
         
         let totalUnits = 0;
@@ -2175,13 +2286,27 @@ function initInventoryModals() {
     const cancelBtn = document.getElementById('btnCancelStock');
     const form = document.getElementById('addStockForm');
     
-    const openModal = (preselectedType = '') => {
+    const openModal = async (preselectedType = '') => {
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             if (preselectedType) {
                 const select = document.getElementById('stockBloodType');
                 if (select) select.value = preselectedType;
+            }
+            const hospSelect = document.getElementById('stockHospital');
+            if (hospSelect && hospSelect.options.length <= 1) {
+                try {
+                    const hospitals = await fetchAllHospitals();
+                    hospitals.forEach(h => {
+                        const opt = document.createElement('option');
+                        opt.value = h.name;
+                        opt.textContent = h.name;
+                        hospSelect.appendChild(opt);
+                    });
+                } catch (err) {
+                    console.error('Failed to load hospitals:', err);
+                }
             }
         }
     };
@@ -2224,9 +2349,14 @@ function initInventoryModals() {
             const bloodType = document.getElementById('stockBloodType').value;
             const units = document.getElementById('stockUnits').value;
             const source = document.getElementById('stockSource').value;
+            const hospitalName = document.getElementById('stockHospital').value;
+            if (!hospitalName) { alert('Please select a hospital.'); btn.innerHTML = 'Add to Inventory'; btn.disabled = false; return; }
             
             try {
-                await updateInventoryStock(bloodType, units, 'add');
+                await updateInventoryStock(bloodType, units, 'add', hospitalName, {
+                    componentType: document.getElementById('stockComponent')?.value || 'Whole Blood',
+                    expiresAt: document.getElementById('stockExpiry')?.value || null
+                });
                 closeModal();
                 loadInventoryDashboard();
             } catch (err) {
@@ -2259,65 +2389,53 @@ async function loadAnalyticsDashboard() {
     const totalDonorsEl = document.getElementById('analyticsTotalDonors');
     const totalHospitalsEl = document.getElementById('analyticsTotalHospitals');
     const thisMonthEl = document.getElementById('analyticsThisMonth');
-    
+
     const bloodStockChartEl = document.getElementById('bloodStockChart');
     const donationTrendsChartEl = document.getElementById('donationTrendsChart');
     const stockDistributionChartEl = document.getElementById('stockDistributionChart');
     const bloodTypeDemandChartEl = document.getElementById('bloodTypeDemandChart');
-    
+    const mostRequestedChartEl = document.getElementById('mostRequestedChart');
+    const regionalShortageChartEl = document.getElementById('regionalShortageChart');
+    const donorTrendChartEl = document.getElementById('donorTrendChart');
+    const responseTimeChartEl = document.getElementById('responseTimeChart');
+
     try {
         const [inventory, allDonors, allHospitals, allDonations] = await Promise.all([
-            fetchInventory(),
+            fetchGlobalInventory(),
             fetchAllDonors(),
             fetchAllHospitals(),
             fetchAllDonationRequests()
         ]);
-        
-        // Update stats
+
         const totalStock = Object.values(inventory).reduce((sum, inv) => sum + (inv.unitsAvailable || 0), 0);
         if (totalStockEl) totalStockEl.textContent = totalStock;
         if (totalDonorsEl) totalDonorsEl.textContent = allDonors.length;
         if (totalHospitalsEl) totalHospitalsEl.textContent = allHospitals.length;
-        
+
         const thisMonth = allDonations.filter(d => {
             const created = new Date(d.createdAt);
             const now = new Date();
             return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
         }).length;
         if (thisMonthEl) thisMonthEl.textContent = thisMonth;
-        
-        // Blood Stock by Type (Bar Chart)
+
         if (bloodStockChartEl) {
             const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
             const stockData = bloodTypes.map(type => inventory[type]?.unitsAvailable || 0);
-            
             new Chart(bloodStockChartEl, {
-                type: 'bar',
-                data: {
-                    labels: bloodTypes,
-                    datasets: [{
-                        label: 'Units Available',
-                        data: stockData,
-                        backgroundColor: [
-                            '#EF4444', '#F97316', '#EAB308', '#84CC16', 
-                            '#22C55E', '#14B8A6', '#8B5CF6', '#A78BFA'
-                        ],
+                type: 'bar', data: {
+                    labels: bloodTypes, datasets: [{
+                        label: 'Units', data: stockData,
+                        backgroundColor: ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#8B5CF6', '#A78BFA'],
                         borderRadius: 6
                     }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#e5e7eb' } },
-                        x: { grid: { display: false } }
-                    }
+                }, options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#e5e7eb' } }, x: { grid: { display: false } } }
                 }
             });
         }
-        
-        // Donation Trends (Line Chart - Last 7 Days)
+
         if (donationTrendsChartEl) {
             const days = [];
             const donationsPerDay = [];
@@ -2326,96 +2444,149 @@ async function loadAnalyticsDashboard() {
                 date.setDate(date.getDate() - i);
                 const dateStr = date.toISOString().split('T')[0];
                 days.push(date.toLocaleDateString('en-US', { weekday: 'short' }));
-                
-                const count = allDonations.filter(d => 
-                    d.createdAt && d.createdAt.startsWith(dateStr)
-                ).length;
-                donationsPerDay.push(count);
+                donationsPerDay.push(allDonations.filter(d => d.createdAt && d.createdAt.startsWith(dateStr)).length);
             }
-            
             new Chart(donationTrendsChartEl, {
-                type: 'line',
-                data: {
-                    labels: days,
-                    datasets: [{
-                        label: 'Donations',
-                        data: donationsPerDay,
-                        borderColor: '#af101a',
-                        backgroundColor: 'rgba(175, 16, 26, 0.1)',
-                        fill: true,
-                        tension: 0.4
+                type: 'line', data: {
+                    labels: days, datasets: [{
+                        label: 'Donations', data: donationsPerDay,
+                        borderColor: '#af101a', backgroundColor: 'rgba(175,16,26,0.1)', fill: true, tension: 0.4
                     }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#e5e7eb' } },
-                        x: { grid: { display: false } }
-                    }
+                }, options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#e5e7eb' } }, x: { grid: { display: false } } }
                 }
             });
         }
-        
-        // Stock Distribution (Doughnut Chart)
+
         if (stockDistributionChartEl) {
             const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
             const stockData = bloodTypes.map(type => inventory[type]?.unitsAvailable || 0);
-            
             new Chart(stockDistributionChartEl, {
-                type: 'doughnut',
-                data: {
-                    labels: bloodTypes,
-                    datasets: [{
+                type: 'doughnut', data: {
+                    labels: bloodTypes, datasets: [{
                         data: stockData,
-                        backgroundColor: [
-                            '#EF4444', '#F97316', '#EAB308', '#84CC16', 
-                            '#22C55E', '#14B8A6', '#8B5CF6', '#A78BFA'
-                        ],
+                        backgroundColor: ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#8B5CF6', '#A78BFA'],
                         borderWidth: 0
                     }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'right' } }
-                }
+                }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
             });
         }
-        
-        // Blood Type Demand (Horizontal Bar - based on requests)
+
         if (bloodTypeDemandChartEl) {
             const allRequests = await fetchAllSystemRequests();
             const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-            const demandData = bloodTypes.map(type => 
-                allRequests.filter(r => r.bloodType === type).length
-            );
-            
+            const demandData = bloodTypes.map(type => allRequests.filter(r => r.bloodType === type).length);
             new Chart(bloodTypeDemandChartEl, {
-                type: 'bar',
-                data: {
-                    labels: bloodTypes,
-                    datasets: [{
-                        label: 'Requests',
-                        data: demandData,
-                        backgroundColor: '#005f7b',
-                        borderRadius: 6
+                type: 'bar', data: {
+                    labels: bloodTypes, datasets: [{
+                        label: 'Requests', data: demandData, backgroundColor: '#005f7b', borderRadius: 6
                     }]
-                },
-                options: {
-                    indexAxis: 'y',
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { beginAtZero: true, grid: { color: '#e5e7eb' } },
-                        y: { grid: { display: false } }
-                    }
+                }, options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, grid: { color: '#e5e7eb' } }, y: { grid: { display: false } } }
                 }
             });
         }
-        
+
+        if (mostRequestedChartEl) {
+            const existing = Chart.getChart(mostRequestedChartEl);
+            if (existing) existing.destroy();
+            const allRequests = await fetchAllSystemRequests();
+            const colors = ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E', '#14B8A6', '#8B5CF6', '#A78BFA'];
+            const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+            const sorted = bloodTypes.map((t, i) => ({ t, count: allRequests.filter(r => r.bloodType === t).length, c: colors[i] })).sort((a, b) => b.count - a.count);
+            new Chart(mostRequestedChartEl, {
+                type: 'bar', data: {
+                    labels: sorted.map(s => s.t), datasets: [{
+                        label: 'Requests', data: sorted.map(s => s.count), backgroundColor: sorted.map(s => s.c), borderRadius: 6
+                    }]
+                }, options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#e5e7eb' } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        if (regionalShortageChartEl) {
+            const existing = Chart.getChart(regionalShortageChartEl);
+            if (existing) existing.destroy();
+            const hospitalCities = {};
+            allHospitals.forEach(h => { if (h.name) hospitalCities[h.name] = h.city || 'Unknown'; });
+            const cityShortages = {};
+            Object.values(inventory).forEach(inv => {
+                if (inv.hospital) {
+                    const city = hospitalCities[inv.hospital] || 'Unknown';
+                    if (!cityShortages[city]) cityShortages[city] = 0;
+                    if ((inv.unitsAvailable || 0) < (inv.minimumThreshold || 5)) cityShortages[city]++;
+                }
+            });
+            const sorted = Object.entries(cityShortages).sort((a, b) => b[1] - a[1]).slice(0, 6);
+            new Chart(regionalShortageChartEl, {
+                type: 'bar', data: {
+                    labels: sorted.map(s => s[0]), datasets: [{
+                        label: 'Shortages', data: sorted.map(s => s[1]),
+                        backgroundColor: ['#DC2626', '#EA580C', '#D97706', '#CA8A04', '#A16207', '#92400E'],
+                        borderRadius: 6
+                    }]
+                }, options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#e5e7eb' } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        if (donorTrendChartEl) {
+            const existing = Chart.getChart(donorTrendChartEl);
+            if (existing) existing.destroy();
+            const months = [];
+            const uniqueDonorsPerMonth = [];
+            const now = new Date();
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                months.push(d.toLocaleString('en-US', { month: 'short', year: 'numeric' }));
+                const donors = new Set(allDonations.filter(don => {
+                    const created = new Date(don.createdAt);
+                    return created.getMonth() === d.getMonth() && created.getFullYear() === d.getFullYear();
+                }).map(don => don.donorId));
+                uniqueDonorsPerMonth.push(donors.size);
+            }
+            new Chart(donorTrendChartEl, {
+                type: 'line', data: {
+                    labels: months, datasets: [{
+                        label: 'Donors', data: uniqueDonorsPerMonth,
+                        borderColor: '#22C55E', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.4
+                    }]
+                }, options: {
+                    responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, grid: { color: '#e5e7eb' } }, x: { grid: { display: false } } }
+                }
+            });
+        }
+
+        if (responseTimeChartEl) {
+            const existing = Chart.getChart(responseTimeChartEl);
+            if (existing) existing.destroy();
+            const allRequests = await fetchAllSystemRequests();
+            const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+            const filtered = bloodTypes.map(type => {
+                const resolved = allRequests.filter(r => r.bloodType === type && r.resolvedAt && r.requestedAt);
+                if (resolved.length === 0) return null;
+                const totalHours = resolved.reduce((sum, r) => sum + (new Date(r.resolvedAt) - new Date(r.requestedAt)) / (1000 * 60 * 60), 0);
+                return { type, time: Math.round((totalHours / resolved.length) * 10) / 10 };
+            }).filter(Boolean);
+            new Chart(responseTimeChartEl, {
+                type: 'bar', data: {
+                    labels: filtered.map(t => t.type), datasets: [{
+                        label: 'Avg Hours', data: filtered.map(t => t.time), backgroundColor: '#3B82F6', borderRadius: 6
+                    }]
+                }, options: {
+                    indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, grid: { color: '#e5e7eb' } }, y: { grid: { display: false } } }
+                }
+            });
+        }
+
     } catch (e) {
         console.error('Failed to load analytics:', e);
     }
@@ -3124,16 +3295,16 @@ function subscribeHospitalDashboard() {
 
     try {
         hospitalRequestsUnsub = subscribeToRequests((requests) => {
-            if (requests.length === 0) {
-                feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests in the system</p></div>';
+            const myRequests = requests.filter(r => r.hospital === hospitalName);
+            if (myRequests.length === 0) {
+                feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests from your hospital</p></div>';
                 return;
             }
-            feedEl.innerHTML = requests.slice(0, 8).map(req => {
-                const isMine = req.hospital === hospitalName;
-                const statusColor = req.status === 'Matching' ? 'bg-amber-500' : 'bg-blue-500';
-                const statusLabel = req.status === 'Matching' ? 'Matching' : 'Open';
+            feedEl.innerHTML = myRequests.slice(0, 8).map(req => {
+                const statusColor = req.status === 'Donor Assigned' || req.status === 'Donor En Route' ? 'bg-amber-500' : 'bg-blue-500';
+                const statusLabel = ['Donor Assigned', 'Donor En Route'].includes(req.status) ? req.status : 'Open';
                 return `
-                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors ${isMine ? 'ring-2 ring-red-200' : ''}">
+                <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors ring-2 ring-red-200">
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm shrink-0">${req.type || req.bloodType || '?'}</span>
                         <div class="min-w-0">
@@ -3142,7 +3313,7 @@ function subscribeHospitalDashboard() {
                         </div>
                     </div>
                     <div class="flex items-center gap-2 shrink-0">
-                        <span class="w-2 h-2 rounded-full ${statusColor} ${req.status === 'Matching' ? 'animate-pulse' : ''}"></span>
+                        <span class="w-2 h-2 rounded-full ${statusColor} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
                         <span class="text-[10px] font-bold text-slate-500 uppercase">${statusLabel}</span>
                     </div>
                 </div>
@@ -3173,6 +3344,107 @@ loadHospitalSettings = async function() {
 };
 
 // ============================================
+// HOSPITAL NOTIFICATION SYSTEM (in-app bell)
+// ============================================
+
+function initHospitalNotifications() {
+    const notifBtn = document.getElementById('btnHospitalNotifications');
+    if (!notifBtn) return;
+
+    notifBtn.addEventListener('click', async () => {
+        const currentUser = getCurrentUser();
+        if (!currentUser) return;
+        try {
+            const notifications = await fetchHospitalNotifications(currentUser.uid, 10);
+            const unreadCount = await fetchUnreadHospitalNotificationCount(currentUser.uid);
+            const badge = document.getElementById('hospitalNotifBadge');
+            if (badge) {
+                if (unreadCount > 0) {
+                    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                } else {
+                    badge.classList.add('hidden');
+                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                }
+            }
+            if (notifications.length === 0) {
+                showToast('No notifications yet.');
+            } else {
+                const panel = document.createElement('div');
+                panel.id = 'hospitalNotifPanel';
+                panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
+                panel.innerHTML = `
+                    <div class="absolute inset-0 bg-black/20" onclick="document.getElementById('hospitalNotifPanel')?.remove()"></div>
+                    <div class="relative bg-white w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+                            <h3 class="font-black text-on-surface flex items-center gap-2">
+                                <span class="material-symbols-outlined text-primary">notifications</span>
+                                Notifications
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                ${unreadCount > 0 ? `<button onclick="(async () => { const cu = getCurrentUser(); if(cu){await markAllHospitalNotificationsRead(cu.uid); document.getElementById('hospitalNotifPanel')?.remove();} })()" class="text-[10px] font-bold text-primary hover:underline">Mark all read</button>` : ''}
+                                <button onclick="document.getElementById('hospitalNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors">
+                                    <span class="material-symbols-outlined text-sm">close</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="overflow-y-auto flex-1 p-3 space-y-1">
+                            ${notifications.map(n => {
+                                const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
+                                const colors = { 'error': 'text-red-600 bg-red-50', 'success': 'text-emerald-600 bg-emerald-50', 'info': 'text-blue-600 bg-blue-50', 'warning': 'text-amber-600 bg-amber-50' };
+                                const c = colors[n.type] || colors.info;
+                                const icon = icons[n.type] || icons.info;
+                                return `
+                                    <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markHospitalNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.style.opacity='0.6'; })()` : ''}">
+                                        <span class="material-symbols-outlined text-sm mt-0.5 ${c.split(' ')[0]}">${icon}</span>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="text-xs font-bold text-on-surface ${n.read ? '' : ''}">${n.title}</p>
+                                            <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${n.message}</p>
+                                            <p class="text-[9px] text-slate-400 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
+                                        </div>
+                                        ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(panel);
+            }
+        } catch (e) {
+            showToast('No new notifications');
+        }
+    });
+
+    // Poll every 30 seconds
+    const poll = async () => {
+        const cu = getCurrentUser();
+        if (!cu) return;
+        try {
+            const count = await fetchUnreadHospitalNotificationCount(cu.uid);
+            const badge = document.getElementById('hospitalNotifBadge');
+            if (badge) {
+                if (count > 0) {
+                    badge.textContent = count > 9 ? '9+' : count;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                    badge.style.width = '18px';
+                    badge.style.height = '18px';
+                } else {
+                    badge.classList.add('hidden');
+                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                    badge.style.width = '';
+                    badge.style.height = '';
+                }
+            }
+        } catch (e) { /* silent */ }
+    };
+    poll();
+    setInterval(poll, 30000);
+}
+
+// ============================================
 // HOSPITAL ACTIVITY LOG
 // ============================================
 async function loadHospitalActivityLog() {
@@ -3184,7 +3456,7 @@ async function loadHospitalActivityLog() {
     const hospitalName = currentUser?.name || 'General Hospital';
 
     try {
-        const logs = await fetchHospitalActivityLogs(hospitalName, 15);
+        const logs = await fetchRecentLogs(15);
         if (countEl) countEl.textContent = `${logs.length} events`;
 
         if (logs.length === 0) {
@@ -3382,8 +3654,10 @@ function initThresholdModal() {
             btn.innerHTML = 'Saving...';
             btn.disabled = true;
 
+            const currentUser = getCurrentUser();
+            const hospName = currentUser?.name || 'General Hospital';
             try {
-                await setInventoryThreshold(bloodType, value);
+                await setInventoryThreshold(bloodType, value, hospName);
                 close();
                 showToast(`Minimum threshold for ${bloodType} set to ${value} units`);
                 loadHospitalInventoryData();
@@ -3434,7 +3708,19 @@ window.openRequestTimeline = async (requestId) => {
     content.innerHTML = '<div class="flex items-center justify-center py-12 text-slate-400"><span class="material-symbols-outlined animate-spin mr-3">sync</span><span class="text-sm">Loading timeline...</span></div>';
 
     try {
-        const timeline = await fetchRequestTimeline(requestId);
+        const reqDoc = await getDoc(doc(db, 'requests', requestId));
+        if (!reqDoc.exists()) {
+            content.innerHTML = '<div class="text-center py-12 text-slate-400"><span class="material-symbols-outlined block text-3xl mb-2">timeline</span><p class="text-sm">Request not found</p></div>';
+            return;
+        }
+        const req = reqDoc.data();
+        const timeline = [
+            { status: 'Opened', description: 'Request was created', timestamp: req.timestamp || req.createdAt, color: 'text-blue-500', icon: 'add_circle' },
+            { status: 'Matching', description: `Looking for ${req.bloodType} donors in ${req.city}`, timestamp: req.matchedAt, color: 'text-amber-500', icon: 'search' },
+            { status: 'Donor Assigned', description: 'A donor accepted the request', timestamp: req.assignedAt, color: 'text-indigo-500', icon: 'person_pin' },
+            { status: 'Donor En Route', description: 'Donor is heading to the hospital', timestamp: req.enRouteAt, color: 'text-purple-500', icon: 'directions_car' },
+            { status: 'Resolved', description: 'Request fulfilled — donation completed', timestamp: req.resolvedAt || req.updatedAt, color: 'text-emerald-500', icon: 'check_circle' },
+        ].filter(e => e.timestamp);
         if (timeline.length === 0) {
             content.innerHTML = '<div class="text-center py-12 text-slate-400"><span class="material-symbols-outlined block text-3xl mb-2">timeline</span><p class="text-sm">No timeline available</p></div>';
             return;
@@ -3486,11 +3772,13 @@ function initRemoveStockModal() {
             btn.innerHTML = 'Removing...';
             btn.disabled = true;
 
+            const currentUser = getCurrentUser();
+            const hospName = currentUser?.name || 'General Hospital';
             try {
                 const bloodType = document.getElementById('removeStockBloodType').value;
                 const units = parseInt(document.getElementById('removeStockUnits').value, 10);
                 const reason = document.getElementById('removeStockReason').value;
-                await deductInventoryStock(bloodType, units, reason);
+                await deductInventoryStock(bloodType, units, reason, hospName);
                 await logActivity('Stock Removed', `${units} unit(s) of ${bloodType} removed — Reason: ${reason}`, 'warning');
                 close();
                 showToast(`${units} unit(s) of ${bloodType} removed`);
@@ -3627,9 +3915,6 @@ async function loadDashboardChart() {
 
 window.printRequestSlip = async (requestId) => {
     try {
-        const request = await fetchRequestTimeline(requestId);
-        if (!request || request.length === 0) { alert('Request not found.'); return; }
-
         const docRef = doc(db, 'requests', requestId);
         const snapshot = await getDoc(docRef);
         if (!snapshot.exists()) { alert('Request not found.'); return; }
@@ -3684,6 +3969,48 @@ window.printRequestSlip = async (requestId) => {
     } catch (err) {
         console.error('Failed to print slip:', err);
         alert('Failed to generate print slip.');
+    }
+};
+
+window.printDonorSlip = async (donationId) => {
+    try {
+        const docRef = doc(db, 'donation_requests', donationId);
+        const snapshot = await getDoc(docRef);
+        if (!snapshot.exists()) { alert('Donation not found.'); return; }
+        const data = { id: snapshot.id, ...snapshot.data() };
+        const printWindow = window.open('', '_blank', 'width=600,height=800');
+        printWindow.document.write(`
+            <html><head><title>Donation Receipt</title>
+            <style>
+                body { font-family: 'Courier New', monospace; padding: 40px; max-width: 500px; margin: 0 auto; }
+                .header { text-align: center; border-bottom: 2px dashed #333; padding-bottom: 16px; margin-bottom: 16px; }
+                .header h1 { font-size: 24px; font-weight: 900; color: #991b1b; margin: 0; }
+                .header p { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 2px; margin: 4px 0 0; }
+                .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted #ddd; font-size: 13px; }
+                .row-label { font-weight: bold; color: #333; }
+                .row-value { color: #555; }
+                .thank-you { text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid #ccc; font-size: 14px; color: #991b1b; font-weight: bold; }
+                .footer { margin-top: 8px; font-size: 10px; color: #999; text-align: center; }
+                @media print { body { padding: 20px; } }
+            </style></head><body>
+                <div class="header"><h1>VITALPULSE</h1><p>Donation Receipt</p></div>
+                <div class="row"><span class="row-label">Donation ID</span><span class="row-value">#${data.id.slice(0, 8).toUpperCase()}</span></div>
+                <div class="row"><span class="row-label">Donor Name</span><span class="row-value">${data.donorName || '—'}</span></div>
+                <div class="row"><span class="row-label">Blood Type</span><span class="row-value">${data.bloodType || '—'}</span></div>
+                <div class="row"><span class="row-label">Units</span><span class="row-value">${data.units || 1}</span></div>
+                <div class="row"><span class="row-label">Component</span><span class="row-value">${data.componentType || 'Whole Blood'}</span></div>
+                <div class="row"><span class="row-label">Date</span><span class="row-value">${data.preferredDate ? new Date(data.preferredDate).toLocaleString() : data.createdAt ? new Date(data.createdAt).toLocaleString() : '—'}</span></div>
+                <div class="row"><span class="row-label">Hospital</span><span class="row-value">${data.hospital || data.preferredLocation || '—'}</span></div>
+                <div class="row" style="border-bottom:none;"><span class="row-label">Status</span><span class="row-value">${data.status || 'Pending'}</span></div>
+                <div class="thank-you">Thank you for your life-saving donation!</div>
+                <div class="footer"><p>VitalPulse Blood Donation System — vitalpulse.cm</p><p>Generated: ${new Date().toLocaleString()}</p></div>
+                <script>window.onload=function(){window.print();window.close();}<\/script>
+            </body></html>
+        `);
+        printWindow.document.close();
+    } catch (err) {
+        console.error('Failed to print donation slip:', err);
+        alert('Failed to generate donation slip.');
     }
 };
 
@@ -3908,7 +4235,8 @@ async function loadNotificationHistory() {
 
         container.innerHTML = logs.map(log => {
             const icon = log.channel === 'sms' ? 'sms' : log.channel === 'whatsapp' ? 'chat' : 'notifications';
-            const color = log.status === 'sent' ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50';
+            const color = log.status === 'pending' ? 'text-amber-600 bg-amber-50' : log.status === 'sent' ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50';
+            const statusText = log.status === 'pending' ? 'Tap to Send' : log.status;
             return `
             <div class="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
                 <div class="w-8 h-8 rounded-lg ${color} flex items-center justify-center shrink-0">
@@ -3916,10 +4244,16 @@ async function loadNotificationHistory() {
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
-                        <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${color}">${log.channel}</span>
+                        <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${color}">${statusText}</span>
                         <span class="text-[9px] text-slate-400">${new Date(log.sentAt).toLocaleString()}</span>
                     </div>
-                    <p class="text-xs text-slate-600 mt-1">${log.message}</p>
+                    <p class="text-xs text-slate-600 mt-1 line-clamp-2">${log.message}</p>
+                    <div class="flex gap-2 mt-2">
+                        ${log.link ? `<a href="${log.link}" target="_blank" class="inline-flex items-center gap-1 text-[10px] font-bold ${log.channel === 'whatsapp' ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'} px-2.5 py-1 rounded-lg transition-colors">
+                            <span class="material-symbols-outlined text-xs">${log.channel === 'whatsapp' ? 'chat' : 'sms'}</span>
+                            Open ${log.channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
+                        </a>` : ''}
+                    </div>
                 </div>
             </div>
             `;
@@ -3938,8 +4272,11 @@ function initNotificationFeatures() {
             const currentUser = getCurrentUser();
             const phone = currentUser?.phone || '+237 6XX XXX XXX';
             try {
-                await sendSmsNotification(phone, `[VitalPulse] Test notification from ${currentUser?.name || 'Hospital'} — All systems operational.`);
-                showToast('Test SMS sent! Check Notification History.');
+                const result = await sendWhatsAppNotification(phone, `[VitalPulse] Test notification from ${currentUser?.name || 'Hospital'} — All systems operational.`);
+                if (result.link) {
+                    showToast('Opening WhatsApp with your test message...');
+                    setTimeout(() => window.open(result.link, '_blank'), 500);
+                }
                 loadNotificationHistory();
             } catch (err) {
                 console.error('Failed to send test:', err);

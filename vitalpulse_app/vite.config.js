@@ -14,6 +14,7 @@ export default defineConfig({
         donor: resolve(__dirname, 'donor.html'),
         hospital: resolve(__dirname, 'hospital.html'),
         admin: resolve(__dirname, 'admin.html'),
+        about: resolve(__dirname, 'about.html'),
       },
     },
   },

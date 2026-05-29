@@ -9,12 +9,24 @@ import {
   computeDonorEngagement,
   updateUserProfile,
   acceptRequest as acceptRequestDb,
+  donorSetEnRoute as donorSetEnRouteDb,
   getCompatibleBloodTypes,
   getBloodTypeDisplayInfo,
   logActivity,
+  fetchDonorNotifications,
+  fetchUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
 } from './db';
 
 let donorNavigationInitialized = false;
+let _allRequests = [];
+let _selectedCity = null;
+window._filterCity = (city) => {
+  _selectedCity = city;
+  const user = getCurrentUser();
+  if (user) loadDonorDashboard();
+};
 
 // Inline onclick handlers — always available even if init code fails
 window.openDonationModal = () => {
@@ -80,26 +92,93 @@ export function initDonorNavigation() {
     });
   });
 
-  // Notification bell: show simple panel with recent activity
+  // Notification bell: show notification panel
   const notifBtn = document.getElementById('btnDonorNotifications');
   if (notifBtn) {
     notifBtn.addEventListener('click', async () => {
       const currentUser = getCurrentUser();
       if (!currentUser) return;
       try {
-        const engagement = await computeDonorEngagement(currentUser.uid);
-        const recentCount = engagement?.donations?.length || 0;
+        const notifications = await fetchDonorNotifications(currentUser.uid, 10);
+        const unreadCount = await fetchUnreadNotificationCount(currentUser.uid);
         const badge = document.getElementById('donorNotifBadge');
-        if (badge) badge.classList.add('hidden');
-        const msg = recentCount > 0
-          ? `You have ${recentCount} donation record${recentCount > 1 ? 's' : ''}. ${engagement.tier} Tier · ${engagement.points} pts`
-          : 'No notifications yet. Schedule your first donation!';
-        showToast(msg);
+        if (badge) {
+          if (unreadCount > 0) {
+            badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+            badge.classList.remove('hidden');
+          } else {
+            badge.classList.add('hidden');
+          }
+        }
+        if (notifications.length === 0) {
+          showToast('No notifications yet. When blood requests match your type, you will be notified here.');
+        } else {
+          const panel = document.createElement('div');
+          panel.id = 'donorNotifPanel';
+          panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
+          panel.innerHTML = `
+            <div class="absolute inset-0 bg-black/20" onclick="document.getElementById('donorNotifPanel')?.remove()"></div>
+            <div class="relative bg-white w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+              <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+                <h3 class="font-black text-on-surface flex items-center gap-2">
+                  <span class="material-symbols-outlined text-primary">notifications</span>
+                  Notifications
+                </h3>
+                <div class="flex items-center gap-2">
+                  ${unreadCount > 0 ? `<button onclick="(async () => { const currentUser = getCurrentUser(); if(currentUser){await markAllNotificationsRead(currentUser.uid); document.getElementById('donorNotifPanel')?.remove();} })()" class="text-[10px] font-bold text-primary hover:underline">Mark all read</button>` : ''}
+                  <button onclick="document.getElementById('donorNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors">
+                    <span class="material-symbols-outlined text-sm">close</span>
+                  </button>
+                </div>
+              </div>
+              <div class="overflow-y-auto flex-1 p-3 space-y-1">
+                ${notifications.map(n => {
+                  const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
+                  const colors = { 'error': 'text-red-600 bg-red-50', 'success': 'text-emerald-600 bg-emerald-50', 'info': 'text-blue-600 bg-blue-50', 'warning': 'text-amber-600 bg-amber-50' };
+                  const c = colors[n.type] || colors.info;
+                  const icon = icons[n.type] || icons.info;
+                  return `
+                    <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.classList.add('opacity-60'); })()` : ''}">
+                      <span class="material-symbols-outlined text-sm mt-0.5 ${c.split(' ')[0]}">${icon}</span>
+                      <div class="min-w-0 flex-1">
+                        <p class="text-xs font-bold text-on-surface ${n.read ? '' : ''}">${n.title}</p>
+                        <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${n.message}</p>
+                        <p class="text-[9px] text-slate-400 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
+                      </div>
+                      ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+          document.body.appendChild(panel);
+        }
       } catch (e) {
         showToast('No new notifications');
       }
     });
   }
+
+  // Start notification polling (every 30 seconds)
+  const pollNotifCount = async () => {
+    const cu = getCurrentUser();
+    if (!cu) return;
+    try {
+      const unreadCount = await fetchUnreadNotificationCount(cu.uid);
+      const badge = document.getElementById('donorNotifBadge');
+      if (badge) {
+        if (unreadCount > 0) {
+          badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+          badge.classList.remove('hidden');
+        } else {
+          badge.classList.add('hidden');
+        }
+      }
+    } catch (e) { /* silent */ }
+  };
+  pollNotifCount();
+  setInterval(pollNotifCount, 30000);
 
   donorNavigationInitialized = true;
 }
@@ -130,6 +209,44 @@ function getEligibilityInfo(lastDonationDate) {
   return { eligible: false, daysUntil: diffDays, label: `${diffDays} days`, color: 'text-amber-600', barPct: pct };
 }
 
+function renderFilteredFeed() {
+  const feedEl = document.getElementById('requestsFeed');
+  if (!feedEl) return;
+  const filtered = _selectedCity
+    ? _allRequests.filter(r => (r.city === _selectedCity || r.preferredLocation === _selectedCity || r.distance === _selectedCity))
+    : _allRequests;
+  if (filtered.length === 0) {
+    feedEl.innerHTML = `<div class="text-center py-8 text-on-surface-variant">
+      <span class="material-symbols-outlined text-4xl mb-2">${_selectedCity ? 'search_off' : 'check_circle'}</span>
+      <p class="text-sm">${_selectedCity ? 'No requests in ' + _selectedCity : 'No nearby requests currently'}</p>
+    </div>`;
+    return;
+  }
+  const currentUser = getCurrentUser();
+  feedEl.innerHTML = filtered.slice(0, 3).map(req => {
+    const isCritical = req.urgency === 'critical';
+    return `
+    <div class="group bg-surface-container-lowest p-4 rounded-xl flex items-center justify-between gap-4 transition-all hover:shadow-lg border border-transparent hover:border-outline-variant/20">
+      <div class="flex items-center gap-4 min-w-0">
+        <div class="flex flex-col items-center justify-center size-14 rounded-xl ${isCritical ? 'bg-error/10 text-error' : 'bg-surface-container-low text-on-surface-variant'} font-black">
+          <span class="text-xl font-black font-headline">${req.bloodType || req.type || '?'}</span>
+        </div>
+        <div class="min-w-0">
+          <p class="font-bold text-sm text-on-surface truncate">${req.hospital}</p>
+          <div class="flex items-center gap-2 text-xs text-on-surface-variant">
+            <span>${req.distance || req.city || 'Local'}</span>
+            ${isCritical ? '<span class="text-error font-bold text-[10px]">● Critical</span>' : ''}
+          </div>
+        </div>
+      </div>
+      <button onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}')" class="shrink-0 px-4 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 transition-opacity">Accept</button>
+    </div>`;
+  }).join('');
+  if (filtered.length > 3) {
+    feedEl.innerHTML += `<button onclick="switchDonorView('requests')" class="w-full text-center text-primary font-bold text-sm hover:underline py-2">View all ${filtered.length} requests →</button>`;
+  }
+}
+
 function clearDonorLoadingStates() {
   const loaders = [
     'donorTierProgress', 'donorEligibilityBar', 'requestsFeed',
@@ -157,6 +274,7 @@ export async function loadDonorDashboard() {
   try {
     const engagement = await computeDonorEngagement(currentUser.uid).catch(() => null);
     const activeRequests = await fetchMatchedRequestsForDonor(currentUser.bloodType, currentUser.city).catch(() => []);
+    _allRequests = activeRequests;
 
     const firstName = (currentUser.name || currentUser.email?.split('@')[0] || 'Donor').split(' ')[0];
     const city = currentUser.city || 'Yaoundé';
@@ -303,37 +421,7 @@ export async function loadDonorDashboard() {
       }
     }
 
-    // Nearby requests feed
-    const feedEl = document.getElementById('requestsFeed');
-    if (feedEl) {
-      if (activeRequests.length === 0) {
-        feedEl.innerHTML = '<div class="text-center py-8 text-on-surface-variant"><span class="material-symbols-outlined text-4xl mb-2">check_circle</span><p class="text-sm">No nearby requests currently</p></div>';
-      } else {
-        feedEl.innerHTML = activeRequests.slice(0, 3).map(req => {
-          const isCritical = req.urgency === 'critical';
-          return `
-          <div class="group bg-surface-container-lowest p-4 rounded-xl flex items-center justify-between gap-4 transition-all hover:shadow-lg border border-transparent hover:border-outline-variant/20">
-            <div class="flex items-center gap-4 min-w-0">
-              <div class="flex flex-col items-center justify-center size-14 rounded-xl ${isCritical ? 'bg-error/10 text-error' : 'bg-surface-container-low text-on-surface-variant'} font-black">
-                <span class="text-xl font-black font-headline">${req.bloodType || req.type || '?'}</span>
-              </div>
-              <div class="min-w-0">
-                <p class="font-bold text-sm text-on-surface truncate">${req.hospital}</p>
-                <div class="flex items-center gap-2 text-xs text-on-surface-variant">
-                  <span>${req.distance || req.city || 'Local'}</span>
-                  ${isCritical ? '<span class="text-error font-bold text-[10px]">● Critical</span>' : ''}
-                </div>
-              </div>
-            </div>
-            <button onclick="window.donorAcceptRequest('${req.id}', '${currentUser.uid}')" class="shrink-0 px-4 py-2 rounded-lg bg-primary text-white font-bold text-xs hover:opacity-90 transition-opacity">Accept</button>
-          </div>
-          `;
-        }).join('');
-        if (activeRequests.length > 3) {
-          feedEl.innerHTML += `<button onclick="switchDonorView('requests')" class="w-full text-center text-primary font-bold text-sm hover:underline py-2">View all ${activeRequests.length} requests →</button>`;
-        }
-      }
-    }
+    renderFilteredFeed();
 
     // Recent activity
     const activityEl = document.getElementById('donorRecentActivity');
@@ -394,24 +482,60 @@ export async function loadDonorDashboard() {
       }
     }
 
-    // Nearby centers map preview
+    // Cameroon interactive city map
     const mapEl = document.getElementById('donorMapPreview');
     if (mapEl) {
-      const centerInfo = getNearbyCenters(currentUser.city);
+      const cameroonCities = [
+        { name: 'Yaoundé', x: 52, y: 58, size: 'large' },
+        { name: 'Douala', x: 38, y: 54, size: 'large' },
+        { name: 'Garoua', x: 58, y: 12, size: 'medium' },
+        { name: 'Bamenda', x: 33, y: 36, size: 'medium' },
+        { name: 'Maroua', x: 67, y: 6, size: 'medium' },
+        { name: 'Bafoussam', x: 38, y: 42, size: 'medium' },
+        { name: 'Ngaoundéré', x: 55, y: 28, size: 'small' },
+        { name: 'Bertoua', x: 61, y: 42, size: 'small' },
+        { name: 'Ebolowa', x: 44, y: 74, size: 'small' },
+        { name: 'Kribi', x: 34, y: 71, size: 'small' },
+        { name: 'Limbe', x: 28, y: 50, size: 'small' },
+        { name: 'Buea', x: 31, y: 51, size: 'small' },
+      ];
+      const selected = _selectedCity || currentUser.city || 'Yaoundé';
       mapEl.innerHTML = `
-        <div class="relative rounded-xl overflow-hidden bg-surface-container-high h-40">
-          <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 to-tertiary/5">
-            <div class="text-center">
-              <span class="material-symbols-outlined text-4xl text-primary/30">map</span>
-              <p class="text-xs text-on-surface-variant mt-1">Centers near ${currentUser.city || 'Yaoundé'}</p>
+        <div class="relative rounded-xl overflow-hidden bg-gradient-to-b from-emerald-50 to-blue-50 h-48">
+          <!-- Simplified Cameroon SVG outline -->
+          <svg viewBox="0 0 100 100" class="w-full h-full" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.1))">
+            <path d="M25 15 Q30 5 50 3 Q65 2 72 8 Q80 12 82 20 Q85 28 80 35 Q78 42 72 48 Q68 52 65 58 Q62 65 60 72 Q58 78 55 82 Q50 88 45 85 Q40 82 38 78 Q35 72 32 68 Q28 62 25 55 Q22 48 20 40 Q18 32 20 25 Q22 20 25 15Z"
+                  fill="#e8f5e9" stroke="#2e7d32" stroke-width="0.6" opacity="0.7"/>
+            ${cameroonCities.map(c => {
+              const isSelected = selected === c.name;
+              const r = c.size === 'large' ? 3.5 : c.size === 'medium' ? 2.8 : 2;
+              return `
+                <circle cx="${c.x}" cy="${c.y}" r="${r + (isSelected ? 1.5 : 0)}"
+                        fill="${isSelected ? '#af101a' : '#2e7d32'}"
+                        stroke="#fff" stroke-width="${isSelected ? 1.5 : 0.8}"
+                        class="cursor-pointer transition-all"
+                        onclick="window._filterCity('${c.name}')"
+                        style="${!isSelected ? 'opacity:0.75' : ''}" />
+                <text x="${c.x}" y="${c.y - r - 2}" text-anchor="middle"
+                      font-size="3.2" font-weight="${isSelected ? 'bold' : 'normal'}"
+                      fill="${isSelected ? '#af101a' : '#333'}"
+                      class="pointer-events-none select-none">${c.name}</text>
+              `;
+            }).join('')}
+          </svg>
+          <!-- Clear filter badge when city is selected -->
+          ${_selectedCity ? `
+            <div class="absolute top-2 left-2">
+              <span class="inline-flex items-center gap-1 bg-primary text-white text-[10px] font-bold px-2 py-1 rounded-full shadow">
+                ${_selectedCity}
+                <button onclick="window._filterCity(null)" class="hover:opacity-80">&times;</button>
+              </span>
             </div>
-          </div>
-          <div class="absolute bottom-3 left-3 right-3 flex flex-wrap gap-2">
-            ${centerInfo.slice(0, 3).map(c => `
-              <div class="bg-white/90 backdrop-blur-sm px-3 py-1.5 rounded-lg text-xs font-bold text-on-surface shadow-sm">
-                ${c.name} · ${c.distance}
-              </div>
-            `).join('')}
+          ` : ''}
+          <div class="absolute bottom-2 left-2 right-2 flex flex-wrap gap-1">
+            <span class="bg-white/80 text-[10px] px-2 py-0.5 rounded-full font-bold text-on-surface-variant">
+              ${_selectedCity ? `Showing requests in ${_selectedCity}` : `You are in ${currentUser.city || 'Yaoundé'}`}
+            </span>
           </div>
         </div>
         <button class="mt-2 text-primary font-bold text-xs hover:underline flex items-center gap-1" onclick="switchDonorView('requests')">
@@ -505,7 +629,12 @@ async function loadDonorRequests() {
               <p class="text-xs text-on-surface-variant">${r.city || 'Cameroon'}</p>
             </div>
           </div>
-          <span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">${r.status}</span>
+          <div class="flex items-center gap-2">
+            ${r.status === 'Donor Assigned' ? `<button onclick="window.donorMarkEnRoute('${r.id}', '${currentUser.uid}')" class="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-full transition-colors flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs">directions_car</span> En Route
+            </button>` : ''}
+            <span class="text-[10px] font-bold ${r.status === 'Donor En Route' ? 'text-indigo-600 bg-indigo-50 animate-pulse' : 'text-amber-600 bg-amber-50'} px-2 py-1 rounded-full">${r.status}</span>
+          </div>
         </div>
       `).join('');
     }
@@ -630,6 +759,18 @@ window.donorAcceptRequest = async (requestId, donorId) => {
   } catch (err) {
     console.error('Failed to accept request:', err);
     alert('Failed to accept request. Please try again.');
+  }
+};
+
+window.donorMarkEnRoute = async (requestId, donorId) => {
+  if (!confirm('Mark yourself as en route to the hospital?')) return;
+  try {
+    await donorSetEnRouteDb(requestId, donorId);
+    showToast('You are now marked as en route! The hospital has been notified.');
+    loadDonorDashboard();
+  } catch (err) {
+    console.error('Failed to set en route:', err);
+    alert('Failed to update status. Please try again.');
   }
 };
 

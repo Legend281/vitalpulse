@@ -1,265 +1,758 @@
 <!DOCTYPE html>
-
-<html class="light" lang="en"><head>
+<html class="light" lang="en">
+<head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>VitalPulse | Cameroon Blood Donation Coordination</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
-<!-- Fonts -->
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<!-- Icons -->
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<!-- Tailwind -->
-
-
-
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&display=swap" rel="stylesheet"/>
 </head>
-<body class="bg-surface selection:bg-primary-fixed selection:text-on-primary-fixed">
-<!-- Top Navigation Shell -->
-<header class="docked full-width top-0 sticky z-50 bg-surface/80 backdrop-blur-md shadow-sm shadow-black/5">
-<div class="flex justify-between items-center w-full px-6 py-4 max-w-7xl mx-auto">
-<div class="flex items-center gap-2">
-<span class="text-xl font-black text-red-700 tracking-tighter">VitalPulse</span>
+<body class="bg-surface selection:bg-primary selection:text-white overflow-x-hidden">
+<!-- NAV -->
+<header id="siteHeader" class="fixed top-0 left-0 w-full z-50 transition-all duration-500">
+<div class="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
+<a href="/" class="flex items-center gap-3 group">
+<div class="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+<span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">pulse</span>
 </div>
-<!-- Desktop Nav -->
+<span class="text-xl font-black text-primary tracking-tighter">Vital<span class="text-on-surface">Pulse</span></span>
+</a>
 <nav class="hidden md:flex items-center gap-8">
-<a class="text-red-700 font-bold border-b-2 border-red-700 text-sm font-manrope tracking-tight" href="/">Home</a>
-<a class="text-slate-600 font-medium text-sm font-manrope tracking-tight hover:text-red-600 transition-colors" href="#">About</a>
-<a class="text-slate-600 font-medium text-sm font-manrope tracking-tight hover:text-red-600 transition-colors" href="#">Campaigns</a>
+<a href="/" class="text-sm font-semibold text-primary relative after:absolute after:-bottom-1 after:left-0 after:w-full after:h-0.5 after:bg-primary after:rounded-full">Home</a>
+<a href="/about.html" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">About</a>
+<a href="#" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">Campaigns</a>
+<a href="#" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">Contact</a>
 </nav>
-<div class="flex items-center gap-4">
-<a class="hidden sm:block text-slate-600 font-medium text-sm font-manrope hover:text-red-600 transition-colors" href="/login.html">Login</a>
-<a href="/signup.html" class="pulse-gradient text-white px-5 py-2.5 rounded-lg text-sm font-bold tracking-tight shadow-lg shadow-primary/20 hover:scale-95 duration-150 ease-in-out">
-                    Get Started
-                </a>
+<div class="flex items-center gap-3">
+<a href="/login.html" class="hidden sm:inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-primary transition-colors px-4 py-2.5 rounded-xl hover:bg-primary/5">Sign In</a>
+<a href="/signup.html" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
+Join Free
+<span class="material-symbols-outlined text-lg">arrow_forward</span>
+</a>
 </div>
 </div>
 </header>
+
 <main>
-<!-- Hero Section -->
-<section class="relative pt-20 pb-32 px-6 overflow-hidden">
-<div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-<div class="relative z-10">
-<span class="inline-block px-3 py-1 rounded-full bg-error-container text-on-error-container text-[10px] font-bold uppercase tracking-[0.1em] mb-6">
-                        Live in Cameroon
-                    </span>
-<h1 class="text-5xl md:text-7xl font-extrabold leading-[1.1] tracking-tighter text-on-surface mb-6">
-                        Every Second Counts. <br/>
-<span class="text-pulse-gradient">Every Drop Saves.</span>
-</h1>
-<p class="text-xl text-slate-600 leading-relaxed mb-10 max-w-lg">
-                        The real-time coordination system connecting Cameroon's hospitals and donors. We bridge the gap between emergency and supply.
-                    </p>
-<div class="flex flex-col sm:flex-row gap-4">
-<button class="pulse-gradient text-on-primary px-8 py-4 rounded-md font-bold text-lg shadow-xl shadow-primary/30 flex items-center justify-center gap-2">
-                            Emergency Blood Request
-                            <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">emergency</span>
-</button>
-<button class="bg-surface-container-low hover:bg-surface-container-high transition-colors text-on-surface px-8 py-4 rounded-md font-bold text-lg flex items-center justify-center gap-2">
-                            Register as Donor
-                            <span class="material-symbols-outlined">person_add</span>
-</button>
-</div>
-</div>
-<div class="hidden lg:block relative">
-<div class="aspect-[4/5] rounded-3xl overflow-hidden shadow-2xl relative">
-<img alt="Medical coordination center" class="w-full h-full object-cover grayscale-[20%] hover:grayscale-0 transition-all duration-700" data-alt="Modern medical laboratory with clean white lighting, professional equipment, and a focus on sterile efficiency in Cameroon" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBl03Vm_I8EQz4snr_BKSmB0qmplMpwL7YtzfzmPm3iMQ0KwVyI-UYCeBpJXPWFbND9csoGMXaxdwQ9_RcFyqzEgt8Kd9_883-3LzXVwDD2VsHFAQOkSAOfjnwFpJElsIvKad5fmRaDhq4gvAGMdkiynon3DDI-pBZ197BnF_m2PtElXsvr1foNfgoHP_WNRMViNu-QzZhL_pTKu5yyGtyiadnzI167J-9zToHo1aEvObjyfRRA8I21rRijPB6JKhnGXqR-o1_cZls"/>
-<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-<div class="absolute bottom-8 left-8 right-8 p-6 bg-white/10 backdrop-blur-xl rounded-2xl border border-white/20">
-<div class="flex items-center gap-4">
-<div class="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white">
-<span class="material-symbols-outlined">health_metrics</span>
-</div>
-<div>
-<p class="text-white text-xs font-bold uppercase tracking-widest mb-1">Live Update</p>
-<p class="text-white font-medium">42 Successful matches in the last 24h</p>
-</div>
-</div>
-</div>
-</div>
-<!-- Decorative element -->
-<div class="absolute -top-10 -right-10 w-64 h-64 bg-primary-container/10 rounded-full blur-3xl -z-10"></div>
-</div>
-</div>
+<!-- ===== HERO ===== -->
+<section class="relative min-h-screen flex items-center pt-28 pb-20 overflow-hidden">
+  <!-- BG layers -->
+  <div class="absolute inset-0 bg-gradient-to-b from-primary/[0.03] via-surface to-surface pointer-events-none"></div>
+  <div class="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-primary/[0.02] to-transparent pointer-events-none"></div>
+  <div class="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-[140px] animate-pulse-slow pointer-events-none"></div>
+  <div class="absolute bottom-20 right-20 w-96 h-96 bg-tertiary/10 rounded-full blur-[140px] animate-pulse-slow pointer-events-none" style="animation-delay:3s"></div>
+
+  <!-- Grid pattern overlay -->
+  <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmMGYwZjAiIGZpbGwtb3BhY2l0eT0iMC40Ij48cGF0aCBkPSJNMzYgMzR2LTRoNHY0aC00em0wIDB2LTRoLTR2NGg0eiIvPjwvZz48L2c+PC9zdmc+')] opacity-30 pointer-events-none"></div>
+
+  <div class="relative max-w-7xl mx-auto px-6 w-full">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
+      <!-- Left -->
+      <div class="reveal">
+        <div class="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-8 border border-primary/20">
+          <span class="relative flex w-2.5 h-2.5">
+            <span class="animate-ping absolute inline-flex w-full h-full rounded-full bg-primary opacity-75"></span>
+            <span class="relative inline-flex w-2.5 h-2.5 rounded-full bg-primary"></span>
+          </span>
+          Now Live — Cameroon's Emergency Network
+        </div>
+
+        <h1 class="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-black leading-[0.95] tracking-tighter text-on-surface mb-6">
+          <span class="block">Blood when</span>
+          <span class="block text-pulse-gradient">seconds count.</span>
+        </h1>
+
+        <p class="text-lg sm:text-xl text-slate-500 leading-relaxed mb-10 max-w-lg">
+          The real-time coordination system connecting <span class="text-on-surface font-semibold">Cameroon's hospitals</span> and <span class="text-on-surface font-semibold">blood donors</span>. We bridge the gap between emergency and supply.
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-4 mb-12">
+          <a href="/signup.html" class="group relative inline-flex items-center justify-center gap-3 bg-primary text-white px-8 py-4 rounded-2xl font-bold text-base overflow-hidden shadow-2xl shadow-primary/30 hover:shadow-primary/40 transition-all duration-300">
+            <span class="absolute inset-0 bg-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></span>
+            <span class="relative flex items-center gap-3">
+              <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">favorite</span>
+              Become a Donor
+              <span class="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
+            </span>
+          </a>
+          <a href="/login.html" class="inline-flex items-center justify-center gap-3 bg-white text-on-surface px-8 py-4 rounded-2xl font-bold text-base border-2 border-slate-200 hover:border-primary/40 hover:bg-primary/5 hover:shadow-lg transition-all duration-200">
+            <span class="material-symbols-outlined">local_hospital</span>
+            Hospital Portal
+          </a>
+        </div>
+
+        <!-- Trust bar -->
+        <div class="flex flex-wrap items-center gap-6">
+          <div class="flex -space-x-2.5">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-amber-300 to-amber-600 border-[2.5px] border-white shadow-sm flex items-center justify-center text-[9px] font-black text-white">JD</div>
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-300 to-blue-600 border-[2.5px] border-white shadow-sm flex items-center justify-center text-[9px] font-black text-white">MK</div>
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-300 to-emerald-600 border-[2.5px] border-white shadow-sm flex items-center justify-center text-[9px] font-black text-white">AL</div>
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-purple-300 to-purple-600 border-[2.5px] border-white shadow-sm flex items-center justify-center text-[9px] font-black text-white">+2k</div>
+          </div>
+          <div class="text-sm">
+            <span class="font-black text-on-surface text-lg">2,400+</span>
+            <span class="text-slate-400 ml-1.5 font-medium">active donors on standby</span>
+          </div>
+          <div class="hidden sm:block w-px h-8 bg-slate-200"></div>
+          <div class="flex items-center gap-1.5">
+            <div class="flex">
+              <span class="material-symbols-outlined text-amber-400 text-sm" style="font-variation-settings:'FILL'1">star</span>
+              <span class="material-symbols-outlined text-amber-400 text-sm" style="font-variation-settings:'FILL'1">star</span>
+              <span class="material-symbols-outlined text-amber-400 text-sm" style="font-variation-settings:'FILL'1">star</span>
+              <span class="material-symbols-outlined text-amber-400 text-sm" style="font-variation-settings:'FILL'1">star</span>
+              <span class="material-symbols-outlined text-amber-400 text-sm" style="font-variation-settings:'FILL'1">star</span>
+            </div>
+            <span class="text-xs text-slate-400 font-medium">4.9/5 from hospitals</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Visual -->
+      <div class="hidden lg:block reveal" style="animation-delay:0.2s">
+        <div class="relative">
+          <!-- Main image card -->
+          <div class="relative rounded-3xl overflow-hidden shadow-2xl shadow-black/10 aspect-[4/5]">
+            <img alt="Cameroon medical team at work" class="w-full h-full object-cover grayscale-[20%] hover:grayscale-0 transition-all duration-1000 ease-out"
+                 src="https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?q=80&w=800&auto=format&fit=crop" loading="lazy"/>
+            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent"></div>
+            <!-- Bottom overlay card -->
+            <div class="absolute bottom-0 left-0 right-0 p-6 md:p-8">
+              <div class="flex items-center gap-4 bg-white/10 backdrop-blur-xl rounded-2xl p-4 border border-white/20">
+                <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">health_metrics</span>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="text-[10px] font-bold uppercase tracking-widest text-white/70">Live Network</span>
+                  </div>
+                  <p class="font-bold text-white text-sm">42 successful matches in the last 24 hours</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Floating badge 1 -->
+          <div class="absolute -top-4 -right-4 w-20 h-20 rounded-2xl bg-white shadow-2xl flex items-center justify-center flex-col rotate-6 hover:rotate-0 transition-transform duration-300">
+            <span class="text-primary font-black text-xl">24/7</span>
+            <span class="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Response</span>
+          </div>
+          <!-- Floating badge 2 -->
+          <div class="absolute -bottom-6 -left-6 w-auto px-5 py-3 rounded-2xl bg-white shadow-2xl flex items-center gap-3 hover:-translate-y-1 transition-transform duration-300">
+            <span class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <span class="material-symbols-outlined">speed</span>
+            </span>
+            <div>
+              <p class="text-xs text-slate-400 font-medium">Avg. match time</p>
+              <p class="font-black text-on-surface">&lt; 30 seconds</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
-<!-- Stats Section (Bento Inspired) -->
-<section class="py-24 bg-surface-container-low">
-<div class="max-w-7xl mx-auto px-6">
-<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-<!-- Stat 1 -->
-<div class="bg-surface-container-lowest p-10 rounded-xl shadow-sm flex flex-col justify-between border-b-4 border-primary">
-<span class="material-symbols-outlined text-primary text-4xl mb-6">local_hospital</span>
-<div>
-<h3 class="text-4xl font-black font-headline tracking-tighter mb-2">128+</h3>
-<p class="text-slate-500 font-medium uppercase tracking-widest text-[10px]">Verified Hospitals</p>
-</div>
-</div>
-<!-- Stat 2 -->
-<div class="bg-surface-container-lowest p-10 rounded-xl shadow-sm flex flex-col justify-between border-b-4 border-tertiary">
-<span class="material-symbols-outlined text-tertiary text-4xl mb-6">group</span>
-<div>
-<h3 class="text-4xl font-black font-headline tracking-tighter mb-2">15.4K</h3>
-<p class="text-slate-500 font-medium uppercase tracking-widest text-[10px]">Eligible Donors</p>
-</div>
-</div>
-<!-- Stat 3 -->
-<div class="bg-primary pulse-gradient p-10 rounded-xl shadow-lg flex flex-col justify-between">
-<span class="material-symbols-outlined text-white text-4xl mb-6" style="font-variation-settings: 'FILL' 1;">favorite</span>
-<div>
-<h3 class="text-4xl font-black font-headline tracking-tighter mb-2 text-white">8,902</h3>
-<p class="text-white/70 font-medium uppercase tracking-widest text-[10px]">Lives Saved</p>
-</div>
-</div>
-</div>
-</div>
+
+<!-- ===== LOGO CLOUD ===== -->
+<section class="py-16 sm:py-20 border-y border-slate-100">
+  <div class="max-w-7xl mx-auto px-6 reveal">
+    <p class="text-center text-xs font-bold uppercase tracking-[0.2em] text-slate-300 mb-8">Trusted by leading hospitals across Cameroon</p>
+    <div class="flex flex-wrap justify-center items-center gap-10 sm:gap-16 opacity-50 grayscale">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">local_hospital</span></div>
+        <span class="font-bold text-sm text-on-surface">CHU Yaoundé</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600"><span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">local_hospital</span></div>
+        <span class="font-bold text-sm text-on-surface">General Hospital Douala</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600"><span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">local_hospital</span></div>
+        <span class="font-bold text-sm text-on-surface">Bamenda Regional</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600"><span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">local_hospital</span></div>
+        <span class="font-bold text-sm text-on-surface">Garoua Central</span>
+      </div>
+    </div>
+  </div>
 </section>
-<!-- How it Works (Editorial Vertical Flow) -->
-<section class="py-32 px-6">
-<div class="max-w-4xl mx-auto">
-<div class="text-center mb-20">
-<p class="text-primary font-bold tracking-[0.2em] uppercase text-xs mb-4">Our Process</p>
-<h2 class="text-4xl md:text-5xl font-black tracking-tight">Three steps to save a life.</h2>
-</div>
-<div class="space-y-24">
-<!-- Step 1 -->
-<div class="flex flex-col md:flex-row gap-12 items-center">
-<div class="md:w-1/2">
-<div class="text-8xl font-black text-slate-100 absolute -translate-y-12 -translate-x-6 z-0">01</div>
-<div class="relative z-10">
-<h3 class="text-2xl font-bold mb-4">Request</h3>
-<p class="text-slate-600 leading-relaxed">Hospitals and certified clinics submit urgent requirements through our digital gateway, specifying type and urgency level.</p>
-</div>
-</div>
-<div class="md:w-1/2 w-full h-48 bg-surface-container-high rounded-2xl flex items-center justify-center">
-<span class="material-symbols-outlined text-primary text-6xl" style="font-variation-settings: 'FILL' 1;">emergency_share</span>
-</div>
-</div>
-<!-- Step 2 -->
-<div class="flex flex-col md:flex-row-reverse gap-12 items-center">
-<div class="md:w-1/2">
-<div class="text-8xl font-black text-slate-100 absolute -translate-y-12 -translate-x-6 z-0">02</div>
-<div class="relative z-10">
-<h3 class="text-2xl font-bold mb-4">Match</h3>
-<p class="text-slate-600 leading-relaxed">Our Pulse algorithm instantly identifies and notifies the closest eligible donors with matching blood groups via SMS and App.</p>
-</div>
-</div>
-<div class="md:w-1/2 w-full h-48 bg-surface-container-high rounded-2xl flex items-center justify-center">
-<span class="material-symbols-outlined text-tertiary text-6xl">sync_alt</span>
-</div>
-</div>
-<!-- Step 3 -->
-<div class="flex flex-col md:flex-row gap-12 items-center">
-<div class="md:w-1/2">
-<div class="text-8xl font-black text-slate-100 absolute -translate-y-12 -translate-x-6 z-0">03</div>
-<div class="relative z-10">
-<h3 class="text-2xl font-bold mb-4">Donate</h3>
-<p class="text-slate-600 leading-relaxed">Donors arrive at the matched facility. Once donation is complete, the hospital marks it verified, and the request is fulfilled.</p>
-</div>
-</div>
-<div class="md:w-1/2 w-full h-48 bg-surface-container-high rounded-2xl flex items-center justify-center">
-<span class="material-symbols-outlined text-secondary text-6xl" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
-</div>
-</div>
-</div>
-</div>
+
+<!-- ===== FEATURES (2-column with real images) ===== -->
+<section class="py-28 md:py-36 overflow-hidden">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="text-center max-w-2xl mx-auto mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Platform Features</span>
+      <h2 class="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-on-surface mb-5">Everything you need to save lives.</h2>
+      <p class="text-slate-400 text-lg">From emergency alerts to verified matching — a complete blood coordination ecosystem.</p>
+    </div>
+
+    <!-- Feature 1 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center mb-28 reveal">
+      <div class="order-2 lg:order-1">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wider mb-5">
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">flash_on</span>
+          Real-time
+        </div>
+        <h3 class="text-3xl sm:text-4xl font-black tracking-tight text-on-surface mb-4">Emergency alerts in <span class="text-pulse-gradient">under 30 seconds</span></h3>
+        <p class="text-slate-500 leading-relaxed mb-8">When a hospital submits a verified request, our Pulse Engine simultaneously notifies every compatible donor within the catchment area via SMS, WhatsApp, and in-app alert.</p>
+        <ul class="space-y-4">
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Multi-channel broadcast — SMS, WhatsApp, push notification</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Intelligent blood-type &amp; location matching</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Automated escalation if no donor responds within 5 minutes</span>
+          </li>
+        </ul>
+      </div>
+      <div class="order-1 lg:order-2 reveal" style="animation-delay:0.1s">
+        <div class="relative rounded-3xl overflow-hidden shadow-xl aspect-[4/3]">
+          <img alt="Emergency alert dashboard" class="w-full h-full object-cover hover:scale-105 transition-transform duration-700" src="https://images.unsplash.com/photo-1576091160550-2173dba999ef?q=80&w=800&auto=format&fit=crop" loading="lazy"/>
+          <div class="absolute inset-0 bg-gradient-to-tr from-primary/20 to-transparent"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Feature 2 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center mb-28 reveal">
+      <div class="reveal" style="animation-delay:0.1s">
+        <div class="relative rounded-3xl overflow-hidden shadow-xl aspect-[4/3]">
+          <img alt="Donor mobile app interface" class="w-full h-full object-cover hover:scale-105 transition-transform duration-700" src="https://images.unsplash.com/photo-1559757175-5700dde675bc?q=80&w=800&auto=format&fit=crop" loading="lazy"/>
+          <div class="absolute inset-0 bg-gradient-to-tl from-tertiary/20 to-transparent"></div>
+        </div>
+      </div>
+      <div>
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider mb-5">
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">verified</span>
+          Verified Network
+        </div>
+        <h3 class="text-3xl sm:text-4xl font-black tracking-tight text-on-surface mb-4">Trusted donors, verified hospitals.</h3>
+        <p class="text-slate-500 leading-relaxed mb-8">Every hospital and donor on the platform undergoes verification. No anonymous requests. No unregistered blood collection.</p>
+        <ul class="space-y-4">
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Hospital license verification with document upload</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Donor identity &amp; eligibility screening</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-tertiary/10 flex items-center justify-center text-tertiary shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Full audit trail for every request and donation</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Feature 3 -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-20 items-center reveal">
+      <div class="order-2 lg:order-1">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wider mb-5">
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">monitoring</span>
+          Analytics
+        </div>
+        <h3 class="text-3xl sm:text-4xl font-black tracking-tight text-on-surface mb-4">Data-driven decisions for <span class="text-pulse-gradient">better outcomes</span></h3>
+        <p class="text-slate-500 leading-relaxed mb-8">Real-time dashboards for hospitals, donors, and administrators. Track inventory, response times, and community impact.</p>
+        <ul class="space-y-4">
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Hospital blood inventory with expiry tracking</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">Donor engagement tiers with points &amp; badges</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="w-6 h-6 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
+            </span>
+            <span class="text-sm text-slate-500">System-wide analytics with 8+ chart types</span>
+          </li>
+        </ul>
+      </div>
+      <div class="order-1 lg:order-2 reveal" style="animation-delay:0.1s">
+        <div class="relative rounded-3xl overflow-hidden shadow-xl aspect-[4/3]">
+          <img alt="Analytics dashboard on tablet" class="w-full h-full object-cover hover:scale-105 transition-transform duration-700" src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=800&auto=format&fit=crop" loading="lazy"/>
+          <div class="absolute inset-0 bg-gradient-to-bl from-primary/10 to-transparent"></div>
+        </div>
+      </div>
+    </div>
+  </div>
 </section>
-<!-- Active Campaigns -->
-<section class="py-24 px-6 bg-tertiary text-white">
-<div class="max-w-7xl mx-auto">
-<div class="flex flex-col md:flex-row justify-between items-end gap-6 mb-12">
-<div>
-<h2 class="text-3xl font-black tracking-tight mb-4">Active Campaigns</h2>
-<p class="text-tertiary-fixed opacity-80">Localized blood drives requiring immediate support.</p>
-</div>
-<a class="text-tertiary-fixed font-bold border-b border-tertiary-fixed pb-1 hover:opacity-100 opacity-70 transition-opacity" href="#">View All Drives</a>
-</div>
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-<!-- Campaign Card -->
-<div class="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-8 hover:bg-white/10 transition-colors">
-<div class="flex justify-between items-start mb-6">
-<span class="px-3 py-1 bg-red-500 text-white text-[10px] font-bold rounded-full">URGENT</span>
-<span class="material-symbols-outlined text-tertiary-fixed">location_on</span>
-</div>
-<h4 class="text-xl font-bold mb-2">Yaoundé General Drive</h4>
-<p class="text-tertiary-fixed opacity-70 text-sm mb-6">Targeting 200 units of O+ and B- to replenish regional reserves.</p>
-<div class="w-full bg-white/10 h-2 rounded-full overflow-hidden mb-6">
-<div class="bg-primary h-full w-[65%]"></div>
-</div>
-<div class="flex justify-between text-xs font-bold uppercase tracking-widest">
-<span>130 / 200 Units</span>
-<span>65%</span>
-</div>
-</div>
-</div>
-</div>
+
+<!-- ===== STATS / IMPACT ===== -->
+<section class="relative py-28 md:py-36 overflow-hidden bg-on-surface">
+  <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(175,16,26,0.15),transparent_60%)] pointer-events-none"></div>
+  <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTAgMGg0MHY0SDB6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-50 pointer-events-none"></div>
+
+  <div class="relative max-w-7xl mx-auto px-6">
+    <div class="text-center max-w-2xl mx-auto mb-16 reveal">
+      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-wider border border-white/10 mb-5">Our Impact</span>
+      <h2 class="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-4">Cameroon's lifeline in numbers</h2>
+      <p class="text-white/50 text-lg">Real impact measured across every region we serve.</p>
+    </div>
+
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 reveal">
+      <!-- 1 -->
+      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center md:text-left">
+        <div class="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center text-primary mb-6 mx-auto md:mx-0">
+          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">local_hospital</span>
+        </div>
+        <div class="counter-value text-5xl md:text-6xl font-black font-headline tracking-tighter text-white" data-target="128">0</div>
+        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Verified Hospitals</p>
+      </div>
+      <!-- 2 -->
+      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center md:text-left">
+        <div class="w-14 h-14 rounded-2xl bg-tertiary/20 flex items-center justify-center text-tertiary mb-6 mx-auto md:mx-0">
+          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">groups</span>
+        </div>
+        <div class="counter-value text-5xl md:text-6xl font-black font-headline tracking-tighter text-white" data-target="15400">0</div>
+        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Eligible Donors</p>
+      </div>
+      <!-- 3 -->
+      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center md:text-left">
+        <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 mb-6 mx-auto md:mx-0">
+          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">favorite</span>
+        </div>
+        <div class="counter-value text-5xl md:text-6xl font-black font-headline tracking-tighter text-white" data-target="8902">0</div>
+        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Lives Saved</p>
+      </div>
+      <!-- 4 -->
+      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center md:text-left">
+        <div class="w-14 h-14 rounded-2xl bg-amber-500/20 flex items-center justify-center text-amber-400 mb-6 mx-auto md:mx-0">
+          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">speed</span>
+        </div>
+        <div class="text-5xl md:text-6xl font-black font-headline tracking-tighter text-white">&lt;15<span class="text-3xl text-white/40">m</span></div>
+        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Avg Response Time</p>
+      </div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="mt-12 flex flex-wrap items-center justify-center gap-6 text-sm reveal">
+      <div class="flex items-center gap-2 text-white/60">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span class="font-medium"><span class="text-white font-bold">+22%</span> donor growth this quarter</span>
+      </div>
+      <div class="flex items-center gap-2 text-white/60">
+        <span class="w-2 h-2 rounded-full bg-primary"></span>
+        <span class="font-medium"><span class="text-white font-bold">7</span> regions covered</span>
+      </div>
+      <div class="flex items-center gap-2 text-white/60">
+        <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+        <span class="font-medium"><span class="text-white font-bold">99.2%</span> request fulfillment rate</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== HOW IT WORKS ===== -->
+<section class="py-28 md:py-36 overflow-hidden">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center max-w-2xl mx-auto mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">How It Works</span>
+      <h2 class="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-on-surface mb-4">Three steps. One mission.</h2>
+      <p class="text-slate-400 text-lg">From emergency signal to life saved — our platform orchestrates every second.</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+      <!-- Step 1 -->
+      <div class="group relative bg-surface-container-lowest rounded-3xl p-8 md:p-10 border border-slate-100 hover:border-primary/20 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 reveal">
+        <div class="flex items-center justify-between mb-8">
+          <div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 group-hover:bg-primary group-hover:text-white transition-all duration-300">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">emergency_share</span>
+          </div>
+          <span class="text-8xl font-black text-slate-50 leading-none -mr-4">01</span>
+        </div>
+        <h3 class="text-2xl font-black text-on-surface mb-3">Request</h3>
+        <p class="text-slate-500 text-sm leading-relaxed mb-6">A hospital submits a verified blood request specifying type, units, urgency, and location. Our system validates and broadcasts it instantly.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1 bg-primary/5 text-primary text-[10px] font-bold rounded-full">Instant</span>
+          <span class="px-3 py-1 bg-amber-50 text-amber-700 text-[10px] font-bold rounded-full">Verified Only</span>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="group relative bg-surface-container-lowest rounded-3xl p-8 md:p-10 border border-slate-100 hover:border-tertiary/20 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 reveal" style="transition-delay:0.1s">
+        <div class="flex items-center justify-between mb-8">
+          <div class="w-16 h-16 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary group-hover:scale-110 group-hover:bg-tertiary group-hover:text-white transition-all duration-300">
+            <span class="material-symbols-outlined text-3xl">sync_alt</span>
+          </div>
+          <span class="text-8xl font-black text-slate-50 leading-none -mr-4">02</span>
+        </div>
+        <h3 class="text-2xl font-black text-on-surface mb-3">Match</h3>
+        <p class="text-slate-500 text-sm leading-relaxed mb-6">Pulse Engine scans compatible, available donors in the area. Simultaneous alerts fire via SMS, WhatsApp, and in-app notification.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1 bg-tertiary/5 text-tertiary text-[10px] font-bold rounded-full">&lt;30s</span>
+          <span class="px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full">Multi-channel</span>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="group relative bg-surface-container-lowest rounded-3xl p-8 md:p-10 border border-slate-100 hover:border-secondary/20 hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 reveal" style="transition-delay:0.2s">
+        <div class="flex items-center justify-between mb-8">
+          <div class="w-16 h-16 rounded-2xl bg-secondary/10 flex items-center justify-center text-secondary group-hover:scale-110 group-hover:bg-secondary group-hover:text-white transition-all duration-300">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">bloodtype</span>
+          </div>
+          <span class="text-8xl font-black text-slate-50 leading-none -mr-4">03</span>
+        </div>
+        <h3 class="text-2xl font-black text-on-surface mb-3">Donate</h3>
+        <p class="text-slate-500 text-sm leading-relaxed mb-6">Donor arrives at the matched facility. Hospital verifies the donation, marks the request fulfilled, and the life-saving cycle is complete.</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="px-3 py-1 bg-secondary/5 text-secondary text-[10px] font-bold rounded-full">Verified</span>
+          <span class="px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full">Tracked</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TESTIMONIALS ===== -->
+<section class="py-28 bg-surface-container-low overflow-hidden">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="text-center max-w-2xl mx-auto mb-16 reveal">
+      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Testimonials</span>
+      <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-4">Trusted by the people who save lives</h2>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-surface-container-lowest rounded-3xl p-8 border border-slate-100 hover:shadow-xl transition-all duration-300 reveal">
+        <div class="flex gap-1 mb-6">
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+        </div>
+        <p class="text-slate-600 text-sm leading-relaxed mb-6">"VitalPulse transformed how we handle emergency blood requests. What used to take hours of phone calls now happens in seconds."</p>
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center text-primary font-black text-sm">DM</div>
+          <div>
+            <p class="font-bold text-sm text-on-surface">Dr. Marie Essomba</p>
+            <p class="text-xs text-slate-400">Chief of Surgery, CHU Yaoundé</p>
+          </div>
+        </div>
+      </div>
+      <div class="bg-surface-container-lowest rounded-3xl p-8 border border-slate-100 hover:shadow-xl transition-all duration-300 reveal" style="transition-delay:0.1s">
+        <div class="flex gap-1 mb-6">
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+        </div>
+        <p class="text-slate-600 text-sm leading-relaxed mb-6">"I've been a regular donor for years. VitalPulse makes it so easy to see emergencies near me and get there quickly. The badge system keeps me motivated."</p>
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400/30 to-amber-600/10 flex items-center justify-center text-amber-600 font-black text-sm">KN</div>
+          <div>
+            <p class="font-bold text-sm text-on-surface">Kossi Nkwi</p>
+            <p class="text-xs text-slate-400">Platinum Donor · Douala</p>
+          </div>
+        </div>
+      </div>
+      <div class="bg-surface-container-lowest rounded-3xl p-8 border border-slate-100 hover:shadow-xl transition-all duration-300 reveal" style="transition-delay:0.2s">
+        <div class="flex gap-1 mb-6">
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+          <span class="material-symbols-outlined text-amber-400 text-lg" style="font-variation-settings:'FILL'1">star</span>
+        </div>
+        <p class="text-slate-600 text-sm leading-relaxed mb-6">"The inventory tracking alone has been a game-changer. We can see real-time stock levels across departments and never run out of critical types."</p>
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400/30 to-emerald-600/10 flex items-center justify-center text-emerald-600 font-black text-sm">PT</div>
+          <div>
+            <p class="font-bold text-sm text-on-surface">Paul Tchinda</p>
+            <p class="text-xs text-slate-400">Lab Director, General Hospital Douala</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CAMPAIGNS ===== -->
+<section class="py-28 overflow-hidden">
+  <div class="max-w-7xl mx-auto px-6">
+    <div class="flex flex-col md:flex-row justify-between items-end gap-6 mb-16 reveal">
+      <div>
+        <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Active Campaigns</span>
+        <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-3">Ongoing blood drives</h2>
+        <p class="text-slate-400">Localized campaigns that need your support right now.</p>
+      </div>
+      <a href="#" class="group inline-flex items-center gap-2 text-sm font-bold text-primary hover:gap-3 transition-all">
+        View all drives
+        <span class="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
+      </a>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div class="group relative bg-surface-container-lowest rounded-3xl border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 reveal">
+        <div class="h-2 bg-primary"></div>
+        <div class="p-8">
+          <div class="flex justify-between items-start mb-6">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary text-[10px] font-bold rounded-full">
+              <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+              URGENT
+            </span>
+            <span class="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">location_on</span>
+          </div>
+          <h4 class="text-xl font-bold text-on-surface mb-2">Yaoundé General Drive</h4>
+          <p class="text-slate-400 text-sm mb-6">Targeting 200 units of O+ and B- to replenish regional reserves after recent shortages.</p>
+          <div class="flex justify-between text-xs font-bold text-on-surface mb-2"><span>130 / 200 Units</span><span class="text-primary">65%</span></div>
+          <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-6">
+            <div class="h-full bg-primary rounded-full transition-all duration-1000" style="width:65%"></div>
+          </div>
+          <button class="w-full py-3.5 rounded-2xl border-2 border-slate-200 text-sm font-bold text-on-surface hover:bg-primary hover:text-white hover:border-primary active:scale-[0.98] transition-all duration-200">Join This Drive</button>
+        </div>
+      </div>
+      <div class="group relative bg-surface-container-lowest rounded-3xl border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 reveal" style="transition-delay:0.1s">
+        <div class="h-2 bg-tertiary"></div>
+        <div class="p-8">
+          <div class="flex justify-between items-start mb-6">
+            <span class="px-3 py-1 bg-tertiary/10 text-tertiary text-[10px] font-bold rounded-full">UPCOMING</span>
+            <span class="material-symbols-outlined text-slate-300 group-hover:text-tertiary transition-colors">location_on</span>
+          </div>
+          <h4 class="text-xl font-bold text-on-surface mb-2">Douala Mega Drive</h4>
+          <p class="text-slate-400 text-sm mb-6">Partnering with 5 major hospitals across Douala for a city-wide blood donation week.</p>
+          <div class="flex justify-between text-xs font-bold text-on-surface mb-2"><span>45 / 500 Units</span><span class="text-tertiary">9%</span></div>
+          <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-6">
+            <div class="h-full bg-tertiary rounded-full" style="width:9%"></div>
+          </div>
+          <button class="w-full py-3.5 rounded-2xl border-2 border-slate-200 text-sm font-bold text-on-surface hover:bg-tertiary hover:text-white hover:border-tertiary active:scale-[0.98] transition-all duration-200">Join This Drive</button>
+        </div>
+      </div>
+      <div class="group relative bg-surface-container-lowest rounded-3xl border border-slate-100 overflow-hidden hover:shadow-2xl hover:-translate-y-1 transition-all duration-500 reveal" style="transition-delay:0.2s">
+        <div class="h-2 bg-emerald-500"></div>
+        <div class="p-8">
+          <div class="flex justify-between items-start mb-6">
+            <span class="px-3 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full">ACTIVE</span>
+            <span class="material-symbols-outlined text-slate-300 group-hover:text-emerald-500 transition-colors">location_on</span>
+          </div>
+          <h4 class="text-xl font-bold text-on-surface mb-2">Bamenda Outreach</h4>
+          <p class="text-slate-400 text-sm mb-6">Mobile blood donation units visiting rural communities in the Northwest region.</p>
+          <div class="flex justify-between text-xs font-bold text-on-surface mb-2"><span>78 / 150 Units</span><span class="text-emerald-600">52%</span></div>
+          <div class="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden mb-6">
+            <div class="h-full bg-emerald-500 rounded-full" style="width:52%"></div>
+          </div>
+          <button class="w-full py-3.5 rounded-2xl border-2 border-slate-200 text-sm font-bold text-on-surface hover:bg-emerald-600 hover:text-white hover:border-emerald-600 active:scale-[0.98] transition-all duration-200">Join This Drive</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FAQ ===== -->
+<section class="py-28 bg-surface-container-low overflow-hidden">
+  <div class="max-w-3xl mx-auto px-6">
+    <div class="text-center max-w-xl mx-auto mb-16 reveal">
+      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">FAQ</span>
+      <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-4">Frequently asked questions</h2>
+    </div>
+    <div class="space-y-4 reveal">
+      <div class="faq-item bg-surface-container-lowest rounded-2xl border border-slate-100 overflow-hidden">
+        <button class="faq-trigger w-full flex items-center justify-between p-6 text-left font-bold text-on-surface text-sm" onclick="toggleFaq(this)">
+          <span>How do I register as a donor?</span>
+          <span class="material-symbols-outlined text-slate-400 faq-chevron transition-transform duration-300">expand_more</span>
+        </button>
+        <div class="faq-content max-h-0 overflow-hidden transition-all duration-300">
+          <div class="px-6 pb-6 text-sm text-slate-500 leading-relaxed">Simply click "Join Free" on this page, fill in your details including blood type and location, and you're in. We'll verify your identity and you'll start receiving emergency alerts matching your blood type and area.</div>
+        </div>
+      </div>
+      <div class="faq-item bg-surface-container-lowest rounded-2xl border border-slate-100 overflow-hidden">
+        <button class="faq-trigger w-full flex items-center justify-between p-6 text-left font-bold text-on-surface text-sm" onclick="toggleFaq(this)">
+          <span>Is VitalPulse free for hospitals?</span>
+          <span class="material-symbols-outlined text-slate-400 faq-chevron transition-transform duration-300">expand_more</span>
+        </button>
+        <div class="faq-content max-h-0 overflow-hidden transition-all duration-300">
+          <div class="px-6 pb-6 text-sm text-slate-500 leading-relaxed">Yes. VitalPulse is free for all verified hospitals and clinics in Cameroon. We believe access to emergency blood coordination should never be a financial barrier.</div>
+        </div>
+      </div>
+      <div class="faq-item bg-surface-container-lowest rounded-2xl border border-slate-100 overflow-hidden">
+        <button class="faq-trigger w-full flex items-center justify-between p-6 text-left font-bold text-on-surface text-sm" onclick="toggleFaq(this)">
+          <span>What blood types are needed most?</span>
+          <span class="material-symbols-outlined text-slate-400 faq-chevron transition-transform duration-300">expand_more</span>
+        </button>
+        <div class="faq-content max-h-0 overflow-hidden transition-all duration-300">
+          <div class="px-6 pb-6 text-sm text-slate-500 leading-relaxed">O-negative (universal donor) and B-negative are consistently in highest demand. However, all types are needed — the platform matches based on real-time hospital requirements.</div>
+        </div>
+      </div>
+      <div class="faq-item bg-surface-container-lowest rounded-2xl border border-slate-100 overflow-hidden">
+        <button class="faq-trigger w-full flex items-center justify-between p-6 text-left font-bold text-on-surface text-sm" onclick="toggleFaq(this)">
+          <span>How does the matching algorithm work?</span>
+          <span class="material-symbols-outlined text-slate-400 faq-chevron transition-transform duration-300">expand_more</span>
+        </button>
+        <div class="faq-content max-h-0 overflow-hidden transition-all duration-300">
+          <div class="px-6 pb-6 text-sm text-slate-500 leading-relaxed">Our Pulse Engine cross-references the request's blood type, urgency, and location against our donor database — filtering by compatibility, availability, and distance. The closest matching donors are alerted simultaneously.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== CTA ===== -->
+<section class="relative py-28 md:py-36 overflow-hidden">
+  <div class="absolute inset-0 bg-gradient-to-br from-primary via-primary to-[#8a0d14]">
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.12),transparent_50%)]"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(255,255,255,0.08),transparent_50%)]"></div>
+  </div>
+  <div class="relative max-w-3xl mx-auto px-6 text-center reveal">
+    <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 text-white text-xs font-bold uppercase tracking-wider border border-white/20 mb-6">Join the Movement</span>
+    <h2 class="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-5">Ready to make a difference?</h2>
+    <p class="text-white/70 text-lg max-w-lg mx-auto mb-10">Every donation saves up to three lives. Join thousands of Cameroonians already on the platform.</p>
+    <div class="flex flex-col sm:flex-row justify-center gap-4">
+      <a href="/signup.html" class="inline-flex items-center justify-center gap-3 bg-white text-primary px-8 py-4 rounded-2xl font-bold text-base shadow-2xl hover:shadow-white/30 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">favorite</span>
+        Become a Donor
+      </a>
+      <a href="/login.html" class="inline-flex items-center justify-center gap-3 bg-white/10 text-white px-8 py-4 rounded-2xl font-bold text-base border border-white/20 hover:bg-white/20 transition-all duration-200">
+        <span class="material-symbols-outlined">local_hospital</span>
+        Hospital Portal
+      </a>
+    </div>
+    <p class="text-white/40 text-sm mt-6">No credit card required. Free for all verified hospitals and donors.</p>
+  </div>
 </section>
 </main>
-<!-- Footer -->
-<footer class="bg-surface-container-highest pt-20 pb-10 px-6">
-<div class="max-w-7xl mx-auto">
-<div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-20">
-<div class="col-span-1 md:col-span-1">
-<span class="text-2xl font-black text-primary tracking-tighter block mb-6">VitalPulse</span>
-<p class="text-slate-500 text-sm leading-relaxed">
-                        The heartbeat of Cameroon's medical infrastructure. Secure, rapid, and life-saving blood coordination.
-                    </p>
-</div>
-<div>
-<h5 class="font-bold text-sm mb-6 uppercase tracking-widest text-slate-400">Navigation</h5>
-<ul class="space-y-4 text-sm font-medium">
-<li><a class="text-on-surface hover:text-primary" href="#">Find a Hospital</a></li>
-<li><a class="text-on-surface hover:text-primary" href="#">Donor Guide</a></li>
-<li><a class="text-on-surface hover:text-primary" href="#">Campaigns</a></li>
-<li><a class="text-on-surface hover:text-primary" href="#">API Access</a></li>
-</ul>
-</div>
-<div>
-<h5 class="font-bold text-sm mb-6 uppercase tracking-widest text-slate-400">Support</h5>
-<ul class="space-y-4 text-sm font-medium">
-<li><a class="text-on-surface hover:text-primary" href="#">Help Center</a></li>
-<li><a class="text-on-surface hover:text-primary" href="#">Privacy Policy</a></li>
-<li><a class="text-on-surface hover:text-primary" href="#">Contact Us</a></li>
-<li><a class="text-on-surface hover:text-primary" href="#">Impact Report</a></li>
-</ul>
-</div>
-<div class="bg-surface-container-lowest p-6 rounded-xl">
-<h5 class="font-bold text-sm mb-4 uppercase tracking-widest text-primary">Emergency Line</h5>
-<p class="text-2xl font-black mb-2">+237 800-PULSE</p>
-<p class="text-xs text-slate-400">24/7 Rapid Response Coordination</p>
-</div>
-</div>
-<div class="border-t border-slate-200 pt-8 flex flex-col md:flex-row justify-between items-center gap-6">
-<p class="text-slate-400 text-xs">© 2024 VitalPulse Cameroon. A health-tech initiative.</p>
-<div class="flex gap-6">
-<a class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center hover:bg-primary hover:text-white transition-colors" href="#">
-<span class="material-symbols-outlined text-sm">public</span>
-</a>
-<a class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center hover:bg-primary hover:text-white transition-colors" href="#">
-<span class="material-symbols-outlined text-sm">mail</span>
-</a>
-</div>
-</div>
-</div>
+
+<!-- ===== FOOTER ===== -->
+<footer class="bg-on-surface pt-20 pb-6 px-6">
+  <div class="max-w-7xl mx-auto">
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-10 mb-16">
+      <div class="col-span-2 md:col-span-2">
+        <div class="flex items-center gap-3 mb-6">
+          <div class="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/30">
+            <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">pulse</span>
+          </div>
+          <span class="text-xl font-black text-white tracking-tighter">Vital<span class="text-white/50">Pulse</span></span>
+        </div>
+        <p class="text-slate-500 text-sm leading-relaxed max-w-xs mb-8">The heartbeat of Cameroon's medical infrastructure. Secure, rapid, and life-saving blood coordination.</p>
+        <div class="flex gap-3">
+          <a href="#" class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-slate-500 hover:bg-primary hover:text-white hover:scale-110 transition-all duration-200"><span class="material-symbols-outlined text-lg">public</span></a>
+          <a href="#" class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-slate-500 hover:bg-primary hover:text-white hover:scale-110 transition-all duration-200"><span class="material-symbols-outlined text-lg">mail</span></a>
+          <a href="#" class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-slate-500 hover:bg-primary hover:text-white hover:scale-110 transition-all duration-200"><span class="material-symbols-outlined text-lg">smartphone</span></a>
+        </div>
+      </div>
+      <div>
+        <h5 class="font-bold text-sm text-white mb-6 uppercase tracking-wider">Platform</h5>
+        <ul class="space-y-3.5">
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Find a Hospital</a></li>
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Donor Guide</a></li>
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Campaigns</a></li>
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">API Access</a></li>
+        </ul>
+      </div>
+      <div>
+        <h5 class="font-bold text-sm text-white mb-6 uppercase tracking-wider">Support</h5>
+        <ul class="space-y-3.5">
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Help Center</a></li>
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Privacy Policy</a></li>
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Terms of Service</a></li>
+          <li><a href="#" class="text-slate-500 text-sm hover:text-white transition-colors">Contact Us</a></li>
+        </ul>
+      </div>
+      <div class="bg-white/5 rounded-2xl p-6 border border-white/10">
+        <span class="material-symbols-outlined text-primary block mb-3">emergency</span>
+        <h5 class="font-bold text-sm text-white mb-1 uppercase tracking-wider">Emergency Line</h5>
+        <p class="text-2xl font-black text-white mb-1">+237 800-PULSE</p>
+        <p class="text-xs text-slate-500">24/7 Rapid Response Coordination</p>
+      </div>
+    </div>
+    <div class="border-t border-white/10 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
+      <p class="text-slate-600 text-xs">&copy; 2026 VitalPulse Cameroon. A health-tech initiative.</p>
+      <div class="flex gap-6 text-xs text-slate-600">
+        <a href="#" class="hover:text-white transition-colors">Privacy</a>
+        <a href="#" class="hover:text-white transition-colors">Terms</a>
+        <a href="#" class="hover:text-white transition-colors">Cookies</a>
+      </div>
+    </div>
+  </div>
 </footer>
-<!-- Bottom Navigation (Mobile Only) -->
-<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/90 backdrop-blur-xl flex justify-around items-center px-4 pb-6 pt-3 border-t border-slate-100">
-<a class="flex flex-col items-center justify-center text-red-700 bg-red-50 rounded-xl px-3 py-1" href="#">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span>
-<span class="font-inter text-[10px] uppercase tracking-widest font-bold">Home</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400" href="#">
-<span class="material-symbols-outlined">emergency</span>
-<span class="font-inter text-[10px] uppercase tracking-widest">Requests</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400" href="#">
-<span class="material-symbols-outlined">map</span>
-<span class="font-inter text-[10px] uppercase tracking-widest">Map</span>
-</a>
-<a class="flex flex-col items-center justify-center text-slate-400" href="#">
-<span class="material-symbols-outlined">person</span>
-<span class="font-inter text-[10px] uppercase tracking-widest">Profile</span>
-</a>
-</nav>
+
+<style>
+@keyframes fade-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse-slow { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.15); } }
+
+.animate-pulse-slow { animation: pulse-slow 6s ease-in-out infinite; }
+
+.reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+.reveal.revealed { opacity: 1; transform: translateY(0); }
+
+.nav-scrolled { background: rgba(249, 249, 249, 0.85) !important; backdrop-filter: blur(20px) !important; box-shadow: 0 1px 30px rgba(0,0,0,0.06); }
+
+.faq-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.faq-item.open .faq-content { max-height: 300px; }
+.faq-item.open .faq-chevron { transform: rotate(180deg); }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // Scroll reveal
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('revealed'); observer.unobserve(e.target); } });
+  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Counters
+  const counterObs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        const el = e.target;
+        const target = parseInt(el.dataset.target);
+        if (isNaN(target)) return;
+        const steps = 60;
+        const inc = target / steps;
+        let s = 0;
+        const t = setInterval(() => {
+          s++;
+          const v = Math.round(inc * s);
+          el.textContent = v >= target ? target.toLocaleString() : v.toLocaleString();
+          if (v >= target) clearInterval(t);
+        }, 2000 / steps);
+        counterObs.unobserve(el);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('.counter-value').forEach(el => counterObs.observe(el));
+
+  // Nav scroll
+  const header = document.getElementById('siteHeader');
+  window.addEventListener('scroll', () => {
+    header.classList.toggle('nav-scrolled', window.scrollY > 80);
+  }, { passive: true });
+});
+
+// FAQ toggle
+function toggleFaq(btn) {
+  const item = btn.closest('.faq-item');
+  const isOpen = item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(el => el.classList.remove('open'));
+  if (!isOpen) item.classList.add('open');
+}
+</script>
+
 <script type="module" src="/src/main.js"></script>
-</body></html>
+</body>
+</html>

@@ -44,7 +44,7 @@ export async function fetchRecentLogs(limitCount = 5) {
 export async function fetchActiveRequests() {
     const q = query(
         collection(db, 'requests'),
-        where('status', 'in', ['Open', 'Matching'])
+        where('status', 'in', ['Open', 'Matching', 'Donor Assigned', 'Donor En Route'])
     );
     const snapshot = await getDocs(q);
     const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -55,9 +55,27 @@ export async function createEmergencyRequest(requestData) {
     const docRef = await addDoc(collection(db, 'requests'), {
         ...requestData,
         status: 'Open',
+        isEmergency: true,
         requestedAt: new Date().toISOString()
     });
-    return { id: docRef.id, ...requestData };
+
+    const result = { id: docRef.id, ...requestData };
+
+    // Auto-match: find eligible donors and notify them
+    const settings = await fetchSystemSettings().catch(() => ({ autoMatchDonors: true }));
+    if (settings.autoMatchDonors !== false) {
+        autoMatchDonors(docRef.id, requestData).catch(err =>
+            console.warn('Auto-match failed (non-blocking):', err)
+        );
+    }
+
+    await logActivity(
+        'Emergency Request Created',
+        `Emergency: ${requestData.bloodType || requestData.type || '?'} needed at ${requestData.hospital || 'Unknown'} (${requestData.city || 'Unknown city'})`,
+        'error'
+    );
+
+    return result;
 }
 
 export async function fetchMatchedRequestsForDonor(bloodType, location) {
@@ -74,11 +92,253 @@ export async function fetchMatchedRequestsForDonor(bloodType, location) {
 
 export async function acceptRequest(requestId, donorId) {
     const reqDoc = doc(db, 'requests', requestId);
+    const snapshot = await getDoc(reqDoc);
+    const reqData = snapshot.exists() ? snapshot.data() : {};
+
     await updateDoc(reqDoc, {
-        status: 'Matching',
+        status: 'Donor Assigned',
         matchedDonor: donorId,
         matchedAt: new Date().toISOString()
     });
+
+    await logActivity(
+        'Donor Assigned',
+        `Donor assigned to request #${requestId.slice(0, 8)} — ${reqData.bloodType || reqData.type || '?'} needed at ${reqData.hospital || 'Unknown'}`,
+        'success'
+    );
+
+    // Notify the hospital
+    const hospitalName = reqData.hospital || '';
+    if (hospitalName) {
+        const hospitalsQuery = query(
+            collection(db, 'users'),
+            where('name', '==', hospitalName),
+            where('role', '==', 'hospital'),
+            limit(5)
+        );
+        const hospitalSnap = await getDocs(hospitalsQuery);
+        for (const hDoc of hospitalSnap.docs) {
+            const hospital = hDoc.data();
+            const msg = `[VitalPulse] A donor has accepted your ${reqData.bloodType || reqData.type || 'blood'} request (#${requestId.slice(0, 8).toUpperCase()}). They are on their way.`;
+            if (hospital.phone) {
+                await sendSmsNotification(hospital.phone, msg).catch(() => {});
+                await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+            }
+            await addHospitalNotification(hDoc.id, 'Donor Assigned', msg, 'success');
+        }
+    }
+}
+
+export async function donorSetEnRoute(requestId, donorId) {
+    const reqDoc = doc(db, 'requests', requestId);
+    const snapshot = await getDoc(reqDoc);
+    const reqData = snapshot.exists() ? snapshot.data() : {};
+
+    await updateDoc(reqDoc, {
+        status: 'Donor En Route',
+        enRouteAt: new Date().toISOString()
+    });
+
+    await logActivity(
+        'Donor En Route',
+        `Donor heading to hospital for request #${requestId.slice(0, 8)} — ${reqData.bloodType || reqData.type || '?'}`,
+        'success'
+    );
+
+    // Notify the hospital
+    const hospitalName = reqData.hospital || '';
+    if (hospitalName) {
+        const hospitalsQuery = query(
+            collection(db, 'users'),
+            where('name', '==', hospitalName),
+            where('role', '==', 'hospital'),
+            limit(5)
+        );
+        const hospitalSnap = await getDocs(hospitalsQuery);
+        for (const hDoc of hospitalSnap.docs) {
+            const hospital = hDoc.data();
+            const msg = `[VitalPulse] 🚑 A donor is en route to your facility for request #${requestId.slice(0, 8).toUpperCase()} (${reqData.bloodType || reqData.type || '?'}). Expected arrival shortly.`;
+            if (hospital.phone) {
+                await sendSmsNotification(hospital.phone, msg).catch(() => {});
+                await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+            }
+            await addHospitalNotification(hDoc.id, 'Donor En Route', msg, 'info');
+        }
+    }
+}
+
+// ============================================
+// DONOR NOTIFICATION SYSTEM (in-app)
+// ============================================
+
+export async function addDonorNotification(donorId, title, message, type = 'info') {
+    try {
+        await addDoc(collection(db, 'donor_notifications'), {
+            donorId,
+            title,
+            message,
+            type,
+            read: false,
+            createdAt: new Date().toISOString()
+        });
+    } catch (e) {
+        console.warn('Failed to add donor notification:', e);
+    }
+}
+
+export async function fetchDonorNotifications(donorId, max = 20) {
+    const q = query(
+        collection(db, 'donor_notifications'),
+        where('donorId', '==', donorId),
+        orderBy('createdAt', 'desc'),
+        limit(max)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function fetchUnreadNotificationCount(donorId) {
+    const q = query(
+        collection(db, 'donor_notifications'),
+        where('donorId', '==', donorId),
+        where('read', '==', false)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.size;
+}
+
+export async function markNotificationRead(notifId) {
+    const notifDoc = doc(db, 'donor_notifications', notifId);
+    await updateDoc(notifDoc, { read: true });
+}
+
+export async function markAllNotificationsRead(donorId) {
+    const q = query(
+        collection(db, 'donor_notifications'),
+        where('donorId', '==', donorId),
+        where('read', '==', false)
+    );
+    const snapshot = await getDocs(q);
+    const updates = snapshot.docs.map(d => updateDoc(doc(db, 'donor_notifications', d.id), { read: true }));
+    await Promise.all(updates);
+}
+
+// ============================================
+// HOSPITAL NOTIFICATION SYSTEM
+// ============================================
+
+export async function addHospitalNotification(hospitalId, title, message, type = 'info') {
+    try {
+        await addDoc(collection(db, 'hospital_notifications'), {
+            hospitalId,
+            title,
+            message,
+            type,
+            read: false,
+            createdAt: new Date().toISOString()
+        });
+    } catch (e) {
+        console.warn('Failed to add hospital notification:', e);
+    }
+}
+
+export async function fetchHospitalNotifications(hospitalId, max = 20) {
+    const q = query(
+        collection(db, 'hospital_notifications'),
+        where('hospitalId', '==', hospitalId),
+        orderBy('createdAt', 'desc'),
+        limit(max)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+export async function fetchUnreadHospitalNotificationCount(hospitalId) {
+    const q = query(
+        collection(db, 'hospital_notifications'),
+        where('hospitalId', '==', hospitalId),
+        where('read', '==', false)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.size;
+}
+
+export async function markHospitalNotificationRead(notifId) {
+    const notifDoc = doc(db, 'hospital_notifications', notifId);
+    await updateDoc(notifDoc, { read: true });
+}
+
+export async function markAllHospitalNotificationsRead(hospitalId) {
+    const q = query(
+        collection(db, 'hospital_notifications'),
+        where('hospitalId', '==', hospitalId),
+        where('read', '==', false)
+    );
+    const snapshot = await getDocs(q);
+    const updates = snapshot.docs.map(d => updateDoc(doc(db, 'hospital_notifications', d.id), { read: true }));
+    await Promise.all(updates);
+}
+
+// ============================================
+// AUTO-MATCHING ENGINE
+// ============================================
+
+export async function autoMatchDonors(requestId, requestData) {
+    const bloodTypeNeeded = requestData.bloodType || requestData.type;
+    const location = requestData.city || requestData.hospitalCity;
+    if (!bloodTypeNeeded || !location) {
+        console.warn('Auto-match: missing bloodType or city, skipping');
+        return [];
+    }
+
+    const compatibleTypes = getCompatibleBloodTypes(bloodTypeNeeded);
+    const matchingDonors = [];
+
+    // Query donors in same city with compatible blood type
+    const q = query(
+        collection(db, 'users'),
+        where('role', '==', 'donor'),
+        where('bloodType', 'in', compatibleTypes),
+        where('isAvailable', '==', true),
+        where('city', '==', location),
+        limit(30)
+    );
+
+    const snapshot = await getDocs(q);
+    for (const docSnap of snapshot.docs) {
+        const donor = { id: docSnap.id, ...docSnap.data() };
+        if (donor.isSuspended) continue;
+
+        matchingDonors.push(donor);
+
+        const msg = `[VitalPulse] 🆘 Emergency blood request! ${bloodTypeNeeded} needed at ${requestData.hospital || 'a hospital near you'} (${location}). Your compatibility matches. Please respond ASAP. Reply in app to accept.`;
+        if (donor.phone) {
+            await sendSmsNotification(donor.phone, msg).catch(() => {});
+            await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
+        }
+        await addDonorNotification(
+            donor.id,
+            'Emergency Blood Request',
+            `🆘 ${bloodTypeNeeded} needed urgently at ${requestData.hospital || 'a nearby hospital'} (${location}). ${requestData.urgency ? 'Urgency: ' + requestData.urgency : ''} ${requestData.notes ? 'Notes: ' + requestData.notes : ''}`,
+            'error'
+        );
+    }
+
+    if (matchingDonors.length > 0) {
+        await updateDoc(doc(db, 'requests', requestId), {
+            matchingDonorsNotified: matchingDonors.map(d => d.id),
+            matchingDonorsCount: matchingDonors.length,
+            notifiedAt: new Date().toISOString()
+        });
+
+        await logActivity(
+            'Donors Notified',
+            `${matchingDonors.length} compatible donor(s) notified for request #${requestId.slice(0, 8)} (${bloodTypeNeeded})`,
+            'info'
+        );
+    }
+
+    return matchingDonors;
 }
 
 // Smart Matching Engine
@@ -234,7 +494,7 @@ export async function fetchClinicsOnlineCount() {
 export function subscribeToRequests(callback) {
     const q = query(
         collection(db, 'requests'),
-        where('status', 'in', ['Open', 'Matching'])
+        where('status', 'in', ['Open', 'Matching', 'Donor Assigned', 'Donor En Route'])
     );
     return onSnapshot(q, (snapshot) => {
         let requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -247,65 +507,159 @@ export function subscribeToRequests(callback) {
 // BLOOD INVENTORY MANAGEMENT
 // ============================================
 
-export async function fetchInventory() {
+function invDocId(hospital, type) {
+    return `${hospital.replace(/\s+/g, '_')}_${type}`;
+}
+
+export async function fetchInventory(hospitalName) {
+    const q = query(
+        collection(db, 'inventory'),
+        where('hospital', '==', hospitalName)
+    );
+    const snapshot = await getDocs(q);
+    const inventory = {};
+    snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        inventory[data.bloodType] = enrichInventoryType(data);
+    });
+
+    const allTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+    allTypes.forEach(type => {
+        if (!inventory[type]) {
+            inventory[type] = emptyInventoryType(type, hospitalName);
+        }
+    });
+
+    return inventory;
+}
+
+function enrichInventoryType(data) {
+    const batches = data.batches || [];
+    const now = new Date();
+    let expiringSoon = 0;
+    let expiredUnits = 0;
+    batches.forEach(b => {
+        if (b.expiresAt) {
+            const daysLeft = (new Date(b.expiresAt) - now) / (1000 * 60 * 60 * 24);
+            if (daysLeft < 0) expiredUnits += b.units;
+            else if (daysLeft <= 30) expiringSoon += b.units;
+        }
+    });
+    return {
+        ...data,
+        batches,
+        componentTotals: data.componentTotals || {},
+        expiringSoon,
+        expiredUnits,
+        batchCount: batches.length
+    };
+}
+
+function emptyInventoryType(bloodType, hospitalName) {
+    return {
+        bloodType,
+        hospital: hospitalName,
+        unitsAvailable: 0,
+        unitsReserved: 0,
+        minimumThreshold: 5,
+        lastUpdated: null,
+        expiresAt: null,
+        batches: [],
+        componentTotals: {},
+        expiringSoon: 0,
+        expiredUnits: 0,
+        batchCount: 0
+    };
+}
+
+export function getDaysUntilExpiry(expiresAt) {
+    if (!expiresAt) return null;
+    const diff = (new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24);
+    return Math.ceil(diff);
+}
+
+export async function fetchGlobalInventory() {
     const q = query(collection(db, 'inventory'));
     const snapshot = await getDocs(q);
     const inventory = {};
     snapshot.docs.forEach(doc => {
-        inventory[doc.id] = doc.data();
+        const data = doc.data();
+        const key = data.bloodType + (data.hospital ? '_' + data.hospital : '');
+        inventory[key] = enrichInventoryType(data);
     });
-    
-    const allTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
-    allTypes.forEach(type => {
-        if (!inventory[type]) {
-            inventory[type] = {
-                bloodType: type,
-                unitsAvailable: 0,
-                unitsReserved: 0,
-                minimumThreshold: 5,
-                lastUpdated: null,
-                expiresAt: null
-            };
-        }
-    });
-    
     return inventory;
 }
 
-export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'add') {
-    const inventoryRef = doc(db, 'inventory', bloodType);
+export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'add', hospitalName, options = {}) {
+    if (!hospitalName) throw new Error('hospitalName is required for inventory operations');
+    const docId = invDocId(hospitalName, bloodType);
+    const inventoryRef = doc(db, 'inventory', docId);
     const snapshot = await getDoc(inventoryRef);
-    
-    let currentUnits = 0;
-    if (snapshot.exists()) {
-        currentUnits = snapshot.data().unitsAvailable || 0;
+
+    const existing = snapshot.exists() ? snapshot.data() : {};
+    let batches = existing.batches || [];
+    let currentUnits = existing.unitsAvailable || 0;
+
+    if (operation === 'add') {
+        const units = parseInt(unitsToAdd, 10);
+        const componentType = options.componentType || 'Whole Blood';
+        const expiresAt = options.expiresAt || null;
+        const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        batches.push({
+            id: batchId,
+            units,
+            componentType,
+            expiresAt,
+            addedAt: new Date().toISOString()
+        });
+        currentUnits += units;
+    } else {
+        const units = parseInt(unitsToAdd, 10);
+        let toDeduct = units;
+        batches = batches.filter(b => {
+            if (toDeduct <= 0) return true;
+            if (b.units <= toDeduct) {
+                toDeduct -= b.units;
+                return false;
+            }
+            b.units -= toDeduct;
+            toDeduct = 0;
+            return true;
+        });
+        currentUnits = Math.max(0, currentUnits - units);
     }
-    
-    const newUnits = operation === 'add' 
-        ? currentUnits + parseInt(unitsToAdd, 10)
-        : Math.max(0, currentUnits - parseInt(unitsToAdd, 10));
-    
+
+    const componentTotals = {};
+    batches.forEach(b => {
+        componentTotals[b.componentType] = (componentTotals[b.componentType] || 0) + b.units;
+    });
+
     await setDoc(inventoryRef, {
         bloodType,
-        unitsAvailable: newUnits,
+        hospital: hospitalName,
+        unitsAvailable: currentUnits,
         unitsReserved: 0,
-        minimumThreshold: snapshot.exists() ? (snapshot.data().minimumThreshold || 5) : 5,
+        batches,
+        componentTotals,
+        minimumThreshold: existing.minimumThreshold || 5,
         lastUpdated: new Date().toISOString(),
-        expiresAt: null
+        expiresAt: options.expiresAt || null
     }, { merge: true });
-    
+
     const action = operation === 'add' ? 'Added' : 'Removed';
     await logActivity(
         'Inventory Update',
-        `${action} ${unitsToAdd} units of ${bloodType}. New total: ${newUnits}`,
+        `${action} ${unitsToAdd} units of ${bloodType} at ${hospitalName}. New total: ${currentUnits}`,
         operation === 'add' ? 'success' : 'warning'
     );
-    
-    return { bloodType, unitsAvailable: newUnits };
+
+    return { bloodType, unitsAvailable: currentUnits };
 }
 
-export async function setInventoryThreshold(bloodType, threshold) {
-    const inventoryRef = doc(db, 'inventory', bloodType);
+export async function setInventoryThreshold(bloodType, threshold, hospitalName) {
+    if (!hospitalName) throw new Error('hospitalName is required');
+    const docId = invDocId(hospitalName, bloodType);
+    const inventoryRef = doc(db, 'inventory', docId);
     const snapshot = await getDoc(inventoryRef);
     
     if (snapshot.exists()) {
@@ -313,6 +667,7 @@ export async function setInventoryThreshold(bloodType, threshold) {
     } else {
         await setDoc(inventoryRef, {
             bloodType,
+            hospital: hospitalName,
             unitsAvailable: 0,
             unitsReserved: 0,
             minimumThreshold: parseInt(threshold, 10),
@@ -322,7 +677,7 @@ export async function setInventoryThreshold(bloodType, threshold) {
     
     await logActivity(
         'Threshold Updated',
-        `Minimum stock threshold for ${bloodType} set to ${threshold} units`,
+        `Minimum stock threshold for ${bloodType} at ${hospitalName} set to ${threshold} units`,
         'info'
     );
 }
@@ -564,11 +919,30 @@ export async function fetchHospitalRequests(hospitalName) {
 
 export async function completeDonorArrival(requestId) {
     const reqDoc = doc(db, 'requests', requestId);
+    const snapshot = await getDoc(reqDoc);
+    const reqData = snapshot.exists() ? snapshot.data() : {};
+
     await updateDoc(reqDoc, {
-        status: 'resolved',
+        status: 'Resolved',
         resolvedAt: new Date().toISOString()
     });
-    await logActivity('Donor Arrived', `Donor arrived at hospital and donation completed for request #${requestId.slice(0, 8)}`, 'success');
+
+    await logActivity('Donor Arrived', `Donor arrived at hospital and donation completed for request #${requestId.slice(0, 8)} — ${reqData.bloodType || reqData.type || '?'}`, 'success');
+
+    // Notify the matched donor of completion
+    const donorId = reqData.matchedDonor;
+    if (donorId) {
+        const msg = `[VitalPulse] ✅ Thank you! Your donation at ${reqData.hospital || 'the hospital'} has been marked complete. You've earned points and are one step closer to your next badge!`;
+        await addDonorNotification(donorId, 'Donation Complete', msg, 'success');
+        const donorSnap = await getDoc(doc(db, 'users', donorId));
+        if (donorSnap.exists()) {
+            const donor = donorSnap.data();
+            if (donor.phone) {
+                await sendSmsNotification(donor.phone, msg).catch(() => {});
+                await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
+            }
+        }
+    }
 }
 
 export async function fetchIncomingDonors(hospitalName) {
@@ -577,7 +951,7 @@ export async function fetchIncomingDonors(hospitalName) {
         where('hospital', '==', hospitalName)
     );
     const snapshot = await getDocs(q);
-    const matching = snapshot.docs.filter(doc => doc.data().status === 'Matching');
+    const matching = snapshot.docs.filter(doc => ['Donor Assigned', 'Donor En Route'].includes(doc.data().status));
     const results = [];
     for (const docSnap of matching) {
         const data = { id: docSnap.id, ...docSnap.data() };
@@ -601,17 +975,41 @@ export async function fetchIncomingDonors(hospitalName) {
 // ============================================
 
 export async function issueBloodToPatient(bloodType, units, patientData) {
-    const inventoryRef = doc(db, 'inventory', bloodType);
+    const hospitalName = patientData.hospital;
+    if (!hospitalName) throw new Error('patientData.hospital is required');
+    const docId = invDocId(hospitalName, bloodType);
+    const inventoryRef = doc(db, 'inventory', docId);
     const snapshot = await getDoc(inventoryRef);
-    const currentUnits = snapshot.exists() ? (snapshot.data().unitsAvailable || 0) : 0;
+    const data = snapshot.exists() ? snapshot.data() : {};
+    const currentUnits = data.unitsAvailable || 0;
     const newUnits = Math.max(0, currentUnits - parseInt(units, 10));
+
+    let batches = data.batches || [];
+    let toDeduct = parseInt(units, 10);
+    batches = batches.filter(b => {
+        if (toDeduct <= 0) return true;
+        if (b.units <= toDeduct) {
+            toDeduct -= b.units;
+            return false;
+        }
+        b.units -= toDeduct;
+        toDeduct = 0;
+        return true;
+    });
+    const componentTotals = {};
+    batches.forEach(b => {
+        componentTotals[b.componentType] = (componentTotals[b.componentType] || 0) + b.units;
+    });
 
     await setDoc(inventoryRef, {
         bloodType,
+        hospital: hospitalName,
         unitsAvailable: newUnits,
-        unitsReserved: snapshot.exists() ? (snapshot.data().unitsReserved || 0) : 0,
-        minimumThreshold: snapshot.exists() ? (snapshot.data().minimumThreshold || 5) : 5,
-        lastUpdated: new Date().toISOString()
+        unitsReserved: snapshot.exists() ? (data.unitsReserved || 0) : 0,
+        minimumThreshold: data.minimumThreshold || 5,
+        lastUpdated: new Date().toISOString(),
+        batches,
+        componentTotals
     }, { merge: true });
 
     await addDoc(collection(db, 'issuance_log'), {
@@ -622,96 +1020,57 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
         ward: patientData.ward || '',
         requestingDoctor: patientData.requestingDoctor || '',
         diagnosis: patientData.diagnosis || '',
-        hospital: patientData.hospital || '',
+        hospital: hospitalName,
         issuedAt: new Date().toISOString()
     });
 
     await logActivity(
         'Blood Issued',
-        `${units} unit(s) of ${bloodType} issued to ${patientData.patientName} at ${patientData.ward || 'Unknown Ward'} — ${patientData.diagnosis || 'No diagnosis'} — Dr. ${patientData.requestingDoctor || 'N/A'} — ${patientData.hospital || ''}`,
+        `${units} unit(s) of ${bloodType} issued to ${patientData.patientName} at ${patientData.ward || 'Unknown Ward'} — ${patientData.diagnosis || 'No diagnosis'} — Dr. ${patientData.requestingDoctor || 'N/A'} — ${hospitalName}`,
         'warning'
     );
 
     return { bloodType, unitsAvailable: newUnits };
 }
 
-export async function deductInventoryStock(bloodType, units, reason = 'adjustment') {
-    const inventoryRef = doc(db, 'inventory', bloodType);
+export async function deductInventoryStock(bloodType, units, reason = 'adjustment', hospitalName) {
+    if (!hospitalName) throw new Error('hospitalName is required');
+    const docId = invDocId(hospitalName, bloodType);
+    const inventoryRef = doc(db, 'inventory', docId);
     const snapshot = await getDoc(inventoryRef);
-    const currentUnits = snapshot.exists() ? (snapshot.data().unitsAvailable || 0) : 0;
+
+    if (!snapshot.exists()) throw new Error(`No inventory found for ${bloodType} at ${hospitalName}`);
+    const data = snapshot.data();
+    const currentUnits = data.unitsAvailable || 0;
     const newUnits = Math.max(0, currentUnits - parseInt(units, 10));
+    const deducted = currentUnits - newUnits;
 
-    await setDoc(inventoryRef, {
-        bloodType,
-        unitsAvailable: newUnits,
-        unitsReserved: snapshot.exists() ? (snapshot.data().unitsReserved || 0) : 0,
-        minimumThreshold: snapshot.exists() ? (snapshot.data().minimumThreshold || 5) : 5,
-        lastUpdated: new Date().toISOString()
-    }, { merge: true });
-
-    await logActivity(
-        'Stock Deducted',
-        `${units} unit(s) of ${bloodType} removed — Reason: ${reason}`,
-        'warning'
-    );
-
-    return { bloodType, unitsAvailable: newUnits };
-}
-
-// ============================================
-// HOSPITAL-SPECIFIC ACTIVITY LOG
-// ============================================
-
-export async function fetchHospitalActivityLogs(hospitalName, limitCount = 15) {
-    const q = query(
-        collection(db, 'activity_logs'),
-        orderBy('timestamp', 'desc'),
-        limit(50)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(log =>
-            log.description?.toLowerCase().includes(hospitalName.toLowerCase()) ||
-            log.title?.toLowerCase().includes(hospitalName.toLowerCase())
-        )
-        .slice(0, limitCount);
-}
-
-export async function fetchIssuanceLogs(hospitalName, max = 20) {
-    const q = query(
-        collection(db, 'issuance_log'),
-        orderBy('issuedAt', 'desc'),
-        limit(50)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter(log => log.hospital === hospitalName)
-        .slice(0, max);
-}
-
-// ============================================
-// REQUEST TIMELINE
-// ============================================
-
-export async function fetchRequestTimeline(requestId) {
-    const docRef = doc(db, 'requests', requestId);
-    const snapshot = await getDoc(docRef);
-    if (!snapshot.exists()) return [];
-
-    const data = { id: snapshot.id, ...snapshot.data() };
-    const timeline = [];
-
-    timeline.push({
-        status: 'Created',
-        timestamp: data.requestedAt || data.timestamp || data.createdAt,
-        description: 'Request created',
-        icon: 'add_circle',
-        color: 'text-slate-500'
+    let batches = data.batches || [];
+    let toDeduct = parseInt(units, 10);
+    batches = batches.filter(b => {
+        if (toDeduct <= 0) return true;
+        if (b.units <= toDeduct) {
+            toDeduct -= b.units;
+            return false;
+        }
+        b.units -= toDeduct;
+        toDeduct = 0;
+        return true;
     });
 
-    if (data.status === 'Open' || data.status === 'Matching' || data.status === 'resolved') {
+    const componentTotals = {};
+    batches.forEach(b => {
+        componentTotals[b.componentType] = (componentTotals[b.componentType] || 0) + b.units;
+    });
+
+    await updateDoc(inventoryRef, {
+        unitsAvailable: newUnits,
+        batches,
+        componentTotals,
+        lastUpdated: new Date().toISOString()
+    });
+
+    if (['Open', 'Matching', 'Donor Assigned', 'Donor En Route', 'Resolved', 'resolved'].includes(data.status)) {
         timeline.push({
             status: 'Open',
             timestamp: data.requestedAt || data.timestamp || data.createdAt,
@@ -723,19 +1082,30 @@ export async function fetchRequestTimeline(requestId) {
 
     if (data.matchedAt) {
         timeline.push({
-            status: 'Matched',
+            status: 'Donor Assigned',
             timestamp: data.matchedAt,
-            description: `Donor assigned — ${data.donorName || 'Donor en route'}`,
+            description: `Donor assigned — ${data.donorName || 'Waiting for donor'}`,
             icon: 'person_pin',
             color: 'text-amber-500'
         });
     }
 
-    if (data.status === 'resolved' && data.resolvedAt) {
+    if (data.enRouteAt) {
+        timeline.push({
+            status: 'Donor En Route',
+            timestamp: data.enRouteAt,
+            description: 'Donor is traveling to the hospital',
+            icon: 'directions_car',
+            color: 'text-indigo-500'
+        });
+    }
+
+    if (data.status === 'Resolved' || data.status === 'resolved') {
+        const completionTime = data.resolvedAt || data.updatedAt;
         timeline.push({
             status: 'Completed',
-            timestamp: data.resolvedAt,
-            description: 'Request fulfilled',
+            timestamp: completionTime,
+            description: 'Request fulfilled — donation completed',
             icon: 'check_circle',
             color: 'text-emerald-500'
         });
@@ -861,31 +1231,53 @@ export async function saveDonorEngagement(donorId, engagement) {
 }
 
 // ============================================
-// SMS / WHATSAPP SIMULATED NOTIFICATIONS
+// SMS / WHATSAPP NOTIFICATIONS
 // ============================================
 
+function formatPhone(phone) {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('237')) return digits;
+    if (digits.startsWith('0')) return '237' + digits.slice(1);
+    return '237' + digits;
+}
+
+function smsLink(phone, message) {
+    return `sms:+${formatPhone(phone)}?&body=${encodeURIComponent(message)}`;
+}
+
+function waLink(phone, message) {
+    return `https://wa.me/${formatPhone(phone)}?text=${encodeURIComponent(message)}`;
+}
+
+window.smsLink = smsLink;
+window.waLink = waLink;
+
 export async function sendSmsNotification(phone, message) {
+    const link = smsLink(phone, message);
     await addDoc(collection(db, 'notification_log'), {
         channel: 'sms',
         recipient: phone,
         message,
-        status: 'sent',
+        link,
+        status: 'pending',
         sentAt: new Date().toISOString()
     });
-    await logActivity('SMS Sent', `SMS to ${phone}: ${message.slice(0, 60)}...`, 'info');
-    return { channel: 'sms', phone, message };
+    await logActivity('SMS Ready', `SMS to ${phone}: ${message.slice(0, 60)}...`, 'info');
+    return { channel: 'sms', phone, message, link };
 }
 
 export async function sendWhatsAppNotification(phone, message) {
+    const link = waLink(phone, message);
     await addDoc(collection(db, 'notification_log'), {
         channel: 'whatsapp',
         recipient: phone,
         message,
-        status: 'sent',
+        link,
+        status: 'pending',
         sentAt: new Date().toISOString()
     });
-    await logActivity('WhatsApp Sent', `WhatsApp to ${phone}: ${message.slice(0, 60)}...`, 'info');
-    return { channel: 'whatsapp', phone, message };
+    await logActivity('WhatsApp Ready', `WhatsApp to ${phone}: ${message.slice(0, 60)}...`, 'info');
+    return { channel: 'whatsapp', phone, message, link };
 }
 
 export async function fetchNotificationLog(hospitalName, max = 20) {

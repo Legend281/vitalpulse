@@ -3,7 +3,9 @@ import {
     signInWithEmailAndPassword,
     signOut,
     onAuthStateChanged,
-    updateProfile
+    updateProfile,
+    sendPasswordResetEmail,
+    sendEmailVerification
 } from "firebase/auth";
 import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
 import { auth, db } from './firebase';
@@ -24,8 +26,14 @@ export async function registerUser(email, password, role, additionalData) {
             phone: additionalData.phone || null,
             licenseUrl: additionalData.licenseUrl || null,
             isVerified: role === 'donor' ? true : false,
+            emailVerified: false,
             createdAt: new Date().toISOString()
         });
+
+        // Send verification email (non-blocking)
+        sendVerificationEmailToUser(user).catch(err =>
+            console.warn('Failed to send verification email:', err)
+        );
         
         const newUser = { uid: user.uid, email, role, ...additionalData };
         localStorage.setItem('vitalpulse_user', JSON.stringify(newUser));
@@ -34,6 +42,42 @@ export async function registerUser(email, password, role, additionalData) {
         console.error("Registration error:", error);
         throw error;
     }
+}
+
+// ============================================
+// EMAIL VERIFICATION
+// ============================================
+
+async function sendVerificationEmailToUser(user) {
+    await sendEmailVerification(user, {
+        url: window.location.origin + '/login.html',
+        handleCodeInApp: false
+    });
+}
+
+export async function sendEmailVerificationLink() {
+    const user = auth.currentUser;
+    if (!user) throw new Error('No authenticated user');
+    await sendVerificationEmailToUser(user);
+}
+
+export async function isEmailVerified() {
+    const user = auth.currentUser;
+    if (!user) return false;
+    try {
+        await user.reload();
+    } catch (e) {
+        console.warn('Failed to reload user:', e);
+    }
+    return user.emailVerified;
+}
+
+// ============================================
+// PASSWORD RESET
+// ============================================
+
+export async function sendPasswordReset(email) {
+    await sendPasswordResetEmail(auth, email);
 }
 
 export async function loginUser(email, password) {

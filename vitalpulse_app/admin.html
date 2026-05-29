@@ -497,12 +497,30 @@
                 <input id="stockUnits" type="number" min="1" class="w-full bg-slate-50 border border-outline-variant/40 rounded-lg px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary transition-colors" placeholder="Enter number of units" required />
             </div>
             <div>
+                <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 font-label">Component Type</label>
+                <select id="stockComponent" class="w-full bg-slate-50 border border-outline-variant/40 rounded-lg px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary transition-colors">
+                    <option value="Whole Blood">Whole Blood</option>
+                    <option value="Plasma">Plasma</option>
+                    <option value="Platelets">Platelets</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 font-label">Expiry Date <span class="text-slate-400 font-normal">(optional)</span></label>
+                <input id="stockExpiry" type="date" class="w-full bg-slate-50 border border-outline-variant/40 rounded-lg px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary transition-colors"/>
+            </div>
+            <div>
                 <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 font-label">Source</label>
                 <select id="stockSource" class="w-full bg-slate-50 border border-outline-variant/40 rounded-lg px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary transition-colors" required>
                     <option value="Donation">Blood Donation Camp</option>
                     <option value="Transfer">Inter-Hospital Transfer</option>
                     <option value="Replacement">Replacement Donation</option>
                     <option value="Other">Other</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 font-label">Hospital</label>
+                <select id="stockHospital" class="w-full bg-slate-50 border border-outline-variant/40 rounded-lg px-4 py-3 text-sm text-slate-700 outline-none focus:border-primary transition-colors" required>
+                    <option value="">Select Hospital</option>
                 </select>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 pt-2">
@@ -605,6 +623,38 @@
             <h3 class="text-lg font-bold text-on-surface mb-4">Blood Type Demand</h3>
             <div class="h-64">
                 <canvas id="bloodTypeDemandChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Most Requested Blood Types -->
+        <div class="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
+            <h3 class="text-lg font-bold text-on-surface mb-4">Most Requested Blood Types</h3>
+            <div class="h-64">
+                <canvas id="mostRequestedChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Regional Shortages -->
+        <div class="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
+            <h3 class="text-lg font-bold text-on-surface mb-4">Regional Shortages by City</h3>
+            <div class="h-64">
+                <canvas id="regionalShortageChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Donor Participation Trends -->
+        <div class="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
+            <h3 class="text-lg font-bold text-on-surface mb-4">Donor Participation Trends</h3>
+            <div class="h-64">
+                <canvas id="donorTrendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Response Time Trends -->
+        <div class="bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10 shadow-sm">
+            <h3 class="text-lg font-bold text-on-surface mb-4">Avg Response Time (hours)</h3>
+            <div class="h-64">
+                <canvas id="responseTimeChart"></canvas>
             </div>
         </div>
     </div>
