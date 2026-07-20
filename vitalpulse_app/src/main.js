@@ -8,6 +8,14 @@ import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
 import Chart from 'chart.js/auto';
 
+window.addEventListener('load', () => {
+    const loader = document.getElementById('global-loader');
+    if (loader) {
+        loader.style.opacity = '0';
+        setTimeout(() => loader.remove(), 400); // Wait for transition
+    }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, checking page...');
     

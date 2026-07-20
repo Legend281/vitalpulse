@@ -10,8 +10,32 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 
 
+
+<style>
+  #global-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background-color: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.4s ease;
+  }
+  .loader-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(220, 38, 38, 0.2);
+    border-top-color: #dc2626;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body class="bg-surface text-on-surface min-h-screen flex flex-col">
+<div id="global-loader"><div class="loader-spinner"></div></div>
+
 <!-- Top Navigation Suppression: As per rules, navigation shell is suppressed for login flow to prioritize focus -->
 <main class="flex-grow flex flex-col md:flex-row min-h-screen">
 <!-- Left Side: Editorial Content & Visual -->
@@ -27,7 +51,7 @@
 <div class="w-12 h-12 primary-gradient rounded-xl flex items-center justify-center shadow-lg">
 <span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
 </div>
-<span class="text-2xl font-extrabold tracking-tighter font-headline text-primary">The Pulse</span>
+<span class="text-2xl font-extrabold tracking-tighter font-headline text-primary">VitalPulse</span>
 </div>
 <h1 class="text-5xl lg:text-7xl font-extrabold font-headline leading-[1.1] mb-6 tracking-tight text-on-surface">
                     Your contribution, <br/>
@@ -55,7 +79,7 @@
 <!-- Mobile Logo Branding -->
 <div class="md:hidden flex items-center gap-2 mb-12">
 <span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
-<span class="text-xl font-bold font-headline text-primary tracking-tighter">The Pulse</span>
+<span class="text-xl font-bold font-headline text-primary tracking-tighter">VitalPulse</span>
 </div>
 <div class="mb-10">
 <h2 class="text-3xl font-bold font-headline text-on-surface mb-2">Welcome Back</h2>

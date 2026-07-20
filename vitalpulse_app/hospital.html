@@ -6,8 +6,32 @@
 <title>VitalPulse | Hospital Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+
+<style>
+  #global-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background-color: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.4s ease;
+  }
+  .loader-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(220, 38, 38, 0.2);
+    border-top-color: #dc2626;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body class="bg-surface text-on-surface flex min-h-screen overflow-hidden">
+<div id="global-loader"><div class="loader-spinner"></div></div>
+
 <!-- Sidebar -->
 <aside class="hidden md:flex flex-col h-screen w-64 bg-white border-r border-outline-variant/10 shrink-0 z-40">
   <div class="px-6 py-6 mb-2">

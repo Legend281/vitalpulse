@@ -7,15 +7,39 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&display=swap" rel="stylesheet"/>
+
+<style>
+  #global-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background-color: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.4s ease;
+  }
+  .loader-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(220, 38, 38, 0.2);
+    border-top-color: #dc2626;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body class="bg-surface selection:bg-primary selection:text-white overflow-x-hidden">
+<div id="global-loader"><div class="loader-spinner"></div></div>
+
 
 <!-- NAV -->
 <header id="siteHeader" class="fixed top-0 left-0 w-full z-50 transition-all duration-500">
 <div class="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
 <a href="/" class="flex items-center gap-3 group">
 <div class="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-<span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">pulse</span>
+<span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">bloodtype</span>
 </div>
 <span class="text-xl font-black text-primary tracking-tighter">Vital<span class="text-on-surface">Pulse</span></span>
 </a>
@@ -376,7 +400,7 @@ Join Free
       <div class="col-span-2 md:col-span-2">
         <div class="flex items-center gap-3 mb-6">
           <div class="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center text-white shadow-lg shadow-primary/30">
-            <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">pulse</span>
+            <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL'1">bloodtype</span>
           </div>
           <span class="text-xl font-black text-white tracking-tighter">Vital<span class="text-white/50">Pulse</span></span>
         </div>

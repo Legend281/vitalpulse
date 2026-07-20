@@ -6,19 +6,39 @@
 <title>VitalPulse | Donor Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+
+<style>
+  #global-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background-color: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.4s ease;
+  }
+  .loader-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(220, 38, 38, 0.2);
+    border-top-color: #dc2626;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body class="bg-surface selection:bg-primary-fixed selection:text-on-primary-fixed">
+<div id="global-loader"><div class="loader-spinner"></div></div>
+
 <div class="relative flex min-h-screen w-full flex-col bg-surface group/design-root overflow-x-hidden">
 <div class="layout-container flex h-full grow flex-col">
 
 <!-- Header -->
 <header class="sticky top-0 z-50 flex items-center justify-between whitespace-nowrap bg-surface/80 backdrop-blur-md border-b border-outline-variant/15 px-6 lg:px-40 py-4">
 <div class="flex items-center gap-3 text-on-surface">
-<div class="size-6 text-primary">
-<svg fill="none" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
-<path d="M4 42.4379C4 42.4379 14.0962 36.0744 24 41.1692C35.0664 46.8624 44 42.2078 44 42.2078L44 7.01134C44 7.01134 35.068 11.6577 24.0031 5.96913C14.0971 0.876274 4 7.27094 4 7.27094L4 42.4379Z" fill="currentColor"></path>
-</svg>
-</div>
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
 <h2 class="text-on-surface text-xl font-extrabold leading-tight tracking-tight font-headline">VitalPulse</h2>
 </div>
 <div class="flex flex-1 justify-end gap-4 lg:gap-8 items-center">

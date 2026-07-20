@@ -11,26 +11,46 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 
 
+
+<style>
+  #global-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background-color: #f8fafc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.4s ease;
+  }
+  .loader-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(220, 38, 38, 0.2);
+    border-top-color: #dc2626;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body class="bg-surface text-on-surface flex min-h-screen">
+<div id="global-loader"><div class="loader-spinner"></div></div>
+
 <!-- SideNavBar Component -->
 <aside class="hidden md:flex flex-col h-screen w-64 bg-white dark:bg-slate-900 border-r-0 sticky top-0 shrink-0 z-40">
 <div class="flex flex-col h-full py-6">
 <!-- Brand Section -->
-<div class="px-6 mb-6 shrink-0">
-<div class="font-manrope font-extrabold text-red-700 text-2xl tracking-tighter">VitalPulse</div>
-<div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold mt-1">Admin Control</div>
-</div>
-<!-- Profile Header -->
-<div class="px-6 mb-6 flex items-center gap-3 shrink-0">
-<div class="w-10 h-10 rounded-full bg-surface-container-highest overflow-hidden">
-<img class="w-full h-full object-cover" data-alt="professional male administrator headshot with neutral background and soft office lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD5BzXTjklM3fqju0O3vwraWRsIkFuzVr8YzVyuEODQyTeN0a3OKpKrXerx6hq2g6sZgfE_Al_q9lTryFzCZO-U1hR8qy91mhd5K6NNoHco4cCbRutVbWrSnp9U1Tz2mJkRwohzyUEXGA7ei1R86YZXbFOh4WiXvNYeGgINbIwFgthk02FEdvuk5s7AqO9wSEGBFR0Uz0kQ9gv-626hcYlxvyCAW8i0Epo75pAcW8qnjAwT6CQ96WG5wVppo5BmMprr8TTmgD5RVkM"/>
+<div class="px-6 mb-6 shrink-0 flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-700 to-red-500 flex items-center justify-center shadow-lg shadow-red-200">
+<span class="material-symbols-outlined text-white text-lg" style="font-variation-settings:'FILL' 1">bloodtype</span>
 </div>
 <div>
-<div class="font-inter text-sm font-bold text-on-surface">Hospital Portal</div>
-<div class="font-inter text-[11px] text-slate-500">Yaoundé General</div>
+<div class="font-manrope font-extrabold text-red-700 text-2xl tracking-tighter leading-none">VitalPulse</div>
+<div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 font-bold mt-0.5">Admin Control</div>
 </div>
 </div>
+
 <!-- Navigation Links - Scrollable -->
 <nav class="flex-1 overflow-y-auto px-3 space-y-1 min-h-0">
 <!-- Dashboard / Overview Active -->
