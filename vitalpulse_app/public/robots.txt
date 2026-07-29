@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /login.html
+Disallow: /signup.html
+Disallow: /donor.html
+Disallow: /hospital.html
+Disallow: /admin.html

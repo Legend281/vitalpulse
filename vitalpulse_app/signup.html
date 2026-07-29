@@ -1,11 +1,21 @@
 <!DOCTYPE html>
 
-<html lang="en"><head>
+<html lang="en">
+<head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<title>Sign Up | VitalPulse Cameroon</title>
+<meta name="description" content="Join VitalPulse as a blood donor or register your hospital to coordinate blood requests across Cameroon."/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="VitalPulse"/>
+<meta property="og:title" content="Join VitalPulse"/>
+<meta property="og:description" content="Register as a donor or hospital and help close Cameroon's blood supply gap."/>
+<meta property="og:image" content="/logo-full.png"/>
+<meta property="og:url" content="/signup.html"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<link rel="icon" type="image/png" href="/favicon.png"/>
+<link rel="apple-touch-icon" href="/favicon.png"/>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 
 
@@ -43,8 +53,8 @@
 <span class="material-symbols-outlined text-on-surface">arrow_back</span>
 </button>
 <div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
-<span class="font-headline font-bold text-lg tracking-tight">VitalPulse</span>
+<img src="/favicon.png" alt="VitalPulse" class="w-8 h-8 rounded-lg object-contain"/>
+<span class="font-headline font-bold text-lg tracking-tight"><span class="text-primary">Vital</span><span class="text-on-surface">Pulse</span></span>
 </div>
 </div>
 <div class="flex items-center gap-2">
@@ -112,16 +122,16 @@
 <div class="space-y-6">
 <div class="group">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Full Name / Hospital Name</label>
-<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="John Doe or Yaoundé Central Hospital" type="text" id="fullName"/>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="John Doe or Yaoundé Central Hospital" type="text" id="fullName" required/>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <div class="group">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Email</label>
-<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="name@example.com" type="email" id="email"/>
+<input class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="name@example.com" type="email" id="email" required/>
 </div>
 <div class="group" id="bloodTypeGroup">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Blood Type</label>
-<select id="bloodType" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all text-on-surface font-medium">
+<select id="bloodType" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all text-on-surface font-medium" required>
 <option disabled="" selected="" value="">Select Type</option>
 <option>A+</option>
 <option>A-</option>
@@ -138,7 +148,7 @@
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <div class="group">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Location (City)</label>
-<input id="city" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="Yaoundé" type="text"/>
+<input id="city" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="Yaoundé" type="text" required/>
 </div>
 <div class="group" id="phoneGroup" style="display: none;">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Phone Number</label>
@@ -150,27 +160,32 @@
 <input id="licenseUrl" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="https://drive.google.com/..." type="url"/>
 <p class="text-[10px] text-slate-500 mt-1">Link to your hospital registration/license document</p>
 </div>
+<div class="group" id="cniGroup">
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">National ID Number / CNI (Optional)</label>
+<input id="nationalId" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="e.g. 102938475 (Hashed with SHA-256 for privacy)" type="text"/>
+<p class="text-[10px] text-emerald-600 font-bold mt-1">🔒 Protected with SHA-256 hashing. Raw ID is never stored.</p>
+</div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <div class="group">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Password</label>
-<input id="password" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="••••••••" type="password"/>
+<input id="password" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="••••••••" type="password" required minlength="6"/>
 </div>
 <div class="group">
 <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">Confirm Password</label>
-<input id="confirmPassword" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="••••••••" type="password"/>
+<input id="confirmPassword" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="••••••••" type="password" required/>
 </div>
 </div>
 </div>
 <!-- Terms -->
-<div class="flex items-start gap-3">
-<input class="mt-1 rounded text-primary focus:ring-primary" id="terms" type="checkbox"/>
-<label class="text-xs text-on-surface-variant leading-relaxed" for="terms">
-                    By creating an account, you agree to our <a class="text-primary font-bold" href="#">Terms of Service</a> and <a class="text-primary font-bold" href="#">Privacy Policy</a> regarding donor data handling.
+    <div class="flex items-start gap-3">
+      <input class="mt-1 rounded text-primary focus:ring-primary" id="terms" type="checkbox" required/>
+      <label class="text-xs text-on-surface-variant leading-relaxed" for="terms">
+                    By creating an account, you agree to our <a class="text-primary font-bold" href="/terms.html" target="_blank" rel="noopener">Terms of Service</a> and <a class="text-primary font-bold" href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> regarding donor data handling.
                 </label>
-</div>
+    </div>
 <p id="errorMessage" class="text-error text-sm text-center hidden"></p>
 <!-- Action Button -->
-<button class="primary-gradient w-full py-5 rounded-lg text-white font-headline font-extrabold text-sm uppercase tracking-widest shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all flex items-center justify-center gap-2" type="submit">
+<button id="btnSignup" class="w-full font-headline bg-gradient-to-r from-primary to-[#7a0c14] text-white font-bold py-4 rounded-xl shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:opacity-95 transition-all flex items-center justify-center gap-2 text-base cursor-pointer" type="submit">
                     Create Account
                     <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
 </button>
@@ -179,17 +194,20 @@
 function toggleRoleFields() {
     const isHospital = document.getElementById('roleHospital').checked;
     const bloodTypeGroup = document.getElementById('bloodTypeGroup');
+    const cniGroup = document.getElementById('cniGroup');
     const phoneGroup = document.getElementById('phoneGroup');
     const licenseUrlGroup = document.getElementById('licenseUrlGroup');
     
     if (isHospital) {
-        bloodTypeGroup.style.display = 'none';
-        phoneGroup.style.display = 'block';
-        licenseUrlGroup.style.display = 'block';
+        if (bloodTypeGroup) bloodTypeGroup.style.display = 'none';
+        if (cniGroup) cniGroup.style.display = 'none';
+        if (phoneGroup) phoneGroup.style.display = 'block';
+        if (licenseUrlGroup) licenseUrlGroup.style.display = 'block';
     } else {
-        bloodTypeGroup.style.display = 'block';
-        phoneGroup.style.display = 'none';
-        licenseUrlGroup.style.display = 'none';
+        if (bloodTypeGroup) bloodTypeGroup.style.display = 'block';
+        if (cniGroup) cniGroup.style.display = 'block';
+        if (phoneGroup) phoneGroup.style.display = 'none';
+        if (licenseUrlGroup) licenseUrlGroup.style.display = 'none';
     }
 }
 </script>

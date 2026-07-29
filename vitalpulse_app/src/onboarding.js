@@ -11,7 +11,7 @@ const donorSteps = [
     title: 'Find Blood Requests',
     description: 'Check the "Requests" tab for emergency blood requests matching your blood type in your city.',
     icon: 'bloodtype',
-    selector: '#nav-requests'
+    selector: '[data-view="requests"]'
   },
   {
     title: 'Accept & Donate',
@@ -23,14 +23,14 @@ const donorSteps = [
     title: 'Earn Badges & Rewards',
     description: 'Each donation earns you points. Climb from Bronze to Platinum tier and unlock badges!',
     icon: 'workspace_premium',
-    selector: '#nav-badges'
+    selector: '[data-view="badges"]'
   }
 ];
 
 const hospitalSteps = [
   {
-    title: 'Bienvenue sur VitalPulse!',
-    description: 'Votre hôpital est maintenant connecté au réseau d\'urgence de don de sang du Cameroun.',
+    title: 'Welcome to VitalPulse!',
+    description: 'Your hospital is now connected to Cameroon\'s emergency blood donation network.',
     icon: 'local_hospital',
     selector: null
   },
@@ -54,15 +54,20 @@ const hospitalSteps = [
   }
 ];
 
-export function shouldShowOnboarding() {
-  return !localStorage.getItem(ONBOARDING_KEY);
+// Scoped per account (not just per browser) — otherwise one user dismissing
+// onboarding on a shared computer would silently suppress it for every other
+// account (donor or hospital) that later logs in on that same browser.
+export function shouldShowOnboarding(userId) {
+  if (!userId) return false;
+  return !localStorage.getItem(`${ONBOARDING_KEY}_${userId}`);
 }
 
-export function markOnboardingComplete() {
-  localStorage.setItem(ONBOARDING_KEY, 'true');
+export function markOnboardingComplete(userId) {
+  if (!userId) return;
+  localStorage.setItem(`${ONBOARDING_KEY}_${userId}`, 'true');
 }
 
-export function startOnboarding(role) {
+export function startOnboarding(role, userId) {
   const steps = role === 'hospital' ? hospitalSteps : donorSteps;
 
   const overlay = document.createElement('div');
@@ -103,7 +108,7 @@ export function startOnboarding(role) {
       nextBtn.addEventListener('click', () => {
         if (isLast) {
           overlay.remove();
-          markOnboardingComplete();
+          markOnboardingComplete(userId);
           if (step.selector) {
             const el = document.querySelector(step.selector);
             if (el) {

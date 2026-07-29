@@ -141,7 +141,7 @@ export function injectLangToggle() {
 
   const toggle = document.createElement('div');
   toggle.id = 'langToggle';
-  toggle.className = 'fixed bottom-4 left-4 z-50 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg border border-slate-200 text-xs font-bold';
+  toggle.className = 'fixed bottom-4 right-4 z-50 flex items-center gap-1 bg-white/90 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg border border-slate-200 text-xs font-bold';
   toggle.innerHTML = `
     <button data-lang="en" class="px-2 py-0.5 rounded-full transition-colors ${currentLang === 'en' ? 'bg-red-600 text-white' : 'text-slate-500 hover:text-red-600'}">EN</button>
     <span class="text-slate-300">|</span>
