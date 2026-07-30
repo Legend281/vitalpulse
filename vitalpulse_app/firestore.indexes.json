@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "donor_reactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "hospitalName", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
