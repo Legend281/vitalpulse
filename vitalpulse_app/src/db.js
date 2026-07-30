@@ -236,6 +236,24 @@ export async function acceptRequest(requestId, donorId, screeningData = {}) {
         throw new Error('You already have an active donation request in progress. Please complete or cancel your current commitment before accepting another.');
     }
 
+    // 56-Day Medical Deferral Lock: prevent accepting requests before the mandatory wait period
+    try {
+        const donorRef = doc(db, 'users', donorId);
+        const donorSnap = await getDoc(donorRef);
+        if (donorSnap.exists()) {
+            const donorData = donorSnap.data();
+            const lastDate = donorData.lastDonationDate || donorData.lastDonatedAt;
+            if (lastDate) {
+                const daysAgo = (new Date().getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
+                if (daysAgo < 56) {
+                    throw new Error(`WHO medical deferral: You last donated ${Math.round(daysAgo)} days ago. A minimum of 56 days is required between whole blood donations for your safety.`);
+                }
+            }
+        }
+    } catch (e) {
+        if (e.message?.includes('WHO medical deferral')) throw e;
+    }
+
     const checkInToken = 'VP-' + Math.floor(1000 + Math.random() * 9000);
 
     // Transaction guards against two donors accepting the same request at once —
@@ -3107,6 +3125,24 @@ export async function acceptPublicRequest(requestId, donorId, screeningData = {}
 
     if (!activeSnap.empty || !activePublicSnap.empty) {
         throw new Error('You already have an active donation request in progress. Please complete or cancel your current commitment before accepting another.');
+    }
+
+    // 56-Day Medical Deferral Lock: prevent accepting requests before the mandatory wait period
+    try {
+        const donorRef = doc(db, 'users', donorId);
+        const donorSnap = await getDoc(donorRef);
+        if (donorSnap.exists()) {
+            const donorData = donorSnap.data();
+            const lastDate = donorData.lastDonationDate || donorData.lastDonatedAt;
+            if (lastDate) {
+                const daysAgo = (new Date().getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
+                if (daysAgo < 56) {
+                    throw new Error(`WHO medical deferral: You last donated ${Math.round(daysAgo)} days ago. A minimum of 56 days is required between whole blood donations for your safety.`);
+                }
+            }
+        }
+    } catch (e) {
+        if (e.message?.includes('WHO medical deferral')) throw e;
     }
 
     const checkInToken = 'VP-' + Math.floor(1000 + Math.random() * 9000);

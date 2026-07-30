@@ -57,6 +57,7 @@ let donorNavigationInitialized = false;
 let _allRequests = [];
 let _selectedCity = null;
 let _feedExpanded = false; // dashboard requests feed: false = show first 5, true = show all
+let _donorNotifCache = null; // { notifications, unreadCount } — pre-fetched every 30s to avoid bell-click lag
 // Cached eligibility (56-day rule), refreshed on every dashboard load. Used to gate the
 // schedule/accept actions instantly without an extra Firestore read on each click. The
 // hospital check-in + server-side guard are the authoritative backstops.
@@ -148,6 +149,8 @@ export function switchDonorView(view) {
     const icon = activeNav.querySelector('.material-symbols-outlined');
     if (icon) icon.style.fontVariationSettings = "'FILL' 1";
   });
+
+  history.replaceState(null, '', '#' + view);
 
   switch (view) {
     case 'dashboard': loadDonorDashboard(); break;
@@ -264,15 +267,33 @@ export function initDonorNavigation() {
     });
   });
 
-  // Notification bell: show notification panel
+  // Notification bell: show notification panel (uses cached data from 30s poll for instant open)
   const notifBtn = document.getElementById('btnDonorNotifications');
   if (notifBtn) {
     notifBtn.addEventListener('click', async () => {
       const currentUser = getCurrentUser();
       if (!currentUser) return;
       try {
-        const notifications = await fetchDonorNotifications(currentUser.uid, 10);
-        const unreadCount = await fetchUnreadNotificationCount(currentUser.uid);
+        // Use cache first for instant display, then refresh silently
+        let notifications = _donorNotifCache?.notifications;
+        let unreadCount = _donorNotifCache?.unreadCount || 0;
+        // Background refresh
+        if (!notifications) {
+          const fetched = await Promise.all([
+            fetchDonorNotifications(currentUser.uid, 10),
+            fetchUnreadNotificationCount(currentUser.uid)
+          ]);
+          notifications = fetched[0];
+          unreadCount = fetched[1];
+          _donorNotifCache = { notifications, unreadCount };
+        } else {
+          fetchDonorNotifications(currentUser.uid, 10).then(n => {
+            _donorNotifCache.notifications = n;
+          }).catch(() => {});
+          fetchUnreadNotificationCount(currentUser.uid).then(c => {
+            _donorNotifCache.unreadCount = c;
+          }).catch(() => {});
+        }
         const badge = document.getElementById('donorNotifBadge');
         if (badge) {
           if (unreadCount > 0) {
@@ -334,12 +355,16 @@ export function initDonorNavigation() {
     });
   }
 
-  // Start notification polling (every 30 seconds)
+  // Start notification polling (every 30 seconds) — also caches full list for instant panel open
   const pollNotifCount = async () => {
     const cu = getCurrentUser();
     if (!cu) return;
     try {
-      const unreadCount = await fetchUnreadNotificationCount(cu.uid);
+      const [unreadCount, notifications] = await Promise.all([
+        fetchUnreadNotificationCount(cu.uid),
+        fetchDonorNotifications(cu.uid, 10)
+      ]);
+      _donorNotifCache = { notifications, unreadCount };
       const badge = document.getElementById('donorNotifBadge');
       if (badge) {
         if (unreadCount > 0) {
@@ -355,6 +380,17 @@ export function initDonorNavigation() {
   };
   pollNotifCount();
   setInterval(pollNotifCount, 30000);
+
+  // Restore view from URL hash on reload
+  const donorViews = ['dashboard', 'requests', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates'];
+  const hashView = window.location.hash.replace('#', '');
+  if (hashView && donorViews.includes(hashView)) switchDonorView(hashView);
+
+  // Back/forward navigation
+  window.addEventListener('hashchange', () => {
+    const v = window.location.hash.replace('#', '');
+    if (v && donorViews.includes(v)) switchDonorView(v);
+  });
 
   donorNavigationInitialized = true;
 }
@@ -836,7 +872,7 @@ export async function loadDonorDashboard() {
     // getCoordinatesForLocation lowercases/normalizes the city name before looking it up in
     // CITY_COORDINATES — a raw CITY_COORDINATES[currentUser.city] index (the old code here)
     // silently fails for any city stored with capitalization, which is the normal case.
-    const donorCoords = getCoordinatesForLocation(currentUser.city, currentUser.lat, currentUser.lng) || CITY_COORDINATES['buea'];
+    const donorCoords = getCoordinatesForLocation(currentUser.city, currentUser.lat, currentUser.lng) || CITY_COORDINATES['yaoundé'];
     const donorLat = donorCoords?.lat;
     const donorLng = donorCoords?.lon;
 
@@ -867,7 +903,7 @@ export async function loadDonorDashboard() {
     _allRequests = [...activeRequests, ...taggedPublic];
 
     const firstName = (currentUser.name || currentUser.email?.split('@')[0] || 'Mai').split(' ')[0];
-    const city = currentUser.city || 'Buea';
+    const city = currentUser.city || 'Yaoundé';
     const bloodType = currentUser.bloodType || 'B+';
     const bloodInfo = getBloodTypeDisplayInfo(bloodType);
 
@@ -1736,6 +1772,11 @@ async function loadDonorProfile() {
         if (newNatId && newNatId.trim()) {
           const hashed = await hashNationalId(newNatId);
           if (hashed) {
+            const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
+            const dupSnap = await getDocs(dupQuery);
+            if (!dupSnap.empty && dupSnap.docs[0].id !== currentUser.uid) {
+              throw new Error('This National ID (CNI) is already linked to another account.');
+            }
             updateData.cniHash = hashed;
             updateData.isCniVerified = true;
           }

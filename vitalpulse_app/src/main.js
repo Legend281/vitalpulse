@@ -194,6 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (role === 'donor') {
                     const bt = document.getElementById('bloodType');
                     if(bt) extraData.bloodType = bt.value;
+                    const natId = document.getElementById('nationalId');
+                    if (natId && natId.value.trim()) extraData.nationalId = natId.value.trim();
                 } else if (role === 'hospital') {
                     const phoneInput = document.getElementById('phone');
                     const licenseUrlInput = document.getElementById('licenseUrl');
@@ -484,6 +486,7 @@ function initHospitalNavigation() {
             case 'mythbusting': loadMythBustingView(); break;
             case 'certificates': loadCertificatesView(); break;
         }
+        history.replaceState(null, '', '#' + target);
     };
 
     navIds.forEach(id => {
@@ -595,6 +598,15 @@ function initHospitalNavigation() {
     if (dashInvBtn) {
         dashInvBtn.addEventListener('click', () => switchView('inventory'));
     }
+
+    // Restore view from URL hash on reload
+    const hospHash = window.location.hash.replace('#', '');
+    if (hospHash && navIds.includes(hospHash)) switchView(hospHash);
+
+    window.addEventListener('hashchange', () => {
+        const v = window.location.hash.replace('#', '');
+        if (v && navIds.includes(v)) switchView(v);
+    });
 
     hospitalNavigationInitialized = true;
 }
@@ -2633,6 +2645,7 @@ function initAdminNavigation() {
             btnSettings.className = activeClass;
             loadSettingsDashboard();
         }
+        history.replaceState(null, '', '#' + target);
     };
 
     window.adminSwitchView = switchView;
@@ -2701,6 +2714,16 @@ function initAdminNavigation() {
     initAdminChangePassword();
     initAdminNotificationDropdownControls();
     initShadowHospitalIntake();
+
+    // Restore view from URL hash on reload
+    const adminViews = ['overview', 'verifications', 'users', 'logs', 'analytics', 'campaigns', 'public-triage', 'shadow-hospitals', 'safety-oversight', 'settings'];
+    const adminHash = window.location.hash.replace('#', '');
+    if (adminHash && adminViews.includes(adminHash)) switchView(adminHash);
+
+    window.addEventListener('hashchange', () => {
+        const v = window.location.hash.replace('#', '');
+        if (v && adminViews.includes(v)) switchView(v);
+    });
 
     adminNavigationInitialized = true;
 }
@@ -5017,6 +5040,8 @@ window.getCurrentUser = getCurrentUser;
 window.markHospitalNotificationRead = markHospitalNotificationRead;
 window.markAllHospitalNotificationsRead = markAllHospitalNotificationsRead;
 
+let _hospitalNotifCache = null;
+
 function initHospitalNotifications() {
     const notifBtn = document.getElementById('btnHospitalNotifications');
     if (!notifBtn) return;
@@ -5025,8 +5050,25 @@ function initHospitalNotifications() {
         const currentUser = getCurrentUser();
         if (!currentUser) return;
         try {
-            const notifications = await fetchHospitalNotifications(currentUser.uid, 10);
-            const unreadCount = await fetchUnreadHospitalNotificationCount(currentUser.uid);
+            // Use cache first for instant display, then refresh silently
+            let notifications = _hospitalNotifCache?.notifications;
+            let unreadCount = _hospitalNotifCache?.unreadCount || 0;
+            if (!notifications) {
+                const fetched = await Promise.all([
+                    fetchHospitalNotifications(currentUser.uid, 10),
+                    fetchUnreadHospitalNotificationCount(currentUser.uid)
+                ]);
+                notifications = fetched[0];
+                unreadCount = fetched[1];
+                _hospitalNotifCache = { notifications, unreadCount };
+            } else {
+                fetchHospitalNotifications(currentUser.uid, 10).then(n => {
+                    _hospitalNotifCache.notifications = n;
+                }).catch(() => {});
+                fetchUnreadHospitalNotificationCount(currentUser.uid).then(c => {
+                    _hospitalNotifCache.unreadCount = c;
+                }).catch(() => {});
+            }
             const badge = document.getElementById('hospitalNotifBadge');
             if (badge) {
                 if (unreadCount > 0) {
@@ -5087,12 +5129,16 @@ function initHospitalNotifications() {
         }
     });
 
-    // Poll every 30 seconds
+    // Poll every 30 seconds — also caches full notification list for instant panel open
     const poll = async () => {
         const cu = getCurrentUser();
         if (!cu) return;
         try {
-            const count = await fetchUnreadHospitalNotificationCount(cu.uid);
+            const [count, notifications] = await Promise.all([
+                fetchUnreadHospitalNotificationCount(cu.uid),
+                fetchHospitalNotifications(cu.uid, 10)
+            ]);
+            _hospitalNotifCache = { notifications, unreadCount: count };
             const badge = document.getElementById('hospitalNotifBadge');
             if (badge) {
                 if (count > 0) {
