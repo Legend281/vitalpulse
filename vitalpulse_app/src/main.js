@@ -5012,6 +5012,11 @@ loadHospitalSettings = async function() {
 // HOSPITAL NOTIFICATION SYSTEM (in-app bell)
 // ============================================
 
+// Expose to window so dynamically-created onclick handlers can reach them
+window.getCurrentUser = getCurrentUser;
+window.markHospitalNotificationRead = markHospitalNotificationRead;
+window.markAllHospitalNotificationsRead = markAllHospitalNotificationsRead;
+
 function initHospitalNotifications() {
     const notifBtn = document.getElementById('btnHospitalNotifications');
     if (!notifBtn) return;

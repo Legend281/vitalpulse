@@ -15,11 +15,30 @@ export async function hashNationalId(nationalIdText) {
     if (!nationalIdText) return null;
     const clean = nationalIdText.trim().replace(/[\s-]/g, '').toUpperCase() + '_VITALPULSE_SALT_2026';
     if (!clean) return null;
-    const encoder = new TextEncoder();
-    const data = encoder.encode(clean);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    try {
+        const encoder = new TextEncoder();
+        const data = encoder.encode(clean);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch {
+        return fallbackHash(clean);
+    }
+}
+
+/** Simple consistent hash fallback when crypto.subtle is unavailable (insecure context). */
+function fallbackHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    const seed = Math.abs(hash) || 1;
+    let result = '';
+    for (let i = 0; i < 64; i++) {
+        result += ((seed * (i + 1) * 1103515245 + 12345) >>> 0).toString(16).slice(-1);
+    }
+    return result;
 }
 
 export async function registerUser(email, password, role, additionalData) {
