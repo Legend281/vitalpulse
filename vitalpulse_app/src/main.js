@@ -5317,13 +5317,19 @@ function initIssueBloodModal() {
             btn.disabled = true;
 
             try {
+                const crossmatchCheck = document.getElementById('issueCrossmatchConfirm');
+                const crossmatchConfirmed = crossmatchCheck ? crossmatchCheck.checked : false;
                 await issueBloodToPatient(bloodType, units, {
                     patientName: document.getElementById('issuePatientName').value,
                     patientId: document.getElementById('issuePatientId').value,
                     ward: document.getElementById('issueWard').value,
                     requestingDoctor: document.getElementById('issueDoctor').value,
                     diagnosis: document.getElementById('issueDiagnosis').value,
-                    hospital: currentUser.name || 'General Hospital'
+                    hospital: currentUser.name || 'General Hospital',
+                    crossmatchConfirmed,
+                    crossmatchResult: crossmatchConfirmed ? 'Compatible' : 'Not Tested',
+                    crossmatchTechId: document.getElementById('issueCrossmatchTech')?.value || '',
+                    patientBloodType: document.getElementById('issuePatientBloodType')?.value || ''
                 });
                 close();
                 showToast(`Issued ${units} unit(s) of ${bloodType} to patient`);
@@ -5331,7 +5337,7 @@ function initIssueBloodModal() {
                 loadHospitalDashboard();
             } catch (err) {
                 console.error('Failed to issue blood:', err);
-                alert('Failed to issue blood. Please try again.');
+                alert(err.message || 'Failed to issue blood. Please try again.');
             } finally {
                 btn.innerHTML = 'Confirm Issue to Patient';
                 btn.disabled = false;
