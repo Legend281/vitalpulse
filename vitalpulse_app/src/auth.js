@@ -188,7 +188,6 @@ export async function loginUser(email, password) {
         const user = userCredential.user;
         
         let role = 'donor';
-        const userEmail = user.email.toLowerCase();
         let userData = {};
         
         // Gracefully handle Firestore permission errors
@@ -201,12 +200,7 @@ export async function loginUser(email, password) {
                 role = userData.role || role;
             }
         } catch (firestoreError) {
-            console.warn("Firestore read failed (rules may be locked), falling back to email-based role:", firestoreError);
-        }
-        
-        // Check for special admin email
-        if (userEmail === 'admin@vitalpulse.cm' || userEmail === 'admin@vitalpulse.com') {
-            role = 'admin';
+            console.warn("Firestore read failed (rules may be locked), defaulting to donor role:", firestoreError);
         }
         
         const fullUser = {
@@ -295,10 +289,6 @@ export async function fetchVerifiedUser(firebaseUser) {
         }
     } catch (e) {
         console.warn('Failed to verify user role from Firestore:', e);
-    }
-    const userEmail = firebaseUser.email?.toLowerCase();
-    if (userEmail === 'admin@vitalpulse.cm' || userEmail === 'admin@vitalpulse.com') {
-        role = 'admin';
     }
     return {
         uid: firebaseUser.uid,

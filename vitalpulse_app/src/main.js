@@ -208,12 +208,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 const extraData = { name: fullName, city };
                 
-                // Check secret code OR email for admin access
-                const secretCode = document.getElementById('secretCode');
-                if ((secretCode && secretCode.value === 'ADMIN2024') || (email && email.toLowerCase().includes('admin@vitalpulse'))) {
-                    role = 'admin';
-                }
-                
                 if (role === 'donor') {
                     const bt = document.getElementById('bloodType');
                     if(bt) extraData.bloodType = bt.value;

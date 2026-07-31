@@ -215,6 +215,8 @@
 
 | Date | Change |
 |---|---|
+| 2026-07-31 | **Correction to Phase 1 record:** the hardcoded admin backdoors were removed on the `security` branch only (`1dfad6d`); main's working tree was never fixed — `ADMIN2024` + `admin@vitalpulse` email-substring grants were still live in `main.js:213` and the `admin@vitalpulse.cm`/`.com` overrides still in `auth.js`. Detected during the security→main merge (2026-07-31) and now removed from main (`fix: remove hardcoded admin backdoors...`). Admin access is now exclusively via Firestore `users/{uid}.role`. Remaining follow-up: audit existing accounts granted admin via the removed substring checks (pending Security Lead). |
+| 2026-07-31 | Merged `security` branch into `main` (surgical merge, no shared history): adopted the branch's new assets — Cloud Functions (`grantRole`/`revokeRole`), `scripts/` (bootstrap/backfill), deny-by-default `firestore.rules` (staged at root, **NOT deployed** — requires the claims migration), emulator rules test suite, k6 scripts, ESLint config, CI/CD pipeline; kept main's newer app code. ESLint gate fixed to 0 errors (incl. 2 latent runtime bugs). `vitalpulse_app/.env` untracked and re-ignored (never pushed). |
 | 2026-07-21 | Tracker created from Master Plan v1.0 |
 | 2026-07-21 | Phase 0 audit completed — `vitalpulse_app/docs/PHASE0_AUDIT.md` |
 | 2026-07-22 | Phase 1 completed pending Security Lead review — see "Phase 1 completion notes" below |
