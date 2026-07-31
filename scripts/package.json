@@ -1,0 +1,19 @@
+{
+  "name": "vitalpulse-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "One-off operator scripts. Never deployed, never imported by the app or functions/.",
+  "scripts": {
+    "bootstrap-admin": "tsx bootstrap-admin.ts",
+    "backfill-hospital-ids": "tsx backfill-hospital-ids.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.9",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,167 @@
+rules_version = '2';
+
+// VitalPulse — Reference Firestore Security Rules (RBAC + ABAC, deny by default)
+// Remediation for Findings §3.2. Adapt collection/field names to the actual schema.
+// IMPORTANT: custom claims (role, hospitalId, suspended) are set ONLY by the
+// grantRole Cloud Function — never from any client.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function signedIn() {
+      return request.auth != null && request.auth.token.suspended != true;
+    }
+    function role() { return request.auth.token.role; }
+    function myHospital() { return request.auth.token.hospitalId; }
+
+    function isDonor()         { return signedIn() && role() == 'donor'; }
+    function isStaff()         { return signedIn() && role() == 'hospital_staff'; }
+    function isLabTech()       { return signedIn() && role() == 'lab_tech'; }
+    function isHospitalAdmin() { return signedIn() && role() == 'hospital_admin'; }
+    function isSystemAdmin()   { return signedIn() && role() == 'system_admin'; }
+    function isNbtpViewer()    { return signedIn() && role() == 'nbtp_viewer'; }
+
+    function sameHospital(h) { return h == myHospital(); }
+    function hospitalRole()  { return isStaff() || isLabTech() || isHospitalAdmin(); }
+
+    // ---------- Donor profiles ----------
+    match /donors/{uid} {
+      // Donors read/update only themselves; hospital users read donors
+      // (needed for matching contact) but never write them.
+      allow get: if (isDonor() && request.auth.uid == uid)
+                 || hospitalRole() || isSystemAdmin();
+      allow list: if isSystemAdmin(); // matching queries run in Cloud Functions
+      allow create: if isDonor() && request.auth.uid == uid
+                    // safety-critical fields cannot be self-asserted:
+                    && request.resource.data.bloodTypeSource == 'self_reported'
+                    && !('livesSaved' in request.resource.data)
+                    && !('eligibilityOverride' in request.resource.data);
+      allow update: if isDonor() && request.auth.uid == uid
+                    // donor may edit contact/profile fields ONLY:
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['name','phone','city','location','language',
+                                 'notificationPrefs']);
+      allow delete: if false; // account deletion via Cloud Function (Policy 12)
+    }
+
+    // Lab verification of a donor's blood type: server-side only
+    match /donors/{uid}/labVerifications/{doc} {
+      allow read: if isSystemAdmin() || (hospitalRole());
+      allow write: if false; // Cloud Function only
+    }
+
+    // ---------- Hospitals ----------
+    match /hospitals/{hospitalId} {
+      allow get, list: if signedIn();            // directory info
+      allow create, delete: if false;            // Cloud Function only
+      allow update: if isHospitalAdmin() && sameHospital(hospitalId)
+                    // hospital admin can never self-verify (badge = system_admin)
+                    && !request.resource.data.diff(resource.data)
+                        .affectedKeys().hasAny(['verified']);
+    }
+
+    // ---------- Blood units (per-unit lifecycle, Findings §2.2) ----------
+    match /bloodUnits/{unitId} {
+      allow get, list: if (hospitalRole() && sameHospital(resource.data.hospitalId))
+                       || isSystemAdmin() || isNbtpViewer();
+      allow create: if false;  // intake via Cloud Function (writes 'awaiting_test')
+      // lab_tech may ONLY move status along legal transitions, own hospital only:
+      allow update: if isLabTech() && sameHospital(resource.data.hospitalId)
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status','testResultsRef','clearedAt','rejectedReason'])
+                    && resource.data.status == 'awaiting_test'
+                    && request.resource.data.status in ['cleared','rejected'];
+      allow delete: if false;
+      // NOTE: transfers, transfusion marking, expiry -> Cloud Functions only.
+    }
+
+    // ---------- Blood requests (hospital-created) ----------
+    match /requests/{requestId} {
+      allow get: if (hospitalRole() && sameHospital(resource.data.hospitalId))
+                 || isSystemAdmin()
+                 || (isDonor() && resource.data.status == 'open'); // donors see open requests
+      allow list: if isSystemAdmin()
+                 || (hospitalRole())
+                 || (isDonor()); // client queries constrained to status=='open' by rules on fields is not possible; enforce via query in app + Function-validated accept flow
+      allow create: if isStaff() && sameHospital(request.resource.data.hospitalId)
+                    && request.resource.data.status == 'open'
+                    && request.resource.data.keys().hasAll(
+                         ['hospitalId','bloodType','component','urgency','category','createdAt']);
+      allow update, delete: if false; // accept/close/escalate via Cloud Functions
+    }
+
+    // Donor responses (accept/decline) — created via Cloud Function to guarantee
+    // exactly-once assignment; readable by involved parties.
+    match /requests/{requestId}/responses/{uid} {
+      allow get: if isSystemAdmin()
+                 || (isDonor() && request.auth.uid == uid)
+                 || hospitalRole();
+      allow write: if false;
+    }
+
+    // ---------- Public (unauthenticated) requests — Findings §5–6 ----------
+    match /public_requests/{id} {
+      // The ONLY unauthenticated write path in the entire database.
+      // Rate limiting + phone validation + labeling done in submitPublicRequest
+      // Cloud Function; direct creates are allowed but strictly shaped so the
+      // page still works if the Function path is bypassed. Prefer Function-only:
+      allow create: if request.resource.data.keys().hasOnly(
+                        ['patientName','hospitalName','ward','bloodType',
+                         'urgency','submitterPhone','relationship',
+                         'proofPhotoRef','deviceLocation','createdAt'])
+                    && request.resource.data.patientName is string
+                    && request.resource.data.patientName.size() <= 120
+                    && request.resource.data.submitterPhone is string
+                    && request.resource.data.submitterPhone.size() >= 8
+                    && request.resource.data.submitterPhone.size() <= 20
+                    // verification label is NEVER client-settable:
+                    && !('verificationLabel' in request.resource.data)
+                    && !('reviewStatus' in request.resource.data);
+      allow get: if isDonor() || hospitalRole() || isSystemAdmin();
+      allow list: if isSystemAdmin() || isDonor();
+      allow update, delete: if false; // labeling & review via Cloud Functions
+    }
+
+    // ---------- Hemovigilance logs (donor & patient reactions) ----------
+    match /reactionLogs/{id} {
+      allow get, list: if (hospitalRole() && sameHospital(resource.data.hospitalId))
+                       || isSystemAdmin() || isNbtpViewer();
+      allow create: if hospitalRole()
+                    && sameHospital(request.resource.data.hospitalId);
+      allow update, delete: if false; // append-only safety record
+    }
+
+    // ---------- Inter-hospital transfers ----------
+    match /transfers/{id} {
+      allow get, list: if isSystemAdmin()
+                       || (hospitalRole() &&
+                           (sameHospital(resource.data.fromHospitalId)
+                            || sameHospital(resource.data.toHospitalId)));
+      allow write: if false; // request/approve via Cloud Functions (two-party)
+    }
+
+    // ---------- Audit logs: readable by admins, writable by NOBODY client-side ----------
+    match /auditLogs/{id} {
+      allow get, list: if isSystemAdmin();
+      allow write: if false;
+    }
+
+    // ---------- Admin review queue ----------
+    match /reviewQueue/{id} {
+      allow get, list: if isSystemAdmin();
+      allow write: if false; // decisions via Cloud Function (logged)
+    }
+
+    // ---------- National aggregates ----------
+    match /nationalStats/{doc} {
+      allow get, list: if isSystemAdmin() || isNbtpViewer();
+      allow write: if false; // computed by scheduled Function
+    }
+
+    // ---------- DENY BY DEFAULT ----------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

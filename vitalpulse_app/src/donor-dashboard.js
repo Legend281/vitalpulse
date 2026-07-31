@@ -1440,7 +1440,7 @@ function renderDonorJourneyCard(r) {
       ${phone ? `<a href="tel:${esc(phone.replace(/\s+/g, ''))}" class="press-scale flex items-center gap-2 min-w-0 hover:text-primary"><span class="material-symbols-outlined text-[15px] text-primary shrink-0">call</span><span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider shrink-0">Desk</span><span class="text-xs font-bold text-primary truncate">${esc(phone)}</span></a>` : ''}
     </div>`;
 
-  let actions = '';
+  let actions;
   if (r.status === 'Donor Assigned') {
     actions = `
       <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-on-surface-variant hover:text-error bg-surface-container-low hover:bg-error-container/40 px-3 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
@@ -2587,7 +2587,7 @@ window._donationConfirm = async () => {
   if (!currentUser) return;
 
   // Final eligibility backstop at the commit point (in case state changed since opening).
-  if (!await warnIfIneligible()) { closeDonationModal(); return; }
+  if (!await warnIfIneligible()) { window.closeDonationModal(); return; }
 
   const dateInput = document.getElementById('donationDate');
   if (!dateInput || !dateInput.value) {
@@ -2615,7 +2615,7 @@ window._donationConfirm = async () => {
       screeningFlags,
       screeningPassed: screeningFlags.length === 0,
     });
-    closeDonationModal();
+    window.closeDonationModal();
     showToast('Donation scheduled!');
     loadDonorDashboard();
     loadDonorDonations();

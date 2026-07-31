@@ -1,0 +1,24 @@
+{
+  "name": "vitalpulse",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VitalPulse repo root — CI/CD orchestration (lint, typecheck, build, tests) plus the Firestore Security Rules emulator test suite.",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "npm --prefix functions run typecheck && npm --prefix scripts run typecheck",
+    "build": "npm --prefix vitalpulse_app run build",
+    "test:unit": "npm --prefix functions run test && npm --prefix vitalpulse_app run test",
+    "test:rules": "firebase emulators:exec --project vitalpulse-fa458 --only firestore \"vitest run --config vitest.rules.config.js\""
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-security": "^4.0.1",
+    "firebase": "^11.1.0",
+    "firebase-tools": "^13.29.1",
+    "globals": "^17.7.0",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^2.1.8"
+  }
+}

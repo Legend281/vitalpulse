@@ -1181,7 +1181,7 @@ export function subscribeToDonorJourneys(donorId, callback) {
             (err) => console.warn('donor journeys (public) listener error:', err.message)
         ),
     ];
-    return () => unsubs.forEach(u => { try { u(); } catch (e) {} });
+    return () => unsubs.forEach(u => { try { u(); } catch (e) { /* teardown: ignore unsubscribe errors */ } });
 }
 
 // ============================================

@@ -1,0 +1,254 @@
+# VitalPulse CI/CD — Master Plan Part 4.
+#
+# Honesty note (2026-07-24, Part 4 installation): every job through `build` runs for real today
+# and is meant to be green on every PR. The staging/production jobs below `build` are wired to the
+# full Master Plan shape but gated off by `vars.STAGING_DEPLOY_ENABLED` (unset by default, so those
+# jobs are skipped, not failing) because the infrastructure they need doesn't exist yet:
+#   - separate dev/staging/prod Firebase projects — today there is only one, vitalpulse-fa458
+#     (PHASE0_AUDIT.md §1)
+#   - a `hosting` block in firebase.json (none exists yet)
+#   - FIREBASE_SERVICE_ACCOUNT + FIREBASE_PROJECT_ID secrets in "staging"/"production" GitHub
+#     Environments (create the environments too — required reviewers on "production")
+#   - vars.STAGING_URL / vars.PROD_URL
+#   - k6-stress-tests.js adapted to the real schema and promoted from vitalpulse_app/docs/ to the
+#     repo root (it's still the unadapted Master Plan reference draft, same situation
+#     firestore.rules was in before Phase 2)
+#   - test:integration / test:smoke npm scripts (don't exist yet)
+# Flip vars.STAGING_DEPLOY_ENABLED to 'true' once those are in place. See
+# vitalpulse_app/docs/VitalPulse_Plan_Tracker.md, Part 4, for the full punch list.
+#
+# Also not yet configured (repo settings, not workflow YAML — see tracker):
+#   - Branch protection on main: PR + 1 review; 2 reviews for firestore.rules/auth/authz changes
+#     (Security Policy 8 §1)
+
+name: vitalpulse-ci-cd
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+  security-events: write
+  id-token: write   # for Workload Identity Federation (preferred over JSON keys), once deploy is live
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ---------------- GATE 1: hygiene + secrets ----------------
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }          # scan full history
+      - name: Gitleaks (BLOCKING)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # only required for GitHub orgs, not personal accounts
+
+  lint-and-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm --prefix functions ci
+      - run: npm --prefix scripts ci
+      - name: ESLint (BLOCKING) — includes eslint-plugin-security per Part 3.2
+        run: npm run lint
+      - name: Typecheck (functions + scripts)
+        run: npm run typecheck
+
+  # ---------------- GATE 2: SAST + dependencies ----------------
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Semgrep (BLOCKING on findings)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/owasp-top-ten
+            p/javascript
+            p/typescript
+            p/secrets
+        # No SEMGREP_APP_TOKEN configured — runs the free community rulesets above without a
+        # Semgrep account. Add SEMGREP_APP_TOKEN as a secret later for full AppSec Platform findings.
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm --prefix vitalpulse_app ci
+      - run: npm --prefix functions ci
+      - run: npm --prefix scripts ci
+      - name: npm audit — shipped code (BLOCKING on high/critical)
+        run: |
+          npm --prefix vitalpulse_app audit --audit-level=high
+          npm --prefix functions audit --audit-level=high
+          npm --prefix scripts audit --audit-level=high
+      - name: npm audit — repo root tooling (informational, not blocking — see tracker)
+        # Root package.json is CI/dev tooling only (eslint, firebase-tools, etc.), never shipped.
+        # As of 2026-07-24 it has 2 high + 2 critical transitive findings (google-gax / teeny-request
+        # / retry-request / uuid, pulled in by firebase-tools) with no non-breaking fix available —
+        # only `npm audit fix --force`, which risks breaking firebase-tools/firebase-admin. Flagged
+        # to the Security Lead for a remediation-vs-accepted-risk call per Policy 1's risk-appetite
+        # clause; not silently ignored. See VitalPulse_Plan_Tracker.md Part 4 notes.
+        run: npm audit --audit-level=high || echo "::warning::Root devDependency audit has known findings — dev/CI tooling only, no runtime surface. See VitalPulse_Plan_Tracker.md Part 4 notes for remediation-vs-accepted-risk decision needed from the Security Lead."
+        continue-on-error: true
+
+  # ---------------- GATE 3: tests ----------------
+  unit-tests:
+    runs-on: ubuntu-latest
+    needs: [lint-and-types]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm --prefix functions ci
+      - name: Cloud Functions unit tests + coverage gate (BLOCKING — 90% authz branches, 80% overall)
+        run: npm --prefix functions run test:coverage
+      - run: npm --prefix vitalpulse_app ci
+      - name: Frontend unit tests (BLOCKING) — matching engine / compatibility logic (Part 3.1)
+        run: npm --prefix vitalpulse_app run test
+
+  rules-tests:
+    runs-on: ubuntu-latest
+    needs: [lint-and-types]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm i -g firebase-tools
+      - name: Firestore Security Rules tests (BLOCKING)
+        run: npm run test:rules
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [unit-tests, rules-tests, sast, secret-scan, dependency-audit]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm --prefix vitalpulse_app ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: vitalpulse_app/dist/ }
+
+  # ---------------- STAGING (on merge to main) — see header note, not live yet ----------------
+  deploy-staging:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: vitalpulse_app/dist/ }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm i -g firebase-tools
+      - name: Deploy RULES FIRST, then functions, then hosting
+        run: |
+          firebase deploy --only firestore:rules --project "$PROJECT" --force
+          firebase deploy --only functions --project "$PROJECT" --force
+          firebase deploy --only hosting --project "$PROJECT"
+        env:
+          PROJECT: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+  staging-integration-tests:
+    if: vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Integration tests vs staging (synthetic data only)
+        run: npm run test:integration
+        env:
+          STAGING_URL: ${{ vars.STAGING_URL }}
+
+  dast-zap:
+    if: vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    steps:
+      - name: OWASP ZAP baseline scan (BLOCKING on high)
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: ${{ vars.STAGING_URL }}
+          fail_action: true
+
+  smoke-load-test:
+    if: vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [staging-integration-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: k6 smoke (reduced S1 scenario)
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: k6-stress-tests.js
+        env:
+          K6_SCENARIO: smoke
+          TARGET_URL: ${{ vars.STAGING_URL }}
+
+  # ---------------- PRODUCTION (tag + manual approval) — see header note, not live yet ----------------
+  deploy-production:
+    if: startsWith(github.ref, 'refs/tags/v') && vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [dast-zap, smoke-load-test]
+    environment: production   # protected: requires manual reviewer approval
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: vitalpulse_app/dist/ }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm i -g firebase-tools
+      - name: Deploy to production (rules -> functions -> hosting)
+        run: |
+          firebase deploy --only firestore:rules --project "$PROJECT" --force
+          firebase deploy --only functions --project "$PROJECT" --force
+          firebase deploy --only hosting --project "$PROJECT"
+        env:
+          PROJECT: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+  post-deploy-smoke:
+    if: vars.STAGING_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Production smoke tests
+        run: npm run test:smoke
+        env:
+          PROD_URL: ${{ vars.PROD_URL }}
+      - name: Rollback hosting on failure
+        if: failure()
+        run: |
+          npm i -g firebase-tools
+          firebase hosting:rollback --project "$PROJECT" --non-interactive
+        env:
+          PROJECT: ${{ secrets.FIREBASE_PROJECT_ID }}
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

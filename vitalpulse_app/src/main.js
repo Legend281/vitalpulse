@@ -4940,7 +4940,7 @@ function initNotificationSystem() {
     if (settingsBtn) {
         settingsBtn.addEventListener('click', () => {
             document.getElementById('notificationDropdown')?.classList.add('hidden');
-            switchView('settings');
+            window.adminSwitchView?.('settings');
         });
     }
 }
@@ -5988,7 +5988,7 @@ function initCompatibilityGuideModal() {
                     <span class="text-xs font-bold text-on-surface">Receives from</span>
                 </div>
                 <div class="flex flex-wrap gap-1">
-                    ${canDonateTo.map(t => `<span class="text-[10px] font-bold px-2 py-0.5 rounded-md ${t === type ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}">${t}</span>`).join('')}
+                    ${canReceiveFrom.map(t => `<span class="text-[10px] font-bold px-2 py-0.5 rounded-md ${t === type ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}">${t}</span>`).join('')}
                 </div>
             </div>
             `;
@@ -6744,7 +6744,7 @@ window.printRequestSlip = async (requestId) => {
                 </div>
                 <script>
                     window.onload = function() { window.print(); window.close(); }
-                <\/script>
+                </script>
             </body>
             </html>
         `);
@@ -6787,7 +6787,7 @@ window.printDonorSlip = async (donationId) => {
                 <div class="row" style="border-bottom:none;"><span class="row-label">Status</span><span class="row-value">${data.status || 'Pending'}</span></div>
                 <div class="thank-you">Thank you for your life-saving donation!</div>
                 <div class="footer"><p>VitalPulse Blood Donation System — vitalpulse.cm</p><p>Generated: ${new Date().toLocaleString()}</p></div>
-                <script>window.onload=function(){window.print();window.close();}<\/script>
+                <script>window.onload=function(){window.print();window.close();}</script>
             </body></html>
         `);
         printWindow.document.close();
