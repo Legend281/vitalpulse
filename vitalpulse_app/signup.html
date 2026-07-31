@@ -156,14 +156,26 @@
 </div>
 </div>
 <div class="group" id="licenseUrlGroup" style="display: none;">
-<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">License Document URL (Optional)</label>
-<input id="licenseUrl" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="https://drive.google.com/..." type="url"/>
-<p class="text-[10px] text-slate-500 mt-1">Link to your hospital registration/license document</p>
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">License Document <span class="text-primary">*</span></label>
+<input id="licenseFile" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.gif,.txt" class="hidden"/>
+<label for="licenseFile" id="licenseDropZone" class="block w-full cursor-pointer border-2 border-dashed border-outline-variant/30 rounded-xl px-4 py-5 text-center transition-all hover:border-primary hover:bg-primary/5">
+    <span class="material-symbols-outlined text-2xl text-on-surface-variant" data-icon="upload_file">upload_file</span>
+    <p class="text-sm font-bold text-on-surface mt-1.5">Click to upload your license document</p>
+    <p class="text-[10px] text-slate-500 mt-1">PDF, Word, or images (max 5 MB)</p>
+    <div id="licenseFileInfo" class="hidden mt-2.5 inline-flex items-center gap-2 bg-surface-container-low rounded-lg px-3 py-1.5">
+        <span class="material-symbols-outlined text-sm text-primary" data-icon="description">description</span>
+        <span id="licenseFileName" class="text-xs font-bold text-on-surface max-w-[220px] truncate"></span>
+        <span id="licenseFileSize" class="text-[10px] text-slate-500 font-medium"></span>
+    </div>
+</label>
+<p class="text-[10px] text-slate-500 mt-1">Upload your hospital registration / license document directly — the admin will review it.</p>
+<p id="licenseFileError" class="hidden text-[10px] text-error font-bold mt-1"></p>
 </div>
 <div class="group" id="cniGroup">
-<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">National ID Number / CNI (Optional)</label>
-<input id="nationalId" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="e.g. 102938475 (Hashed with SHA-256 for privacy)" type="text"/>
+<label class="block text-xs font-bold text-on-surface-variant uppercase tracking-tighter mb-1 transition-all group-focus-within:text-primary">National ID Number / CNI <span class="text-primary">*</span></label>
+<input id="nationalId" class="w-full bg-transparent border-0 border-b-2 border-outline-variant/30 px-0 py-3 focus:ring-0 focus:border-primary transition-all placeholder:text-surface-container-highest text-on-surface font-medium" placeholder="e.g. 102938475 (Hashed with SHA-256 for privacy)" type="text" required/>
 <p class="text-[10px] text-emerald-600 font-bold mt-1">🔒 Protected with SHA-256 hashing. Raw ID is never stored.</p>
+<p class="text-[10px] text-primary font-medium mt-0.5" id="cniRequiredHint">Required for donor accounts — prevents duplicate registrations</p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 <div class="group">
@@ -208,8 +220,70 @@ function toggleRoleFields() {
         if (cniGroup) cniGroup.style.display = 'block';
         if (phoneGroup) phoneGroup.style.display = 'none';
         if (licenseUrlGroup) licenseUrlGroup.style.display = 'none';
+        const fileInput = document.getElementById('licenseFile');
+        if (fileInput) fileInput.value = '';
+        const info = document.getElementById('licenseFileInfo');
+        if (info) info.classList.add('hidden');
+        const err = document.getElementById('licenseFileError');
+        if (err) err.classList.add('hidden');
     }
 }
+
+(function initLicenseUpload() {
+    const fileInput = document.getElementById('licenseFile');
+    const dropZone = document.getElementById('licenseDropZone');
+    const info = document.getElementById('licenseFileInfo');
+    const nameEl = document.getElementById('licenseFileName');
+    const sizeEl = document.getElementById('licenseFileSize');
+    const errEl = document.getElementById('licenseFileError');
+    if (!fileInput) return;
+
+    const ALLOWED = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'text/plain'];
+    const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+
+    const showError = (msg) => {
+        errEl.textContent = msg;
+        errEl.classList.remove('hidden');
+        if (info) info.classList.add('hidden');
+        fileInput.value = '';
+    };
+    const clearError = () => errEl.classList.add('hidden');
+
+    fileInput.addEventListener('change', () => {
+        clearError();
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (!ALLOWED.includes(file.type)) {
+            showError('Unsupported format. Please upload a PDF, Word document, or image (PNG/JPG/WebP/GIF).');
+            return;
+        }
+        if (file.size > MAX_BYTES) {
+            showError('File is too large. Maximum size is 5 MB.');
+            return;
+        }
+        if (nameEl) nameEl.textContent = file.name;
+        if (sizeEl) sizeEl.textContent = '(' + (file.size / 1024 / 1024).toFixed(2) + ' MB)';
+        if (info) info.classList.remove('hidden');
+    });
+
+    if (dropZone) {
+        ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-primary', 'bg-primary/5');
+        }));
+        ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-primary', 'bg-primary/5');
+        }));
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            if (dt && dt.files && dt.files[0]) {
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change'));
+            }
+        });
+    }
+})();
 </script>
 </div>
 </main>

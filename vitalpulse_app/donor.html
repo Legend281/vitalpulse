@@ -656,8 +656,8 @@
     <div class="absolute -top-10 -right-8 w-48 h-48 rounded-full bg-amber-400/15 blur-3xl pointer-events-none"></div>
     <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-5 relative z-10">
       <div class="flex items-center gap-5">
-        <!-- Gold tier emblem -->
-        <div class="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-200 flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0 border border-yellow-200/60">
+        <!-- Tier emblem (dynamically updated by JS) -->
+        <div id="donorBadgeEmblem" class="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-200 flex items-center justify-center shadow-lg shadow-amber-500/30 shrink-0 border border-yellow-200/60">
           <span class="material-symbols-outlined text-4xl text-amber-900 relative z-10" style="font-variation-settings: 'FILL' 1;">military_tech</span>
         </div>
         <div class="space-y-0.5">
@@ -1231,6 +1231,62 @@
     <span id="toastIcon" class="material-symbols-outlined text-emerald-400 text-lg">check_circle</span>
   </span>
   <span id="toastMessage" class="text-sm font-bold leading-snug">Success!</span>
+</div>
+
+<!-- BADGE CERTIFICATION MODAL -->
+<div id="badgeCertModal" class="hidden fixed inset-0 z-[95] items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-md" id="badgeCertBackdrop"></div>
+  <div class="relative animate-in bg-surface-container-lowest w-full max-w-sm rounded-3xl shadow-2xl border border-outline-variant/30 overflow-hidden">
+    <!-- Certificate ribbon header -->
+    <div class="relative bg-gradient-to-r from-primary/10 via-error/5 to-primary/10 px-6 pt-7 pb-4 text-center border-b border-outline-variant/15">
+      <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-primary via-error to-primary"></div>
+      <div id="badgeCertEmblem"></div>
+      <h3 id="badgeCertTitle" class="text-xl font-black font-headline text-on-surface tracking-tight mt-3"></h3>
+      <p id="badgeCertDesc" class="text-sm text-on-surface-variant mt-1.5 leading-relaxed"></p>
+    </div>
+    <!-- Certificate body -->
+    <div class="p-5 space-y-3 text-sm">
+      <div id="badgeCertMetaWrap">
+        <div class="flex items-center gap-3 bg-surface-container-low rounded-xl p-3" id="badgeCertDate">
+          <span class="material-symbols-outlined text-base text-emerald-600">calendar_today</span>
+          <span class="font-semibold text-on-surface">Awarded —</span>
+        </div>
+        <div class="flex items-center gap-3 bg-surface-container-low rounded-xl p-3" id="badgeCertStatus">
+          <span class="material-symbols-outlined text-base text-emerald-600">verified</span>
+          <span class="font-semibold text-on-surface">Verified by VitalPulse Network</span>
+        </div>
+        <div class="flex items-center gap-3 bg-surface-container-low rounded-xl p-3" id="badgeCertId">
+          <span class="material-symbols-outlined text-base text-primary">fingerprint</span>
+          <span class="font-mono text-xs font-semibold text-on-surface">—</span>
+        </div>
+        <!-- Stats row -->
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-surface-container-low rounded-xl p-3 text-center">
+            <p class="text-lg font-black text-primary" id="badgeCertDonations">0</p>
+            <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Donations</p>
+          </div>
+          <div class="bg-surface-container-low rounded-xl p-3 text-center">
+            <p class="text-lg font-black text-primary" id="badgeCertUnits">0</p>
+            <p class="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Units</p>
+          </div>
+        </div>
+      </div>
+      <!-- Locked state: requirement row -->
+      <div id="badgeCertReqRow" class="hidden space-y-2">
+        <div class="flex items-center gap-3 bg-surface-container-low rounded-xl p-3">
+          <span class="material-symbols-outlined text-base text-amber-500">stars</span>
+          <span class="font-medium text-amber-600">Requirement</span>
+        </div>
+        <div class="flex items-center gap-3 bg-surface-container-low rounded-xl p-3">
+          <span class="material-symbols-outlined text-base text-on-surface-variant/50">trending_up</span>
+          <span class="font-medium text-on-surface-variant">Progress</span>
+        </div>
+      </div>
+    </div>
+    <div class="flex px-5 pb-5">
+      <button id="badgeCertClose" class="press-scale flex-1 py-3 rounded-2xl bg-primary hover:opacity-90 text-on-primary font-extrabold text-sm transition-opacity cursor-pointer">Got it!</button>
+    </div>
+  </div>
 </div>
 
 <!-- PROFESSIONAL ALERT / CONFIRM MODAL — replaces native alert()/confirm() and basic notices.

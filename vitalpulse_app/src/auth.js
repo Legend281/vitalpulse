@@ -44,6 +44,7 @@ function fallbackHash(str) {
 export async function registerUser(email, password, role, additionalData) {
     try {
         let cniHash = null;
+        let cniLast4 = null;
         if (role === 'donor' && additionalData.nationalId) {
             cniHash = await hashNationalId(additionalData.nationalId);
             if (cniHash) {
@@ -53,6 +54,8 @@ export async function registerUser(email, password, role, additionalData) {
                     throw new Error('A donor account with this National ID Number (CNI) is already registered.');
                 }
             }
+            const cleanId = additionalData.nationalId.trim().replace(/[\s-]/g, '');
+            cniLast4 = cleanId.length >= 4 ? cleanId.slice(-4) : cleanId;
         }
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -84,13 +87,17 @@ export async function registerUser(email, password, role, additionalData) {
             // actually tested the donor's blood — see recordDonationIntake() in db.js.
             bloodTypeSource: role === 'donor' ? 'self-reported' : null,
             cniHash: cniHash || null,
+            cniLast4: cniLast4 || null,
             isCniVerified: Boolean(cniHash),
             city: additionalData.city || null,
             phone: additionalData.phone || null,
             licenseUrl: additionalData.licenseUrl || null,
+            licenseFileName: additionalData.licenseFileName || null,
             isVerified: role === 'donor' ? true : (role === 'hospital' ? !requireHospitalApproval : false),
             emailVerified: false,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            registeredAt: new Date().toISOString(),
+            lastActiveAt: new Date().toISOString()
         });
 
         // Notify admin about new hospital registration
@@ -215,6 +222,13 @@ export async function loginUser(email, password) {
         delete fullUser.nationalId;
         delete fullUser.cniHash;
         localStorage.setItem('vitalpulse_user', JSON.stringify(fullUser));
+        // Stamp last activity on the user doc (fire-and-forget so a failed write never
+        // blocks the login itself).
+        try {
+            await updateDoc(doc(db, 'users', user.uid), { lastActiveAt: new Date().toISOString() });
+        } catch (e) {
+            console.warn('Failed to stamp lastActiveAt:', e);
+        }
         return fullUser;
     } catch (error) {
         console.error("Login error:", error);

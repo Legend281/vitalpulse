@@ -43,7 +43,7 @@ Stores all account types (Donors, Hospitals, Admins).
 - `isVerified`: boolean (Donors default to true, Hospitals default to false pending admin approval)
 - `emailVerified`: boolean
 - **Donor Specific:** `bloodType`, `isAvailable` (boolean), `isSuspended` (boolean), `donations` (array fetched dynamically)
-- **Hospital Specific:** `phone`, `licenseUrl`, `rejected` (boolean)
+- **Hospital Specific:** `phone`, `licenseUrl` (Firebase Storage download URL of the license document uploaded at signup), `licenseFileName`, `rejected` (boolean)
 
 ### B. `requests`
 Manages emergency blood requests.

@@ -85,7 +85,7 @@ VitalPulse utilizes a heavily denormalized NoSQL structure for rapid read operat
 - `name`, `city` (Strings)
 - `isVerified`, `emailVerified` (Booleans)
 - **Donor Specific:** `bloodType`, `isAvailable`, `isSuspended`, `donations` (Array)
-- **Hospital Specific:** `phone`, `licenseUrl`, `rejected`
+- **Hospital Specific:** `phone`, `licenseUrl` (Storage download URL of the license document uploaded at signup), `licenseFileName`, `rejected`
 
 ### `requests` Collection
 - `status` (String: `'Open'`, `'Matching'`, `'Donor Assigned'`, `'Donor En Route'`)

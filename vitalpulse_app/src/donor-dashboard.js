@@ -43,7 +43,7 @@ import L from 'leaflet';
 
 // XSS-safety helper for interpolating user-controlled strings (hospital names, cities, etc.)
 // into innerHTML template strings.
-function esc(str) {
+export function esc(str) {
   if (!str) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -170,20 +170,19 @@ export function initDonorNavigation() {
     btn.addEventListener('click', () => switchDonorView(btn.dataset.view));
   });
 
-  // "Centers" isn't a separate view — it's a section within the dashboard — so this jumps
-  // there instead, switching to the dashboard first if the donor is somewhere else. Both the
-  // header tab and the "Find Donation Center" quick action trigger the same jump.
-  const jumpToCenters = () => {
-    const jump = () => document.getElementById('donationCentersSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    if (document.getElementById('view-dashboard')?.classList.contains('hidden')) {
+  // "Find Donation Center" and "Centers" nav now open the searchable All-Centers modal
+  // instead of scrolling to the dashboard section — gives instant search + filtering.
+  const openCentersModal = () => {
+    const onDashboard = !document.getElementById('view-dashboard')?.classList.contains('hidden');
+    if (!onDashboard) {
       switchDonorView('dashboard');
-      setTimeout(jump, 150);
+      setTimeout(() => window.openAllCentersModal(), 200);
     } else {
-      jump();
+      window.openAllCentersModal();
     }
   };
-  document.getElementById('btnNavCenters')?.addEventListener('click', jumpToCenters);
-  document.getElementById('btnQuickFindCenters')?.addEventListener('click', jumpToCenters);
+  document.getElementById('btnNavCenters')?.addEventListener('click', openCentersModal);
+  document.getElementById('btnQuickFindCenters')?.addEventListener('click', openCentersModal);
 
   // ---- Mobile nav drawer (hamburger) — the mobile navigation hub, replacing the old fixed
   // bottom bar. Slides in from the left; closes on backdrop, close button, or picking a link. ----
@@ -209,7 +208,7 @@ export function initDonorNavigation() {
   document.getElementById('btnMobileMenu')?.addEventListener('click', openDrawer);
   document.getElementById('btnMobileMenuClose')?.addEventListener('click', closeMobileDrawer);
   drawerBackdrop?.addEventListener('click', closeMobileDrawer);
-  document.getElementById('btnNavCentersMobile')?.addEventListener('click', () => { closeMobileDrawer(); jumpToCenters(); });
+  document.getElementById('btnNavCentersMobile')?.addEventListener('click', () => { closeMobileDrawer(); window.openAllCentersModal(); });
   // Close the drawer after any destination/action is chosen — except the theme toggle, so the
   // donor can see the theme flip before the drawer slides away.
   drawerPanel?.querySelectorAll('.donor-mobile-nav, [data-action="switch-view"], .logout-btn, [onclick]').forEach(btn => {
@@ -273,11 +272,36 @@ export function initDonorNavigation() {
     notifBtn.addEventListener('click', async () => {
       const currentUser = getCurrentUser();
       if (!currentUser) return;
+
+      // Create panel with skeleton immediately — no await
+      const panel = document.createElement('div');
+      panel.id = 'donorNotifPanel';
+      panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
+      panel.innerHTML = `
+        <div class="absolute inset-0 bg-black/30" onclick="document.getElementById('donorNotifPanel')?.remove()"></div>
+        <div class="relative bg-surface-container-lowest border border-outline-variant/20 w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-outline-variant/15 shrink-0">
+            <h3 class="font-black text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-primary">notifications</span>
+              Notifications
+            </h3>
+            <button onclick="document.getElementById('donorNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-surface-container-low flex items-center justify-center hover:bg-surface-container text-on-surface-variant transition-colors">
+              <span class="material-symbols-outlined text-sm">close</span>
+            </button>
+          </div>
+          <div id="donorNotifBody" class="overflow-y-auto flex-1 p-3 space-y-1">
+            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-surface-container-high"></div><div class="flex-1 space-y-2"><div class="h-3 bg-surface-container-high rounded w-3/4"></div><div class="h-2 bg-surface-container-high/60 rounded w-1/2"></div></div></div>
+            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-surface-container-high"></div><div class="flex-1 space-y-2"><div class="h-3 bg-surface-container-high rounded w-2/3"></div><div class="h-2 bg-surface-container-high/60 rounded w-1/3"></div></div></div>
+            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-surface-container-high"></div><div class="flex-1 space-y-2"><div class="h-3 bg-surface-container-high rounded w-5/6"></div><div class="h-2 bg-surface-container-high/60 rounded w-2/3"></div></div></div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(panel);
+
+      // Now fetch data (from cache or network) and fill in
       try {
-        // Use cache first for instant display, then refresh silently
         let notifications = _donorNotifCache?.notifications;
         let unreadCount = _donorNotifCache?.unreadCount || 0;
-        // Background refresh
         if (!notifications) {
           const fetched = await Promise.all([
             fetchDonorNotifications(currentUser.uid, 10),
@@ -305,52 +329,42 @@ export function initDonorNavigation() {
             badge.classList.remove('flex');
           }
         }
-        if (notifications.length === 0) {
-          showToast('No notifications yet. When blood requests match your type, you will be notified here.');
-        } else {
-          const panel = document.createElement('div');
-          panel.id = 'donorNotifPanel';
-          panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
-          panel.innerHTML = `
-            <div class="absolute inset-0 bg-black/30" onclick="document.getElementById('donorNotifPanel')?.remove()"></div>
-            <div class="relative bg-surface-container-lowest border border-outline-variant/20 w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-              <div class="flex items-center justify-between px-5 py-4 border-b border-outline-variant/15 shrink-0">
-                <h3 class="font-black text-on-surface flex items-center gap-2">
-                  <span class="material-symbols-outlined text-primary">notifications</span>
-                  Notifications
-                </h3>
-                <div class="flex items-center gap-2">
-                  ${unreadCount > 0 ? `<button onclick="(async () => { const currentUser = getCurrentUser(); if(currentUser){await markAllNotificationsRead(currentUser.uid); document.getElementById('donorNotifPanel')?.remove(); const badge = document.getElementById('donorNotifBadge'); if(badge){badge.classList.add('hidden'); badge.classList.remove('flex');}} })()" class="text-[10px] font-bold text-primary hover:underline">Mark all read</button>` : ''}
-                  <button onclick="document.getElementById('donorNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-surface-container-low flex items-center justify-center hover:bg-surface-container text-on-surface-variant transition-colors">
-                    <span class="material-symbols-outlined text-sm">close</span>
-                  </button>
+        const body = document.getElementById('donorNotifBody');
+        if (body) {
+          if (notifications.length === 0) {
+            body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-on-surface-variant"><span class="material-symbols-outlined text-3xl mb-2 text-on-surface-variant/50">notifications_off</span><p class="text-sm font-medium">No notifications yet</p><p class="text-xs text-on-surface-variant/70 mt-1">When blood requests match your type, you will be notified here.</p></div>';
+          } else {
+            const markAllBtn = unreadCount > 0
+              ? `<button onclick="(async () => { const cu = getCurrentUser(); if(cu){await markAllNotificationsRead(cu.uid); const p = document.getElementById('donorNotifPanel'); if(p) p.remove(); const badge = document.getElementById('donorNotifBadge'); if(badge){badge.classList.add('hidden'); badge.classList.remove('flex');}} })()" class="text-[10px] font-bold text-primary hover:underline">Mark all read</button>`
+              : '';
+            // Update header with mark-all button
+            const header = document.querySelector('#donorNotifPanel h3')?.closest('.flex');
+            if (header && markAllBtn) {
+              const existing = header.querySelector('button:not([onclick*="remove"])');
+              if (!existing) header.insertAdjacentHTML('beforeend', markAllBtn);
+            }
+            body.innerHTML = notifications.map(n => {
+              const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
+              const colors = { 'error': 'text-error', 'success': 'text-success', 'info': 'text-tertiary', 'warning': 'text-warning' };
+              const c = colors[n.type] || colors.info;
+              const icon = icons[n.type] || icons.info;
+              return `
+                <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-surface-container-low transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.classList.add('opacity-60'); })()` : ''}">
+                  <span class="material-symbols-outlined text-sm mt-0.5 ${c}">${icon}</span>
+                  <div class="min-w-0 flex-1">
+                    <p class="text-xs font-bold text-on-surface">${esc(n.title)}</p>
+                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${esc(n.message)}</p>
+                    <p class="text-[9px] text-on-surface-variant/70 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
+                  </div>
+                  ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
                 </div>
-              </div>
-              <div class="overflow-y-auto flex-1 p-3 space-y-1">
-                ${notifications.map(n => {
-                  const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
-                  const colors = { 'error': 'text-error', 'success': 'text-success', 'info': 'text-tertiary', 'warning': 'text-warning' };
-                  const c = colors[n.type] || colors.info;
-                  const icon = icons[n.type] || icons.info;
-                  return `
-                    <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-surface-container-low transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.classList.add('opacity-60'); })()` : ''}">
-                      <span class="material-symbols-outlined text-sm mt-0.5 ${c}">${icon}</span>
-                      <div class="min-w-0 flex-1">
-                        <p class="text-xs font-bold text-on-surface">${esc(n.title)}</p>
-                        <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${esc(n.message)}</p>
-                        <p class="text-[9px] text-on-surface-variant/70 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
-                      </div>
-                      ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-            </div>
-          `;
-          document.body.appendChild(panel);
+              `;
+            }).join('');
+          }
         }
       } catch (e) {
-        showToast('No new notifications');
+        const body = document.getElementById('donorNotifBody');
+        if (body) body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-on-surface-variant"><span class="material-symbols-outlined text-3xl mb-2 text-on-surface-variant/50">error_outline</span><p class="text-sm font-medium">Could not load notifications</p></div>';
       }
     });
   }
@@ -1081,22 +1095,37 @@ export async function loadDonorDashboard() {
       }
     }
 
-    // Badges summary
+    // Badges summary — mini medallions matching the full badges view
     const badgesEl = document.getElementById('donorBadgesSummary');
     if (badgesEl && engagement) {
       if (engagement.badges.length === 0) {
         badgesEl.innerHTML = '<p class="text-sm text-on-surface-variant text-center py-4">Complete your first donation to earn badges!</p>';
       } else {
+        const summaryColors = {
+          'First Donation': { bg: '#fecaca', icon: '#dc2626', emblem: 'radial-gradient(circle at 35% 30%, #fecaca, #f87171 25%, #e11d48 50%, #be123c 75%, #881337)' },
+          'Regular Donor': { bg: '#e9d5ff', icon: '#7c3aed', emblem: 'radial-gradient(circle at 35% 30%, #e9d5ff, #a855f7 25%, #7c3aed 50%, #6d28d9 75%, #4c1d95)' },
+          'Life Saver': { bg: '#fef08a', icon: '#ca8a04', emblem: 'radial-gradient(circle at 35% 30%, #fef08a, #facc15 25%, #eab308 50%, #ca8a04 75%, #854d0e)' },
+          'Guardian Angel': { bg: '#ccfbf1', icon: '#0d9488', emblem: 'radial-gradient(circle at 35% 30%, #ccfbf1, #14b8a6 25%, #0d9488 50%, #0f766e 75%, #134e4a)' },
+          'Generous Heart': { bg: '#fed7aa', icon: '#ea580c', emblem: 'radial-gradient(circle at 35% 30%, #fed7aa, #fb923c 25%, #ea580c 50%, #c2410c 75%, #7c2d12)' },
+          'Universal Donor': { bg: '#d1fae5', icon: '#059669', emblem: 'radial-gradient(circle at 35% 30%, #d1fae5, #34d399 25%, #059669 50%, #047857 75%, #064e3b)' },
+        };
         badgesEl.innerHTML = `
-          <div class="flex flex-wrap gap-2">
-            ${engagement.badges.slice(0, 6).map(b => `
-              <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full" style="background-color: ${b.color}15;">
-                <span class="material-symbols-outlined text-sm" style="color: ${b.color}">${b.icon}</span>
-                <span class="text-[10px] font-bold" style="color: ${b.color}">${b.name}</span>
-              </div>
-            `).join('')}
+          <div class="flex flex-wrap gap-3 items-center">
+            ${engagement.badges.slice(0, 5).map(b => {
+              const sc = summaryColors[b.name] || summaryColors['First Donation'];
+              return `
+                <div class="flex flex-col items-center gap-1 group cursor-pointer" onclick="switchDonorView('badges')">
+                  <div class="relative w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shadow-sm border border-white/40 group-hover:scale-110 transition-transform" style="background:${sc.emblem}">
+                    <div class="absolute -top-0.5 -left-0.5 w-4 h-2.5 bg-white/20 rounded-full -rotate-12 blur-[1px] pointer-events-none"></div>
+                    <span class="material-symbols-outlined text-base relative z-10" style="color:white;font-variation-settings:'FILL'1">${b.icon}</span>
+                  </div>
+                  <span class="text-[8px] font-bold text-on-surface-variant leading-tight text-center max-w-[60px] truncate">${b.name}</span>
+                </div>
+              `;
+            }).join('')}
+            ${engagement.badges.length > 5 ? `<div class="flex flex-col items-center gap-1"><div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-black text-on-surface-variant">+${engagement.badges.length - 5}</div></div>` : ''}
           </div>
-          <button onclick="switchDonorView('badges')" class="press-scale mt-3 text-xs font-bold text-primary hover:underline cursor-pointer">View all badges →</button>
+          <button onclick="switchDonorView('badges')" class="press-scale mt-3 text-xs font-bold text-primary hover:underline cursor-pointer inline-flex items-center gap-1">View all badges <span class="material-symbols-outlined text-sm">arrow_forward</span></button>
         `;
       }
     }
@@ -1555,6 +1584,21 @@ async function loadDonorBadges() {
     const pointsSummary = document.getElementById('donorBadgePointsSummary');
     if (pointsSummary && engagement) pointsSummary.textContent = `${engagement.points} Pulse Points`;
 
+    // Dynamic tier emblem based on donor level
+    const emblemEl = document.getElementById('donorBadgeEmblem');
+    if (emblemEl && engagement) {
+      const tierMap = {
+        Bronze: { gradient: 'from-orange-600 via-amber-700 to-yellow-800', icon: 'shield', shadow: 'shadow-orange-500/30', border: 'border-orange-300/60', iconColor: 'text-orange-100' },
+        Silver: { gradient: 'from-slate-300 via-slate-400 to-slate-500', icon: 'workspace_premium', shadow: 'shadow-slate-400/30', border: 'border-slate-300/60', iconColor: 'text-slate-700' },
+        Gold: { gradient: 'from-amber-500 via-yellow-400 to-amber-200', icon: 'stars', shadow: 'shadow-amber-500/30', border: 'border-yellow-200/60', iconColor: 'text-amber-900' },
+        Platinum: { gradient: 'from-sky-200 via-slate-300 to-slate-400', icon: 'diamond', shadow: 'shadow-sky-300/30', border: 'border-sky-200/60', iconColor: 'text-slate-700' },
+      };
+      const tier = tierMap[engagement.tier] || tierMap.Bronze;
+      emblemEl.className = `relative w-16 h-16 rounded-2xl bg-gradient-to-tr ${tier.gradient} flex items-center justify-center shadow-lg ${tier.shadow} shrink-0 border ${tier.border}`;
+      emblemEl.querySelector('span').className = `material-symbols-outlined text-4xl ${tier.iconColor} relative z-10`;
+      emblemEl.querySelector('span').textContent = tier.icon;
+    }
+
     // Master Catalog of 3D Achievement Medals
     const masterBadges = [
       {
@@ -1637,69 +1681,173 @@ async function loadDonorBadges() {
       },
     ];
 
+    // Build metallic medallion SVG/CSS per badge
+    const medallionGradients = {
+      first_donation: { rim: '#9f1239', disc: 'radial-gradient(circle at 35% 30%, #fecaca, #f87171 25%, #e11d48 50%, #be123c 75%, #881337)', iconColor: '#fff1f2', ribbon: '#dc2626', ribbonEdge: '#991b1b', label: 'from-rose-500 to-red-800' },
+      regular_donor: { rim: '#5b21b6', disc: 'radial-gradient(circle at 35% 30%, #e9d5ff, #a855f7 25%, #7c3aed 50%, #6d28d9 75%, #4c1d95)', iconColor: '#faf5ff', ribbon: '#7c3aed', ribbonEdge: '#4c1d95', label: 'from-purple-500 to-indigo-800' },
+      life_saver: { rim: '#854d0e', disc: 'radial-gradient(circle at 35% 30%, #fef08a, #facc15 25%, #eab308 50%, #ca8a04 75%, #854d0e)', iconColor: '#422006', ribbon: '#dc2626', ribbonEdge: '#991b1b', label: 'from-amber-400 to-amber-700' },
+      guardian_angel: { rim: '#0f766e', disc: 'radial-gradient(circle at 35% 30%, #ccfbf1, #14b8a6 25%, #0d9488 50%, #0f766e 75%, #134e4a)', iconColor: '#ecfdf5', ribbon: '#0d9488', ribbonEdge: '#065f56', label: 'from-teal-400 to-emerald-800' },
+      generous_heart: { rim: '#9a3412', disc: 'radial-gradient(circle at 35% 30%, #fed7aa, #fb923c 25%, #ea580c 50%, #c2410c 75%, #7c2d12)', iconColor: '#fff7ed', ribbon: '#ea580c', ribbonEdge: '#9a3412', label: 'from-orange-400 to-orange-700' },
+      universal_donor: { rim: '#065f46', disc: 'radial-gradient(circle at 35% 30%, #d1fae5, #34d399 25%, #059669 50%, #047857 75%, #064e3b)', iconColor: '#ecfdf5', ribbon: '#059669', ribbonEdge: '#065f46', label: 'from-emerald-400 to-emerald-800' },
+    };
+    const lockedGrad = 'radial-gradient(circle at 35% 30%, #cbd5e1, #94a3b8 25%, #64748b 50%, #475569 75%, #334155)';
+    const lockedRim = '#334155';
+
+    function medalRibbon(ribbonColor, edgeColor) {
+      return `<svg class="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10" width="52" height="26" viewBox="0 0 52 26"><polygon points="26,2 8,24 18,24" fill="${ribbonColor}"/><polygon points="26,2 44,24 34,24" fill="${ribbonColor}"/><polygon points="26,2 8,24 18,24" fill="none" stroke="${edgeColor}" stroke-width="0.5"/><polygon points="26,2 44,24 34,24" fill="none" stroke="${edgeColor}" stroke-width="0.5"/></svg>`;
+    }
+
     container.innerHTML = masterBadges.map(b => {
+      const g = medallionGradients[b.id] || medallionGradients.first_donation;
       if (b.unlocked) {
+        const ringPct = b.progress >= 100 ? 100 : b.progress;
+        const ringDash = (ringPct / 100) * 226; /* 2*pi*36 ≈ 226 */
         return `
-          <div class="relative bg-surface-container-lowest border border-outline-variant/25 rounded-3xl p-6 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group">
-            <div class="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-gradient-to-br ${b.gradient} opacity-10 blur-xl pointer-events-none"></div>
-
-            <div class="flex items-start justify-between gap-3 mb-4">
-              <!-- 3D Metallic Emblem Shield -->
-              <div class="relative w-16 h-16 rounded-2xl bg-gradient-to-tr ${b.gradient} flex items-center justify-center shadow-xl ${b.glowColor} shrink-0 border-2 ${b.ringColor} group-hover:scale-105 transition-transform">
-                <div class="absolute inset-0 bg-white/20 rounded-2xl blur-xs"></div>
-                <span class="material-symbols-outlined text-3xl text-white relative z-10" style="font-variation-settings: 'FILL' 1;">${b.icon}</span>
+          <div class="relative bg-surface-container-lowest border border-outline-variant/25 rounded-3xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer text-center" data-badge-id="${b.id}">
+            <div class="absolute -top-16 -right-16 w-36 h-36 rounded-full bg-gradient-to-br ${g.label} opacity-[0.06] blur-2xl pointer-events-none"></div>
+            <!-- Medallion -->
+            <div class="relative w-[108px] h-[120px] mx-auto mb-3.5">
+              ${medalRibbon(g.ribbon, g.ribbonEdge)}
+              <!-- Outer rim -->
+              <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] rounded-full" style="background:${g.rim};box-shadow:0 4px 14px ${g.rim}40,inset 0 1px 2px rgba(255,255,255,0.2)"></div>
+              <!-- Disc -->
+              <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[84px] h-[84px] rounded-full flex items-center justify-center overflow-hidden" style="background:${g.disc};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.3)">
+                <div class="absolute -top-1 -left-1 w-10 h-5 bg-white/25 rounded-full -rotate-12 blur-[2px] pointer-events-none"></div>
+                <span class="material-symbols-outlined text-[32px] relative z-10" style="color:${g.iconColor};font-variation-settings:'FILL'1">${b.icon}</span>
               </div>
-              <span class="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-700 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider border border-emerald-500/30">
+              <!-- Progress ring (unlocked = full circle) -->
+              <svg class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] -rotate-90" viewBox="0 0 88 88">
+                <circle cx="44" cy="44" r="40" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2.5"/>
+                <circle cx="44" cy="44" r="40" fill="none" stroke="${g.ribbon}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="0" style="transition: stroke-dashoffset 0.6s ease"/>
+              </svg>
+            </div>
+            <h3 class="font-extrabold text-sm text-on-surface tracking-tight">${b.name}</h3>
+            <p class="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed px-1">${b.desc}</p>
+            <div class="mt-3 flex items-center justify-center gap-1.5">
+              <span class="inline-flex items-center gap-1 bg-emerald-500/12 text-emerald-700 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-500/25">
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                UNLOCKED
+                Unlocked
               </span>
-            </div>
-
-            <div class="space-y-1">
-              <h3 class="font-extrabold text-base text-on-surface tracking-tight">${b.name}</h3>
-              <p class="text-xs text-on-surface-variant leading-relaxed">${b.desc}</p>
-            </div>
-
-            <div class="mt-4 pt-3 border-t border-outline-variant/15 flex items-center justify-between text-[11px] font-bold text-emerald-600">
-              <span>Achieved & Verified</span>
-              <span class="material-symbols-outlined text-sm">verified</span>
             </div>
           </div>
         `;
       } else {
+        const ringPct = b.progress;
+        const circ = 2 * Math.PI * 40;
+        const dash = (ringPct / 100) * circ;
         return `
-          <div class="relative bg-surface-container-lowest/60 border border-outline-variant/15 rounded-3xl p-6 shadow-xs opacity-80 hover:opacity-100 transition-all duration-300 overflow-hidden">
-            <div class="flex items-start justify-between gap-3 mb-4">
-              <!-- Metallic Steel Locked Emblem -->
-              <div class="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-slate-400 via-slate-500 to-slate-700 flex items-center justify-center shadow-inner shrink-0 border-2 border-slate-300/40">
-                <span class="material-symbols-outlined text-3xl text-slate-200">${b.icon}</span>
-                <div class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-800 text-white flex items-center justify-center shadow-md">
-                  <span class="material-symbols-outlined text-xs">lock</span>
+          <div class="relative bg-surface-container-lowest/60 border border-dashed border-outline-variant/30 rounded-3xl p-5 shadow-xs opacity-75 hover:opacity-100 transition-all duration-300 overflow-hidden cursor-pointer group text-center" data-badge-id="${b.id}">
+            <div class="absolute inset-0 bg-gradient-to-br from-slate-200/5 to-transparent pointer-events-none"></div>
+            <!-- Medallion locked -->
+            <div class="relative w-[108px] h-[120px] mx-auto mb-3.5">
+              ${medalRibbon('#94a3b8', '#475569')}
+              <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] rounded-full" style="background:${lockedRim};box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)"></div>
+              <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[84px] h-[84px] rounded-full flex items-center justify-center overflow-hidden" style="background:${lockedGrad};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.2)">
+                <span class="material-symbols-outlined text-[32px] text-slate-400/60 relative z-10" style="font-variation-settings:'FILL'1">${b.icon}</span>
+                <div class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-slate-800/80 flex items-center justify-center shadow-md border border-slate-600/30">
+                  <span class="material-symbols-outlined text-sm text-slate-300">lock</span>
                 </div>
               </div>
-              <span class="bg-surface-container text-on-surface-variant text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
-                LOCKED
-              </span>
+              <!-- Progress ring -->
+              <svg class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] -rotate-90" viewBox="0 0 88 88">
+                <circle cx="44" cy="44" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2.5"/>
+                <circle cx="44" cy="44" r="40" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${circ - dash}" style="transition: stroke-dashoffset 0.8s ease"/>
+              </svg>
             </div>
-
-            <div class="space-y-1">
-              <h3 class="font-bold text-base text-on-surface/80 tracking-tight">${b.name}</h3>
-              <p class="text-xs text-on-surface-variant/80 leading-relaxed">${b.desc}</p>
-            </div>
-
-            <div class="mt-4 space-y-1.5">
-              <div class="flex justify-between text-[10px] font-bold text-on-surface-variant">
+            <h3 class="font-bold text-sm text-on-surface/60 tracking-tight">${b.name}</h3>
+            <p class="text-[11px] text-on-surface-variant/60 leading-relaxed px-1">${b.desc}</p>
+            <div class="mt-3 space-y-1.5 px-2">
+              <div class="flex justify-between text-[9px] font-bold text-on-surface-variant/60">
                 <span>Progress</span>
                 <span>${b.reqText}</span>
               </div>
-              <div class="h-2 w-full bg-surface-container-high rounded-full overflow-hidden">
-                <div class="h-full bg-slate-400 rounded-full transition-all duration-500" style="width: ${b.progress}%"></div>
+              <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
+                <div class="h-full bg-slate-400/50 rounded-full transition-all duration-500" style="width:${ringPct}%"></div>
               </div>
+              <p class="text-[9px] text-on-surface-variant/40 font-medium mt-1.5">Keep donating to unlock</p>
             </div>
           </div>
         `;
       }
     }).join('');
+
+    // Badge card click handlers — show certification modal
+    container.querySelectorAll('[data-badge-id]').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.dataset.badgeId;
+        const badge = masterBadges.find(b => b.id === id);
+        if (!badge) return;
+
+        const modal = document.getElementById('badgeCertModal');
+        const emblem = document.getElementById('badgeCertEmblem');
+        const icon = document.getElementById('badgeCertIcon');
+        const title = document.getElementById('badgeCertTitle');
+        const desc = document.getElementById('badgeCertDesc');
+        const date = document.getElementById('badgeCertDate');
+        const status = document.getElementById('badgeCertStatus');
+        const certId = document.getElementById('badgeCertId');
+        const certDonations = document.getElementById('badgeCertDonations');
+        const certUnits = document.getElementById('badgeCertUnits');
+        const certMetaWrap = document.getElementById('badgeCertMetaWrap');
+        const certReqRow = document.getElementById('badgeCertReqRow');
+
+        const g = medallionGradients[badge.id] || medallionGradients.first_donation;
+
+        if (badge.unlocked) {
+          emblem.innerHTML = `<div class="relative w-[100px] h-[112px] mx-auto">
+            ${medalRibbon(g.ribbon, g.ribbonEdge)}
+            <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[80px] h-[80px] rounded-full" style="background:${g.rim};box-shadow:0 4px 14px ${g.rim}40,inset 0 1px 2px rgba(255,255,255,0.2)"></div>
+            <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[76px] h-[76px] rounded-full flex items-center justify-center overflow-hidden" style="background:${g.disc};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.3)">
+              <div class="absolute -top-1 -left-1 w-9 h-5 bg-white/25 rounded-full -rotate-12 blur-[2px] pointer-events-none"></div>
+              <span class="material-symbols-outlined text-[30px] relative z-10" style="color:${g.iconColor};font-variation-settings:'FILL'1">${badge.icon}</span>
+            </div>
+          </div>`;
+          title.textContent = badge.name;
+          desc.textContent = badge.desc;
+          const awardDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+          date.innerHTML = `<span class="material-symbols-outlined text-base text-emerald-600">calendar_today</span><span class="font-semibold text-on-surface">Awarded ${awardDate}</span>`;
+          status.innerHTML = `<span class="material-symbols-outlined text-base text-emerald-600">verified</span><span class="font-semibold text-emerald-700">Verified by VitalPulse Network</span>`;
+          certId.innerHTML = `<span class="material-symbols-outlined text-base text-primary">fingerprint</span><span class="font-mono text-xs font-semibold text-on-surface">VP-${badge.id.toUpperCase()}-${currentUser.uid.slice(0, 6).toUpperCase()}</span>`;
+          if (certDonations) certDonations.textContent = `${donationCount} donation${donationCount === 1 ? '' : 's'}`;
+          if (certUnits) certUnits.textContent = `${totalUnits} unit${totalUnits === 1 ? '' : 's'}`;
+          if (certReqRow) certReqRow.classList.add('hidden');
+          certMetaWrap.classList.remove('hidden');
+        } else {
+          emblem.innerHTML = `<div class="relative w-[100px] h-[112px] mx-auto">
+            ${medalRibbon('#94a3b8', '#475569')}
+            <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[80px] h-[80px] rounded-full" style="background:${lockedRim};box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)"></div>
+            <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[76px] h-[76px] rounded-full flex items-center justify-center overflow-hidden" style="background:${lockedGrad};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.2)">
+              <span class="material-symbols-outlined text-[30px] text-slate-400/60 relative z-10" style="font-variation-settings:'FILL'1">lock</span>
+              <div class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-800/80 flex items-center justify-center shadow-md border border-slate-600/30">
+                <span class="material-symbols-outlined text-[11px] text-slate-300">lock</span>
+              </div>
+            </div>
+          </div>`;
+          title.textContent = badge.name;
+          desc.textContent = `${badge.desc}`;
+          date.innerHTML = `<span class="material-symbols-outlined text-base text-on-surface-variant/50">schedule</span><span class="font-medium text-on-surface-variant">Not yet achieved</span>`;
+          status.innerHTML = `<span class="material-symbols-outlined text-base text-amber-500">stars</span><span class="font-medium text-amber-600">${badge.reqText}</span>`;
+          certId.innerHTML = `<span class="material-symbols-outlined text-base text-on-surface-variant/50">trending_up</span><span class="font-medium text-on-surface-variant">${badge.progress}% complete</span>`;
+          if (certReqRow) {
+            certReqRow.classList.remove('hidden');
+            certReqRow.innerHTML = `<div class="mt-1 w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden"><div class="h-full bg-slate-400/50 rounded-full transition-all" style="width:${badge.progress}%"></div></div>`;
+          }
+          certMetaWrap.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      });
+    });
+
+    // Close modal on backdrop click or button
+    const closeBadgeCert = () => {
+      const modal = document.getElementById('badgeCertModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    };
+    document.getElementById('badgeCertClose')?.addEventListener('click', closeBadgeCert);
+    document.getElementById('badgeCertBackdrop')?.addEventListener('click', closeBadgeCert);
   } catch (e) {
     console.error('Failed to load badges:', e);
     container.innerHTML = '<div class="col-span-full text-center text-error py-8">Failed to load badges.</div>';
@@ -1779,6 +1927,8 @@ async function loadDonorProfile() {
             }
             updateData.cniHash = hashed;
             updateData.isCniVerified = true;
+            const cleanId = newNatId.trim().replace(/[\s-]/g, '');
+            updateData.cniLast4 = cleanId.length >= 4 ? cleanId.slice(-4) : cleanId;
           }
         }
 
@@ -1936,7 +2086,7 @@ window.vpAlert = (opts = {}) => new Promise((resolve) => {
   document.getElementById('vpAlertIcon').textContent = s.icon;
   titleEl.textContent = title;
   titleEl.classList.toggle('hidden', !title);
-  msgEl.textContent = message;
+  msgEl.innerHTML = message;
   msgEl.classList.toggle('hidden', !message);
   confirmBtn.textContent = confirmText;
   confirmBtn.className = 'press-scale flex-1 py-3 rounded-2xl font-extrabold text-sm transition-opacity cursor-pointer ' + (danger ? 'bg-error hover:opacity-90 text-on-error' : 'bg-primary hover:opacity-90 text-on-primary');
@@ -2153,23 +2303,30 @@ window.donorCheckIn = async (requestId) => {
 window.enableLiveGpsLocation = async () => {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
+  const registeredCity = currentUser.city || 'Yaoundé';
   const statusEl = document.getElementById('gpsStatusText');
   if (statusEl) statusEl.textContent = 'Locating...';
   try {
-    const loc = await captureUserLocation(currentUser.city || 'Yaoundé');
+    const loc = await captureUserLocation(registeredCity);
     if (loc.source === 'gps') {
-      await updateUserProfile(currentUser.uid, { lat: loc.lat, lng: loc.lng, locationSource: 'gps' });
-      const updated = { ...currentUser, lat: loc.lat, lng: loc.lng, locationSource: 'gps' };
+      const updates = { lat: loc.lat, lng: loc.lng, locationSource: 'gps' };
+      // If GPS mapped to a different nearest city, update donor's city too
+      if (loc.city && loc.city.toLowerCase() !== registeredCity.toLowerCase()) {
+        updates.city = loc.city;
+      }
+      await updateUserProfile(currentUser.uid, updates);
+      const updated = { ...currentUser, ...updates };
       localStorage.setItem('vitalpulse_user', JSON.stringify(updated));
-      showToast(`Live GPS Enabled! (${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)})`);
-      if (statusEl) statusEl.textContent = `GPS Active (${loc.lat.toFixed(2)}, ${loc.lng.toFixed(2)})`;
+      const nearestStr = loc.nearestDistKm ? ` near ${loc.city} (${loc.nearestDistKm} km)` : '';
+      showToast(`Live GPS enabled — ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${nearestStr}`);
+      if (statusEl) statusEl.textContent = `GPS Active · ${loc.city} (${loc.lat.toFixed(2)}, ${loc.lng.toFixed(2)})`;
       loadDonorDashboard();
     } else {
       const msg = loc.reason && loc.reason.includes('HTTPS')
-        ? `Browser requires HTTPS or localhost for live GPS. Fallback active for ${currentUser.city || 'Yaoundé'}.`
-        : `Using city coordinates for ${currentUser.city || 'Yaoundé'}.`;
+        ? `Browser requires HTTPS or localhost for live GPS. Using registered city: ${registeredCity}.`
+        : `Using city coordinates for ${registeredCity}.`;
       showToast(msg, 'warning');
-      if (statusEl) statusEl.textContent = `City: ${currentUser.city || 'Yaoundé'}`;
+      if (statusEl) statusEl.textContent = `City: ${registeredCity}`;
     }
   } catch (e) {
     console.error('GPS capture failed:', e);

@@ -7,12 +7,13 @@ import {
     updateDoc,
     setDoc,
     deleteDoc,
-    query,
-    where,
-    orderBy,
-    limit,
-    onSnapshot,
-    runTransaction
+query,
+where,
+orderBy,
+limit,
+startAfter,
+onSnapshot,
+runTransaction
 } from "firebase/firestore";
 import { db } from './firebase';
 import { getCurrentUser } from './auth';
@@ -131,16 +132,18 @@ export async function deleteActivityLog(logId) {
 }
 
 // Blood Requests
-// Every status a 'requests' doc can actually be in during its life — must stay in sync with
-// every place that calls updateDoc/transaction.update on this collection's status field.
-// Previously stopped at 'Checked In', so the instant a hospital recorded the blood draw
-// (status -> 'Donation Complete'), the request silently fell out of this query and vanished
-// from the donor's own real-time tracker for the rest of its life (Blood Drawn/Lab Cleared/
-// Issued were never visible, even though the backend was tracking them correctly).
+// Canonical lifecycle statuses for a 'requests' doc — every status this collection can hold
+// belongs to exactly one set, so admin stats always reconcile (Total = Active + Closed).
+// ACTIVE = in-flight lifecycle (Open through blood being issued to the patient).
+// CLOSED = terminal: resolved, cancelled, or failed at the lab.
+// Must stay in sync with every updateDoc/transaction.update on this collection's status field.
+export const REQUEST_ACTIVE_STATUSES = ['Open', 'Matching', 'Donor Assigned', 'Donor En Route', 'Checked In', 'Donation Complete', 'Lab Cleared', 'Issued'];
+export const REQUEST_CLOSED_STATUSES = ['Resolved', 'Cancelled', 'Lab Rejected'];
+
 export async function fetchActiveRequests() {
     const q = query(
         collection(db, 'requests'),
-        where('status', 'in', ['Open', 'Matching', 'Donor Assigned', 'Donor En Route', 'Checked In', 'Donation Complete', 'Lab Cleared', 'Lab Rejected', 'Issued', 'Resolved'])
+        where('status', 'in', REQUEST_ACTIVE_STATUSES)
     );
     const snapshot = await getDocs(q);
     const results = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -953,6 +956,29 @@ export async function fetchAllSystemRequests() {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+// Every closed request, paginated past the 200-doc cap of fetchAllSystemRequests so the
+// admin avg-response stat samples the full history instead of only the newest window.
+// No where() clause so it reuses the existing (requestedAt desc) index; closed filtering
+// happens client-side against REQUEST_CLOSED_STATUSES.
+export async function fetchAllResolvedRequests() {
+    const results = [];
+    let lastDoc = null;
+    while (results.length < 5000) {
+        let q = query(collection(db, 'requests'), orderBy("requestedAt", "desc"), limit(500));
+        if (lastDoc) q = query(q, startAfter(lastDoc));
+        const snap = await getDocs(q);
+        if (snap.empty) break;
+        const batch = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        results.push(...batch);
+        lastDoc = snap.docs[snap.docs.length - 1];
+        if (batch.length < 500) break;
+    }
+    return results.filter(r =>
+        REQUEST_CLOSED_STATUSES.includes(r.status) ||
+        REQUEST_CLOSED_STATUSES.some(s => s.toLowerCase() === (r.status || '').toLowerCase())
+    );
+}
+
 // Manual admin override for a request that's stuck (e.g. the matched donor never showed up,
 // or it was actually handled outside the app) — there was previously no way to close this out
 // short of editing Firestore directly.
@@ -1038,6 +1064,11 @@ export async function suspendDonor(userId, userName) {
         isAvailable: false,
         statusChangedAt: new Date().toISOString()
     });
+    await logActivity('Donor Suspended', `Donor ${userName || userId} was suspended by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('donor.suspended', `Donor ${userName || userId} suspended by admin`, {
+        targetId: userId,
+        newState: { isSuspended: true, isAvailable: false }
+    });
 }
 
 export async function reactivateDonor(userId, userName) {
@@ -1046,6 +1077,11 @@ export async function reactivateDonor(userId, userName) {
         isSuspended: false,
         isAvailable: true,
         statusChangedAt: new Date().toISOString()
+    });
+    await logActivity('Donor Reactivated', `Donor ${userName || userId} was reactivated by an administrator`, 'success', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('donor.reactivated', `Donor ${userName || userId} reactivated by admin`, {
+        targetId: userId,
+        newState: { isSuspended: false, isAvailable: true }
     });
 }
 
@@ -1056,6 +1092,16 @@ export async function verifyHospital(hospitalId, hospitalName, verified = true) 
         rejected: verified ? false : undefined,
         verifiedAt: new Date().toISOString()
     });
+    await logActivity(
+        verified ? 'Hospital Approved' : 'Hospital Verification Revoked',
+        `Hospital ${hospitalName || hospitalId} was ${verified ? 'approved by an administrator' : 'removed from the verified network by an administrator'}`,
+        verified ? 'success' : 'warning',
+        getCurrentUser()?.name || 'Admin'
+    );
+    logAuditTrail(verified ? 'hospital.approved' : 'hospital.verification_revoked', `Hospital ${hospitalName || hospitalId} ${verified ? 'approved' : 'verification revoked'} by admin`, {
+        targetId: hospitalId,
+        newState: { isVerified: verified }
+    });
 }
 
 export async function rejectHospital(hospitalId, hospitalName) {
@@ -1063,7 +1109,12 @@ export async function rejectHospital(hospitalId, hospitalName) {
     await updateDoc(userDocRef, {
         isVerified: false,
         rejected: true,
-        verifiedAt: new Date().toISOString()
+        rejectedAt: new Date().toISOString()
+    });
+    await logActivity('Hospital Rejected', `Hospital ${hospitalName || hospitalId} was rejected by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('hospital.rejected', `Hospital ${hospitalName || hospitalId} rejected by admin`, {
+        targetId: hospitalId,
+        newState: { isVerified: false, rejected: true }
     });
 }
 
@@ -1482,6 +1533,27 @@ export function getBloodTypeDisplayInfo(bloodType) {
 // ============================================
 
 export async function submitDonationRequest(donorId, donationData) {
+    // 56-Day Medical Deferral Lock (defense-in-depth before a scheduled donation is created)
+    if (donorId) {
+        try {
+            const donorRef = doc(db, 'users', donorId);
+            const donorSnap = await getDoc(donorRef);
+            if (donorSnap.exists()) {
+                const donorData = donorSnap.data();
+                const lastDate = donorData.lastDonationDate || donorData.lastDonatedAt;
+                if (lastDate) {
+                    const daysAgo = (new Date().getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24);
+                    if (daysAgo < 56) {
+                        throw new Error(`WHO medical deferral: You last donated ${Math.round(daysAgo)} days ago. A minimum of 56 days is required between whole blood donations for your safety.`);
+                    }
+                }
+            }
+        } catch (e) {
+            if (e.message?.includes('WHO medical deferral')) throw e;
+            console.warn('Deferral check warning in submitDonationRequest:', e);
+        }
+    }
+
     const docRef = await addDoc(collection(db, 'donation_requests'), {
         donorId,
         donorName: donationData.donorName,
@@ -1648,7 +1720,17 @@ export async function recordDonationIntake(donationData) {
         }
     }
 
-    const cniHash = cniNumber ? await sha256Hash(cniNumber) : null;
+    let cniHash = cniNumber ? await sha256Hash(cniNumber) : null;
+    if (!cniHash && donorId) {
+        try {
+            const donorSnap = await getDoc(doc(db, 'users', donorId));
+            if (donorSnap.exists() && donorSnap.data().cniHash) {
+                cniHash = donorSnap.data().cniHash;
+            }
+        } catch (e) {
+            console.warn('Could not fetch donor cniHash for donation record:', e);
+        }
+    }
     const bloodTypeMismatch = !!(labConfirmedBloodType && labConfirmedBloodType !== bloodType);
     const now = new Date().toISOString();
     const donationPayload = {
@@ -1797,6 +1879,89 @@ export async function cancelDonationRequest(requestId, requestData) {
         `Donation request for ${requestData.bloodType} was cancelled by donor`,
         'info'
     );
+}
+
+export async function hospitalCancelBooking(requestId, requestData) {
+    const reqDoc = doc(db, 'donation_requests', requestId);
+    await updateDoc(reqDoc, {
+        status: 'cancelled',
+        cancelledAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        cancellationNote: 'Cancelled by hospital'
+    });
+
+    await logActivity(
+        'Booking Cancelled by Hospital',
+        `Scheduled booking for ${requestData.bloodType} (${requestData.donorName || 'Unknown donor'}) was cancelled by the hospital`,
+        'warning'
+    );
+
+    if (requestData.donorId) {
+        await addDonorNotification(
+            requestData.donorId,
+            'Donation Booking Cancelled',
+            `Your scheduled donation at ${requestData.preferredLocation || 'the hospital'} has been cancelled. Please contact the hospital for more information.`,
+            'warning'
+        ).catch(() => {});
+    }
+}
+
+export async function cancelHospitalRequest(requestId, hospitalName, reason = '') {
+    const reqDoc = doc(db, 'requests', requestId);
+    const snapshot = await getDoc(reqDoc);
+    if (!snapshot.exists()) throw new Error('Request not found');
+    const reqData = snapshot.data();
+
+    await updateDoc(reqDoc, {
+        status: 'Cancelled',
+        cancelledAt: new Date().toISOString(),
+        cancelledBy: hospitalName || 'Hospital',
+        cancellationReason: reason || null
+    });
+
+    await logActivity(
+        'Request Cancelled by Hospital',
+        `Hospital cancelled request #${requestId.slice(0, 8)} (${reqData.bloodType || reqData.type || '?'})${reason ? ' — ' + reason : ''}`,
+        'error',
+        hospitalName
+    );
+    return true;
+}
+
+export async function removeIncomingDonor(requestId, hospitalName, isPublicRequest = false) {
+    const collectionName = isPublicRequest ? 'public_requests' : 'requests';
+    const reqDoc = doc(db, collectionName, requestId);
+    const snapshot = await getDoc(reqDoc);
+    if (!snapshot.exists()) throw new Error('Request not found');
+    const reqData = snapshot.data();
+
+    const updateData = {
+        status: 'Open',
+        matchedDonor: null,
+        matchedAt: null,
+        checkInToken: null,
+        unmatchedAt: new Date().toISOString(),
+    };
+
+    await updateDoc(reqDoc, updateData);
+
+    const donorId = reqData.matchedDonor;
+    if (donorId) {
+        await addDonorNotification(
+            donorId,
+            'Hospital Removed Your Assignment',
+            `The hospital has released you from request #${requestId.slice(0, 8)}. You are no longer expected at this location.`,
+            'warning'
+        ).catch(() => {});
+    }
+
+    await logActivity(
+        'Donor Removed from Request',
+        `${hospitalName} removed donor from request #${requestId.slice(0, 8)}${isPublicRequest ? ' (public)' : ''}`,
+        'warning',
+        hospitalName
+    );
+    return true;
 }
 
 // ============================================
@@ -2388,12 +2553,36 @@ export async function computeDonorEngagement(donorId) {
 
     const donor = { id: snapshot.id, ...snapshot.data() };
 
-    const donationsQ = query(
+    // Query by donorId AND by cniHash so donation history follows the person across accounts
+    const donationsMap = new Map();
+
+    const byDonorQ = query(
         collection(db, 'donation_requests'),
         where('donorId', '==', donorId)
     );
-    const donationsSnapshot = await getDocs(donationsQ);
-    const donations = donationsSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const byDonorSnap = await getDocs(byDonorQ);
+    for (const d of byDonorSnap.docs) {
+        donationsMap.set(d.id, { id: d.id, ...d.data() });
+    }
+
+    if (donor.cniHash) {
+        try {
+            const byCniQ = query(
+                collection(db, 'donation_requests'),
+                where('cniHash', '==', donor.cniHash)
+            );
+            const byCniSnap = await getDocs(byCniQ);
+            for (const d of byCniSnap.docs) {
+                if (!donationsMap.has(d.id)) {
+                    donationsMap.set(d.id, { id: d.id, ...d.data() });
+                }
+            }
+        } catch (e) {
+            console.warn('Could not fetch donations by cniHash:', e);
+        }
+    }
+
+    const donations = Array.from(donationsMap.values());
     const completedDonations = donations.filter(d => d.status === 'completed');
 
     const donationCount = completedDonations.length;

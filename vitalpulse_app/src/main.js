@@ -1,14 +1,28 @@
 import './style.css'
-import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified } from './auth';
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
-import { db } from './firebase';
+import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser } from './auth';
+import { doc, getDoc, updateDoc, onSnapshot, collection } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, storage } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs } from './db';
-import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations } from './donor-dashboard.js';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests } from './db';
+import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
 import Chart from 'chart.js/auto';
+
+// Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
+// https, so this rejects javascript:/data: and other dangerous schemes without breaking
+// legitimate license documents / proof uploads. Returns '' when the value isn't a safe URL.
+function safeUrl(url) {
+    if (!url) return '';
+    try {
+        const parsed = new URL(url, window.location.origin);
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '';
+    } catch {
+        return '';
+    }
+}
 
 // ============================================
 // THEME (light / dark) — DONOR PAGE ONLY
@@ -106,6 +120,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
+    // Admin console is admin-only. Fast path using the cached profile (the admin branch
+    // below re-verifies the role against Firestore, since localStorage can be stale).
+    if (path.includes('admin.html') && currentUser && currentUser.role !== 'admin') {
+        window.location.href = currentUser.role === 'hospital' ? '/hospital.html' : '/donor.html';
+        return;
+    }
+
     // Handle Login Form
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
@@ -178,6 +199,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            let uploadedLicenseRef = null; // hoisted so the catch block can clean up orphaned uploads
+
             try {
                 errorMsg.classList.add('hidden');
                 submitBtn.disabled = true;
@@ -195,16 +218,53 @@ document.addEventListener('DOMContentLoaded', () => {
                     const bt = document.getElementById('bloodType');
                     if(bt) extraData.bloodType = bt.value;
                     const natId = document.getElementById('nationalId');
-                    if (natId && natId.value.trim()) extraData.nationalId = natId.value.trim();
+                    if (!natId || !natId.value.trim()) {
+                        errorMsg.textContent = 'National ID (CNI) is required for donor accounts. Please enter your CNI number.';
+                        errorMsg.classList.remove('hidden');
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = 'Create Account <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
+                        return;
+                    }
+                    extraData.nationalId = natId.value.trim();
                 } else if (role === 'hospital') {
                     const phoneInput = document.getElementById('phone');
-                    const licenseUrlInput = document.getElementById('licenseUrl');
                     if (phoneInput && phoneInput.value) extraData.phone = phoneInput.value;
-                    if (licenseUrlInput && licenseUrlInput.value) extraData.licenseUrl = licenseUrlInput.value;
                     extraData.isVerified = false;
+                    // The license document is mandatory for hospital accounts: the admin can
+                    // only review and approve a hospital that has submitted one. Without a file
+                    // the signup is blocked before any account is created.
+                    const licenseFileInput = document.getElementById('licenseFile');
+                    if (!licenseFileInput || !licenseFileInput.files || !licenseFileInput.files[0]) {
+                        errorMsg.textContent = 'Please upload your hospital license document before creating the account.';
+                        errorMsg.classList.remove('hidden');
+                        submitBtn.disabled = false;
+                        submitBtn.innerHTML = 'Create Account <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
+                        return;
+                    }
+                    // NOTE: the license file is uploaded AFTER registerUser() below — the
+                    // upload needs the freshly created auth session to satisfy Storage rules.
                 }
 
                 const user = await registerUser(email, password, role, extraData);
+
+                // Upload the license document to Firebase Storage (if one was selected) and
+                // attach the download URL + original file name to the user doc so the admin
+                // can open/verify it from the Institutional Directory. Runs post-registration
+                // so the upload is authenticated.
+                if (role === 'hospital') {
+                    const licenseFileInput = document.getElementById('licenseFile');
+                    if (licenseFileInput && licenseFileInput.files && licenseFileInput.files[0]) {
+                        const file = licenseFileInput.files[0];
+                        submitBtn.innerHTML = 'Uploading Document...';
+                        uploadedLicenseRef = storageRef(storage, `hospital_licenses/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
+                        await uploadBytes(uploadedLicenseRef, file);
+                        const licenseUrl = await getDownloadURL(uploadedLicenseRef);
+                        await updateDoc(doc(db, 'users', user.uid), {
+                            licenseUrl,
+                            licenseFileName: file.name
+                        });
+                    }
+                }
 
                 showToast('Account created! A verification email has been sent. Please verify your email before donating.');
 
@@ -215,6 +275,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 2000);
 
             } catch (error) {
+                // If registration failed after the license file was uploaded, remove the
+                // orphaned file from Storage so it doesn't linger with no user doc pointing to it.
+                if (uploadedLicenseRef) {
+                    deleteObject(uploadedLicenseRef).catch(() => {});
+                }
                 const msg = error.code === 'auth/email-already-in-use' ? 'This email is already registered. Try logging in instead.'
                     : error.code === 'auth/weak-password' ? 'Password must be at least 6 characters.'
                     : error.code === 'auth/invalid-email' ? 'Invalid email address.'
@@ -254,8 +319,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hLoc) hLoc.innerHTML = `<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span> ${currentUser.city || 'Yaoundé'} Network`;
         } else if (path.includes('admin.html')) {
             const adminName = document.getElementById('adminName');
-            const adminRole = document.getElementById('adminRole');
             if (adminName) adminName.textContent = currentUser.name || 'Super Admin';
+            const sidebarName = document.getElementById('sidebarAdminName');
+            if (sidebarName) sidebarName.textContent = currentUser.name || 'Super Admin';
+            const sidebarAvatar = document.getElementById('sidebarAvatar');
+            if (sidebarAvatar) sidebarAvatar.textContent = (currentUser.name || 'A').charAt(0).toUpperCase();
+            const adminRole = document.getElementById('adminRole');
+            if (adminRole) adminRole.textContent = 'Super Administrator';
         }
         
         // Data hydration logic
@@ -317,7 +387,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.markOnboardingComplete = markOnboardingComplete;
                 if (shouldShowOnboarding()) startOnboarding('hospital');
             } else if (path.includes('admin.html')) {
-                loadAdminDashboard();
+                // Authoritative admin guard: localStorage can be stale or tampered with, so
+                // verify the role straight from the users collection before loading anything.
+                (async () => {
+                    try {
+                        const fbUser = await waitForAuthUser();
+                        if (!fbUser) {
+                            window.location.href = '/login.html';
+                            return;
+                        }
+                        const snap = await getDoc(doc(db, 'users', fbUser.uid));
+                        const role = snap.exists() ? snap.data().role : null;
+                        if (role !== 'admin') {
+                            window.location.href = role === 'hospital' ? '/hospital.html' : '/donor.html';
+                            return;
+                        }
+                        loadAdminDashboard();
+                    } catch (guardError) {
+                        console.error('Admin access check failed:', guardError);
+                        showFallbackError();
+                    }
+                })();
             }
             // After auth check, inject language toggle and onboarding for donor
             if (path.includes('donor.html')) {
@@ -745,7 +835,7 @@ async function loadHospitalRequests() {
                         <span class="text-xs font-bold ${sc.text} ${sc.bg} px-2 py-1 rounded-md">${req.status}</span>
                     </div>
                 </td>
-                <td class="px-6 py-4 text-xs text-slate-500">${new Date(req.requestedAt || req.requestedAt).toLocaleDateString()}</td>
+                <td class="px-6 py-4 text-xs text-slate-500">${new Date(req.requestedAt || req.createdAt).toLocaleDateString()}</td>
                 <td class="px-6 py-4 text-right">
                     <div class="flex items-center justify-end gap-1">
                         <button onclick="window.openRequestTimeline('${req.id}')" class="text-[9px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors" title="View Timeline">
@@ -754,7 +844,10 @@ async function loadHospitalRequests() {
                         <button onclick="window.printRequestSlip('${req.id}')" class="text-[9px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors" title="Print Slip">
                             <span class="material-symbols-outlined text-xs">print</span>
                         </button>
-                        ${req.status === 'Resolved' ? '<span class="text-xs text-emerald-600 font-medium ml-1">Done</span>' : req.status === 'Donor En Route' ? '<span class="text-xs text-indigo-600 font-medium ml-1 animate-pulse">🔄 En Route</span>' : '<span class="text-xs text-slate-400 ml-1">Open</span>'}
+                        ${['Open', 'Matching'].includes(req.status) ? `<button onclick="window.cancelHospitalRequestAction('${req.id}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg transition-colors" title="Cancel Request">
+                            <span class="material-symbols-outlined text-xs">cancel</span>
+                        </button>` : ''}
+                        ${req.status === 'Resolved' ? '<span class="text-xs text-emerald-600 font-medium ml-1">Done</span>' : req.status === 'Donor En Route' ? '<span class="text-xs text-indigo-600 font-medium ml-1 animate-pulse">🔄 En Route</span>' : req.status === 'Cancelled' ? '<span class="text-xs text-red-600 font-medium ml-1">Cancelled</span>' : '<span class="text-xs text-slate-400 ml-1">Open</span>'}
                     </div>
                 </td>
             </tr>
@@ -1303,7 +1396,7 @@ async function loadHospitalDonors() {
         gridEl.innerHTML = donors.map(d => {
             const donor = d.donorInfo || {};
             const matchedTime = d.matchedAt ? new Date(d.matchedAt).toLocaleString() : 'Unknown';
-            const donorCity = donor.city || 'Unknown';
+            const donorCity = esc(donor.city || 'Unknown');
             const isSameCity = donorCity.toLowerCase() === (currentUser?.city || '').toLowerCase();
             const isEnRoute = d.status === 'Donor En Route';
             const isCheckedIn = d.status === 'Checked In';
@@ -1313,28 +1406,68 @@ async function loadHospitalDonors() {
                     ? { label: '🚗 En Route', cls: 'text-indigo-600 bg-indigo-50' }
                     : { label: 'Assigned', cls: 'text-amber-600 bg-amber-50' };
             const publicBadge = d.isPublicRequest ? `<span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full text-orange-600 bg-orange-50">🚨 Public Request</span>` : '';
+            // Compute eligibility for identity-verification block
+            const lastDonationDate = donor.lastDonationDate || donor.lastDonatedAt || null;
+            let eligibleFlag = '';
+            let eligibleColor = 'text-emerald-600';
+            let eligibleBg = 'bg-emerald-50';
+            let lastDonationDisplay = 'No prior donation';
+            if (lastDonationDate) {
+                const daysAgo = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
+                lastDonationDisplay = `${daysAgo} days ago (${new Date(lastDonationDate).toLocaleDateString()})`;
+                const eligible = daysAgo >= 56;
+                eligibleFlag = eligible ? '✓ ELIGIBLE' : '✗ NOT ELIGIBLE';
+                eligibleColor = eligible ? 'text-emerald-600' : 'text-red-600';
+                eligibleBg = eligible ? 'bg-emerald-50' : 'bg-red-50';
+            } else {
+                eligibleFlag = '✓ ELIGIBLE';
+            }
+            const cniLast4 = donor.cniLast4 || null;
+
             return `
             <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-all">
                 <div class="flex items-center gap-4 mb-4">
                     <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-700 font-black text-lg shrink-0">
-                        ${(donor.name || '?').charAt(0).toUpperCase()}
+                        ${esc(donor.name || '?').charAt(0).toUpperCase()}
                     </div>
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-1.5 flex-wrap">
-                            <p class="font-bold text-on-surface truncate">${donor.name || 'Unknown Donor'}</p>
+                            <p class="font-bold text-on-surface truncate">${esc(donor.name) || 'Unknown Donor'}</p>
                             <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${statusBadge.cls}">${statusBadge.label}</span>
                             ${publicBadge}
                         </div>
-                        <p class="text-xs text-slate-500 truncate">${donor.email || 'No email'}</p>
+                        <p class="text-xs text-slate-500 truncate">${esc(donor.email) || 'No email'}</p>
                         <span class="inline-flex items-center gap-1 text-[10px] font-bold ${isSameCity ? 'text-emerald-600' : 'text-slate-500'} mt-0.5">
                             <span class="material-symbols-outlined text-xs">location_on</span>
                             ${donorCity} ${isSameCity ? '<span class="text-emerald-600 font-bold">• Nearby</span>' : ''}
                         </span>
                     </div>
                 </div>
+                <!-- Identity Verification Block -->
+                <div class="bg-slate-50/80 rounded-xl p-3.5 mb-4 border border-slate-100">
+                    <p class="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-xs">badge</span>
+                        Identity Verification
+                    </p>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <span class="text-slate-500">CNI (last 4)</span>
+                            <p class="font-extrabold text-on-surface tracking-widest font-mono">${cniLast4 ? '••••••' + esc(cniLast4) : '<span class="text-slate-400 font-normal">Not on file</span>'}</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Last Donation</span>
+                            <p class="font-bold text-on-surface">${esc(lastDonationDisplay)}</p>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <span class="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wider ${eligibleBg} ${eligibleColor} border border-current/20">
+                            ${eligibleFlag}
+                        </span>
+                    </div>
+                </div>
                 <div class="grid grid-cols-2 gap-3 mb-4">
                     <div class="bg-slate-50 rounded-xl p-3 text-center">
-                        <p class="text-lg font-black text-red-700">${d.type || d.bloodType || '?'}</p>
+                        <p class="text-lg font-black text-red-700">${esc(d.type || d.bloodType || '?')}</p>
                         <p class="text-[9px] text-slate-500 uppercase tracking-wider">Blood Type</p>
                     </div>
                     <div class="bg-slate-50 rounded-xl p-3 text-center">
@@ -1345,11 +1478,11 @@ async function loadHospitalDonors() {
                 <div class="space-y-2">
                     <div class="flex items-center justify-between text-xs">
                         <span class="text-slate-500">Matched at</span>
-                        <span class="font-bold text-on-surface">${matchedTime}</span>
+                        <span class="font-bold text-on-surface">${esc(matchedTime)}</span>
                     </div>
                     <div class="flex items-center justify-between text-xs">
                         <span class="text-slate-500">Phone</span>
-                        <span class="font-bold text-on-surface">${donor.phone || 'N/A'}</span>
+                        <span class="font-bold text-on-surface">${esc(donor.phone) || 'N/A'}</span>
                     </div>
                 </div>
                 ${isEnRoute ? `
@@ -1362,10 +1495,18 @@ async function loadHospitalDonors() {
                 </div>
                 ` : ''}
                 <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-                    <button onclick="window.openDonorEngagement('${d.matchedDonor}')" class="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1">
-                        <span class="material-symbols-outlined text-xs">military_tech</span>
-                        Profile
-                    </button>
+                    <div class="flex items-center gap-1">
+                        <button onclick="window.openDonorEngagement('${d.matchedDonor}')" class="text-[10px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            <span class="material-symbols-outlined text-xs">military_tech</span>
+                            Profile
+                        </button>
+                        ${!isCheckedIn ? `
+                        <button onclick="window.removeIncomingDonorAction('${d.id}', ${!!d.isPublicRequest})" class="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            <span class="material-symbols-outlined text-xs">person_remove</span>
+                            Remove
+                        </button>
+                        ` : ''}
+                    </div>
                     ${isCheckedIn ? `
                     <button onclick="window.openDonationIntakeModal('${d.id}', '${d.matchedDonor}', '${d.type || d.bloodType || ''}', '${(donor.name || 'Donor').replace(/'/g, "\\'")}', '${donor.bloodType || ''}', ${d.donorScreeningPassed === false})" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                         <span class="material-symbols-outlined text-xs">vaccines</span>
@@ -1415,7 +1556,8 @@ async function loadScheduledBookings() {
 
         const statusStyle = {
             pending: { label: 'Pending Review', cls: 'text-amber-600 bg-amber-50' },
-            approved: { label: 'Confirmed', cls: 'text-emerald-600 bg-emerald-50' }
+            approved: { label: 'Confirmed', cls: 'text-emerald-600 bg-emerald-50' },
+            cancelled: { label: 'Cancelled', cls: 'text-red-600 bg-red-50' }
         };
 
         listEl.innerHTML = active.map(b => {
@@ -1433,6 +1575,7 @@ async function loadScheduledBookings() {
                 </div>
                 <div class="flex items-center gap-1.5 shrink-0">
                     ${b.status === 'pending' ? `
+                    <button onclick="window.hospitalCancelBookingAction('${b.id}')" class="text-[10px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">Cancel</button>
                     <button onclick="window.rejectBookingAction('${b.id}', '${b.bloodType}')" class="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">Decline</button>
                     <button onclick="window.approveBookingAction('${b.id}', '${b.bloodType}')" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">Confirm</button>
                     ` : `
@@ -1482,6 +1625,63 @@ function initDonorCheckInTokenLookup() {
                 alert(`This donor's status is "${match.status}" — check-in requires "Donor En Route".`);
                 return;
             }
+
+            // Look up donor identity info for verification
+            let donorIdentity = { name: 'Unknown', cniLast4: null, phone: 'N/A', bloodType: 'N/A', lastDonationDate: null, eligible: true };
+            if (match.matchedDonor) {
+                try {
+                    const donorSnap = await getDoc(doc(db, 'users', match.matchedDonor));
+                    if (donorSnap.exists()) {
+                        const d = donorSnap.data();
+                        const lastDate = d.lastDonationDate || d.lastDonatedAt || null;
+                        let eligible = true;
+                        let daysAgo = 0;
+                        if (lastDate) {
+                            daysAgo = Math.floor((new Date().getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24));
+                            eligible = daysAgo >= 56;
+                        }
+                        donorIdentity = {
+                            name: d.name || 'Unknown',
+                            cniLast4: d.cniLast4 || null,
+                            phone: d.phone || 'N/A',
+                            bloodType: d.bloodType || match.type || match.bloodType || 'N/A',
+                            lastDonationDate: lastDate,
+                            eligible,
+                            daysAgo,
+                        };
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch donor identity:', e);
+                }
+            }
+
+            const lastDonationDisplay = donorIdentity.lastDonationDate
+                ? `${donorIdentity.daysAgo} days ago (${new Date(donorIdentity.lastDonationDate).toLocaleDateString()})`
+                : 'No prior donation';
+            const cniDisplay = donorIdentity.cniLast4
+                ? `••••••${donorIdentity.cniLast4}`
+                : '<span style="color:#94a3b8">Not on file</span>';
+            const eligibleBadge = donorIdentity.eligible
+                ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:#ecfdf5;color:#059669;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;border:1px solid #a7f3d0">✓ ELIGIBLE</span>'
+                : '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:#fef2f2;color:#dc2626;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;border:1px solid #fecaca">✗ NOT ELIGIBLE</span>';
+
+            const confirmed = await window.vpConfirm(`
+                <div style="text-align:left">
+                    <p style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1e293b">Verify donor identity before check-in</p>
+                    <table style="width:100%;font-size:12px;border-collapse:collapse">
+                        <tr><td style="padding:4px 8px;color:#64748b">Name</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(donorIdentity.name)}</td></tr>
+                        <tr><td style="padding:4px 8px;color:#64748b">CNI (last 4)</td><td style="padding:4px 8px;font-weight:700;font-family:monospace;color:#1e293b">${cniDisplay}</td></tr>
+                        <tr><td style="padding:4px 8px;color:#64748b">Blood Type</td><td style="padding:4px 8px;font-weight:700;color:#dc2626">${esc(donorIdentity.bloodType)}</td></tr>
+                        <tr><td style="padding:4px 8px;color:#64748b">Phone</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(donorIdentity.phone)}</td></tr>
+                        <tr><td style="padding:4px 8px;color:#64748b">Last Donation</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(lastDonationDisplay)}</td></tr>
+                        <tr><td style="padding:4px 8px;color:#64748b">Eligibility</td><td style="padding:4px 8px">${eligibleBadge}</td></tr>
+                    </table>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0">Ask the donor to present their physical CNI card. Verify the last 4 digits match.</p>
+                </div>
+            `, { title: 'Identity Check', confirmText: '✓ Verify & Check In', danger: false });
+
+            if (!confirmed) return;
+
             await checkInDonor(match.id);
             showToast('Donor checked in successfully!');
             input.value = '';
@@ -1497,6 +1697,50 @@ function initDonorCheckInTokenLookup() {
     btn.addEventListener('click', doLookup);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
 }
+
+window.cancelHospitalRequestAction = async (id) => {
+    const reason = prompt('Reason for cancelling this request:');
+    if (reason === null) return;
+    if (!confirm('Cancel this blood request? This cannot be undone.')) return;
+    const currentUser = getCurrentUser();
+    try {
+        await cancelHospitalRequest(id, currentUser?.name || 'Hospital', reason || '');
+        showToast('Request cancelled');
+        loadHospitalRequests();
+    } catch (err) {
+        console.error('Failed to cancel request:', err);
+        alert('Failed to cancel request.');
+    }
+};
+
+window.removeIncomingDonorAction = async (id, isPublic) => {
+    if (!confirm('Remove this donor from the request? The request will return to open status and the donor will be notified.')) return;
+    const currentUser = getCurrentUser();
+    try {
+        await removeIncomingDonor(id, currentUser?.name || 'Hospital', isPublic === true);
+        showToast('Donor removed');
+        loadHospitalDonors();
+    } catch (err) {
+        console.error('Failed to remove donor:', err);
+        alert('Failed to remove donor.');
+    }
+};
+
+window.hospitalCancelBookingAction = async (id) => {
+    if (!confirm('Cancel this scheduled booking? The donor will be notified.')) return;
+    try {
+        const currentUser = getCurrentUser();
+        const bookings = await fetchDonationRequestsForHospital(currentUser?.name || 'General Hospital');
+        const booking = bookings.find(b => b.id === id);
+        if (!booking) { alert('Booking not found.'); return; }
+        await hospitalCancelBooking(id, booking);
+        showToast('Booking cancelled');
+        loadScheduledBookings();
+    } catch (err) {
+        console.error('Failed to cancel booking:', err);
+        alert('Failed to cancel booking.');
+    }
+};
 
 window.approveBookingAction = async (id, bloodType) => {
     try {
@@ -2097,7 +2341,6 @@ function initUrgentRequestModal() {
                     contactPhone: document.getElementById('urgContactPhone')?.value?.trim() || '',
                     distance: 'System-wide'
                 });
-                await logActivity('Emergency Broadcast', `${selectedInput.value} urgently requested by ${currentUser.name}`, 'error');
                 close();
                 showToast('Emergency broadcast sent!');
             } catch (err) {
@@ -2241,37 +2484,116 @@ function showToast(message) {
 }
 window.showToast = showToast;
 
+function renderAdminActivityFeed(logs) {
+    const activityFeed = document.getElementById('adminActivityFeed');
+    if (!activityFeed) return;
+    if (logs.length === 0) {
+        activityFeed.innerHTML = '<div class="text-center text-slate-400 text-sm italic py-4">System is quiet. No logs yet.</div>';
+        return;
+    }
+    activityFeed.innerHTML = logs.map(log => {
+        let icon = 'info';
+        let colorClass = 'bg-slate-100 text-slate-600';
+        if (log.type === 'success') { icon = 'check_circle'; colorClass = 'bg-green-100 text-green-600'; }
+        if (log.type === 'warning') { icon = 'warning'; colorClass = 'bg-amber-100 text-amber-600'; }
+        if (log.type === 'error') { icon = 'error'; colorClass = 'bg-red-100 text-red-600'; }
+        return `
+        <div class="relative pl-8">
+            <div class="absolute left-0 top-1 w-6 h-6 rounded-full ${colorClass} flex items-center justify-center">
+                <span class="material-symbols-outlined text-xs" data-icon="${icon}">${icon}</span>
+            </div>
+            <div>
+                <p class="text-sm font-bold text-on-surface">${esc(log.title)}</p>
+                <p class="text-xs text-slate-500 mt-1">${esc(log.description)}</p>
+                <p class="text-[10px] text-slate-400 mt-2 font-medium">${new Date(log.timestamp).toLocaleTimeString()}</p>
+            </div>
+        </div>
+        `;
+    }).join('');
+}
+
+let adminRealtimeUnsub = null;
+
+function setupAdminRealtime() {
+    if (adminRealtimeUnsub) return;
+
+    adminRealtimeUnsub = onSnapshot(collection(db, 'requests'), (snapshot) => {
+        const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const activeRequests = requests.filter(r => isRequestStatusActive(r.status));
+        const activeCountEl = document.getElementById('adminActiveRequests');
+        if (activeCountEl) activeCountEl.textContent = activeRequests.length;
+        const requestsBadgeEl = document.getElementById('adminRequestsBadge');
+        if (requestsBadgeEl) {
+            const criticalCount = activeRequests.filter(r => r.urgency === 'critical' || r.urgency === 'Critical').length;
+            requestsBadgeEl.textContent = criticalCount > 0 ? `${criticalCount} critical` : 'network-wide';
+        }
+        const resolvedReqs = requests.filter(r => isRequestStatusClosed(r.status) && (r.requestedAt || r.timestamp) && r.resolvedAt);
+        const avgResponseEl = document.getElementById('adminAvgResponse');
+        if (avgResponseEl) {
+            let totalMins = 0;
+            let valid = 0;
+            resolvedReqs.forEach(r => {
+                if (!(r.requestedAt || r.timestamp) || !r.resolvedAt) return;
+                const delta = new Date(r.resolvedAt) - new Date(r.requestedAt || r.timestamp);
+                if (isFinite(delta) && delta >= 0) {
+                    totalMins += delta / 60000;
+                    valid++;
+                }
+            });
+            avgResponseEl.innerHTML = valid > 0 ? `${(totalMins / valid).toFixed(1)}<span class="text-lg ml-1">m</span>` : '--<span class="text-lg ml-1">m</span>';
+        }
+    }, (err) => console.error('Realtime requests subscription failed:', err));
+
+    onSnapshot(collection(db, 'activity_logs'), (snapshot) => {
+        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+            .slice(0, 4);
+        renderAdminActivityFeed(logs);
+    }, (err) => console.error('Realtime activity-log subscription failed:', err));
+}
+
 async function loadAdminDashboard() {
     try {
+        setupAdminRealtime();
+
         // 1. Load System Health Metrics
         const requests = await fetchActiveRequests();
         const activeCountEl = document.getElementById('adminActiveRequests');
         if (activeCountEl) activeCountEl.textContent = requests.length;
+        const requestsBadgeEl = document.getElementById('adminRequestsBadge');
+        if (requestsBadgeEl) {
+            const criticalCount = requests.filter(r => r.urgency === 'critical' || r.urgency === 'Critical').length;
+            requestsBadgeEl.textContent = criticalCount > 0 ? `${criticalCount} critical` : 'network-wide';
+        }
 
         // Calculate True Avg Response Time
-        const allRequests = await fetchAllSystemRequests();
-        const resolvedReqs = allRequests.filter(r => (r.status === 'Resolved' || r.status === 'resolved') && r.timestamp && r.resolvedAt);
+        const resolvedReqs = await fetchAllResolvedRequests();
         const avgResponseEl = document.getElementById('adminAvgResponse');
         
         if (avgResponseEl) {
-            if (resolvedReqs.length === 0) {
-                avgResponseEl.innerHTML = '--<span class="text-lg ml-1">m</span>';
-            } else {
-                const totalMins = resolvedReqs.reduce((acc, r) => {
-                    return acc + ((new Date(r.resolvedAt) - new Date(r.timestamp)) / 60000);
-                }, 0);
-                const avgMins = (totalMins / resolvedReqs.length).toFixed(1);
-                avgResponseEl.innerHTML = `${avgMins}<span class="text-lg ml-1">m</span>`;
-            }
+            let totalMins = 0;
+            let valid = 0;
+            resolvedReqs.forEach(r => {
+                if (!(r.requestedAt || r.timestamp) || !r.resolvedAt) return;
+                const delta = new Date(r.resolvedAt) - new Date(r.requestedAt || r.timestamp);
+                if (isFinite(delta) && delta >= 0) {
+                    totalMins += delta / 60000;
+                    valid++;
+                }
+            });
+            avgResponseEl.innerHTML = valid > 0 ? `${(totalMins / valid).toFixed(1)}<span class="text-lg ml-1">m</span>` : '--<span class="text-lg ml-1">m</span>';
         }
 
         // Run together rather than as another sequential await — loadAdminDashboard's chain
         // gates initAdminNavigation() at the end of this same function, so every extra
         // sequential await here delays every nav button becoming clickable.
-        const [verifiedClinicsCount, allRegisteredHospitals] = await Promise.all([
+        const [verifiedClinicsCount, allRegisteredHospitals, allRegisteredDonors] = await Promise.all([
             fetchClinicsOnlineCount(),
-            fetchAllHospitals()
+            fetchAllHospitals(),
+            fetchAllDonors()
         ]);
+        const totalDonorsEl = document.getElementById('adminTotalDonors');
+        if (totalDonorsEl) totalDonorsEl.textContent = allRegisteredDonors.length;
         const clinicsOnlineEl = document.getElementById('adminClinicsOnline');
         const clinicsOnlineBar = document.getElementById('adminClinicsOnlineBar');
 
@@ -2286,24 +2608,30 @@ async function loadAdminDashboard() {
         const tableBody = document.getElementById('adminPendingHospitals');
         if (tableBody) {
             const pendingHospitals = await fetchPendingHospitals();
+            const pendingBadgeEl = document.getElementById('pendingCountBadge');
+            if (pendingBadgeEl) pendingBadgeEl.textContent = pendingHospitals.length;
             if (pendingHospitals.length === 0) {
                  tableBody.innerHTML = '<tr><td colspan="4" class="px-6 py-8 text-center text-slate-500 font-medium">No pending verifications.</td></tr>';
             } else {
                  tableBody.innerHTML = pendingHospitals.map(h => `
                  <tr class="hover:bg-surface-container-low/50 transition-colors">
                      <td class="px-6 py-5">
-                         <div class="font-bold text-on-surface">${h.name}</div>
+                         <div class="font-bold text-on-surface">${esc(h.name)}</div>
                          <div class="text-[11px] text-slate-400">ID: ${h.id.slice(0,8).toUpperCase()}</div>
                      </td>
-                     <td class="px-6 py-5 text-sm text-slate-600">${h.city || 'Cameroon'}</td>
+                     <td class="px-6 py-5 text-sm text-slate-600">${esc(h.city) || 'Cameroon'}</td>
                      <td class="px-6 py-5">
-                         <button class="flex items-center gap-1.5 text-xs font-bold text-tertiary hover:bg-tertiary-container/10 px-2 py-1 rounded transition-colors">
-                             <span class="material-symbols-outlined text-sm" data-icon="description">description</span> Review PDF
-                         </button>
+                         ${h.licenseUrl
+                             ? `<a href="${safeUrl(h.licenseUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs font-bold text-tertiary hover:bg-tertiary-container/10 px-2 py-1 rounded transition-colors">
+                                 <span class="material-symbols-outlined text-sm" data-icon="description">description</span> Review Document
+                                </a>`
+                             : `<span class="inline-flex items-center gap-1.5 text-xs font-bold text-slate-300 px-2 py-1">
+                                 <span class="material-symbols-outlined text-sm" data-icon="description">description</span> No document
+                                </span>`}
                      </td>
                      <td class="px-6 py-5 text-right space-x-2">
-                         <button onclick="window.handleAdminReject('${h.id}', '${h.name}')" class="text-xs font-bold px-4 py-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">Reject</button>
-                         <button onclick="window.handleAdminApprove('${h.id}', '${h.name}')" class="text-xs font-bold px-4 py-2 rounded-lg bg-primary-container text-on-primary-container hover:shadow-md transition-all">Approve</button>
+                         <button onclick="window.handleAdminReject('${h.id}')" class="text-xs font-bold px-4 py-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">Reject</button>
+                         <button onclick="window.handleAdminApprove('${h.id}')" class="text-xs font-bold px-4 py-2 rounded-lg bg-primary-container text-on-primary-container hover:shadow-md transition-all">Approve</button>
                      </td>
                  </tr>
                  `).join('');
@@ -2311,34 +2639,7 @@ async function loadAdminDashboard() {
         }
 
         // 3. Load Recent Activity Feed
-        const activityFeed = document.getElementById('adminActivityFeed');
-        if (activityFeed) {
-            const logs = await fetchRecentLogs(4);
-            if (logs.length === 0) {
-                 activityFeed.innerHTML = '<div class="text-center text-slate-400 text-sm italic py-4">System is quiet. No logs yet.</div>';
-            } else {
-                 activityFeed.innerHTML = logs.map(log => {
-                     let icon = 'info';
-                     let colorClass = 'bg-slate-100 text-slate-600';
-                     if (log.type === 'success') { icon = 'check_circle'; colorClass = 'bg-green-100 text-green-600'; }
-                     if (log.type === 'warning') { icon = 'warning'; colorClass = 'bg-amber-100 text-amber-600'; }
-                     if (log.type === 'error') { icon = 'error'; colorClass = 'bg-red-100 text-red-600'; }
-
-                     return `
-                     <div class="relative pl-8">
-                         <div class="absolute left-0 top-1 w-6 h-6 rounded-full ${colorClass} flex items-center justify-center">
-                             <span class="material-symbols-outlined text-xs" data-icon="${icon}">${icon}</span>
-                         </div>
-                         <div>
-                             <p class="text-sm font-bold text-on-surface">${log.title}</p>
-                             <p class="text-xs text-slate-500 mt-1">${log.description}</p>
-                             <p class="text-[10px] text-slate-400 mt-2 font-medium">${new Date(log.timestamp).toLocaleTimeString()}</p>
-                         </div>
-                     </div>
-                     `;
-                 }).join('');
-            }
-        }
+        renderAdminActivityFeed(await fetchRecentLogs(4));
 
         // 4. Load Overview Campaigns from DB
         const overviewCampaignsGrid = document.getElementById('overviewCampaignsGrid');
@@ -2366,12 +2667,12 @@ async function loadAdminDashboard() {
                             <div class="absolute inset-0 flex items-center justify-center">
                                 <span class="material-symbols-outlined text-4xl text-red-200">campaign</span>
                             </div>
-                            <div class="absolute top-3 right-3 px-2 py-1 ${statusColors.badge} text-white text-[9px] font-black uppercase rounded-sm">${c.status}</div>
+                            <div class="absolute top-3 right-3 px-2 py-1 ${statusColors.badge} text-white text-[9px] font-black uppercase rounded-sm">${esc(c.status)}</div>
                         </div>
                         <div class="p-5">
-                            <h3 class="font-black text-base text-on-surface leading-tight mb-1 truncate">${c.title}</h3>
+                            <h3 class="font-black text-base text-on-surface leading-tight mb-1 truncate">${esc(c.title)}</h3>
                             <p class="text-xs text-slate-500 mb-4 flex items-center gap-1">
-                                <span class="material-symbols-outlined text-[12px]">location_on</span> ${c.location}
+                                <span class="material-symbols-outlined text-[12px]">location_on</span> ${esc(c.location)}
                             </p>
                             <div class="space-y-2">
                                 <div class="flex justify-between text-xs font-bold text-on-surface">
@@ -2411,14 +2712,19 @@ async function loadAdminDashboard() {
         if (closeBtn && newCloseBtn) closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
         const newBackdrop = backdrop?.cloneNode(true);
         if (backdrop && newBackdrop) backdrop.parentNode.replaceChild(newBackdrop, backdrop);
+        const newXBtn = document.getElementById('btnCloseUrgentModal')?.cloneNode(true);
+        const oldXBtn = document.getElementById('btnCloseUrgentModal');
+        if (oldXBtn && newXBtn) oldXBtn.parentNode.replaceChild(newXBtn, oldXBtn);
 
         const activeOpenBtn = document.getElementById('openUrgentModalBtn');
         const activeCloseBtn = document.getElementById('btnCancelUrgent');
         const activeBackdrop = document.getElementById('urgentRequestBackdrop');
+        const activeXBtn = document.getElementById('btnCloseUrgentModal');
 
         if (activeOpenBtn) activeOpenBtn.addEventListener('click', openModal);
         if (activeCloseBtn) activeCloseBtn.addEventListener('click', closeModal);
         if (activeBackdrop) activeBackdrop.addEventListener('click', closeModal);
+        if (activeXBtn) activeXBtn.addEventListener('click', closeModal);
 
         const typeBtns = document.querySelectorAll('#urgentBloodTypeGroup button');
         const selectedTypeInput = document.getElementById('urgentSelectedType');
@@ -2462,12 +2768,6 @@ async function loadAdminDashboard() {
                         notes: notes
                     });
                     
-                    await logActivity(
-                        'Emergency Broadcast',
-                        `${units} units of ${bloodType} urgently requested. Level: ${urgency}`,
-                        'error'
-                    );
-
                     form.reset();
                     // select O- default visually
                     document.querySelector('#urgentBloodTypeGroup button[data-type="O-"]').click();
@@ -2667,6 +2967,32 @@ function initAdminNavigation() {
         btnSkipVerifications.addEventListener('click', (e) => { e.preventDefault(); switchView('verifications'); });
     }
 
+    const hospitalSearchInput = document.getElementById('hospitalSearchInput');
+    if (hospitalSearchInput) {
+        hospitalSearchInput.addEventListener('input', () => {
+            adminHospitalsQuery = hospitalSearchInput.value.trim();
+            adminHospitalsPage = 1;
+            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+        });
+    }
+
+    const userSearchInput = document.getElementById('userSearchInput');
+    if (userSearchInput) {
+        userSearchInput.addEventListener('input', () => {
+            adminUsersQuery = userSearchInput.value.trim();
+            adminUsersPage = 1;
+            window.renderUserManagementTab(document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all');
+        });
+    }
+
+    const logSearchInput = document.getElementById('logSearchInput');
+    if (logSearchInput) {
+        logSearchInput.addEventListener('input', () => {
+            adminLogsQuery = logSearchInput.value.trim();
+            window.renderRequestLogsTab(document.querySelector('#logTabs button.text-primary')?.dataset.tab || 'all');
+        });
+    }
+
     initAdminGlobalSearch();
 
     // Internal Sub-Tabs for Hospitals
@@ -2674,9 +3000,9 @@ function initAdminNavigation() {
     hospitalTabBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             hospitalTabBtns.forEach(b => {
-                b.className = 'cursor-pointer pb-3 px-2 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors';
+                b.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all';
             });
-            btn.className = 'cursor-pointer pb-3 px-2 text-sm font-bold border-b-2 border-primary text-primary transition-colors';
+            btn.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg bg-amber-500 text-white shadow-sm transition-all';
             window.renderHospitalVerificationsTab(btn.dataset.tab);
         });
     });
@@ -2686,9 +3012,9 @@ function initAdminNavigation() {
     userTabBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             userTabBtns.forEach(b => {
-                b.className = 'cursor-pointer pb-3 px-2 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors';
+                b.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all';
             });
-            btn.className = 'cursor-pointer pb-3 px-2 text-sm font-bold border-b-2 border-primary text-primary transition-colors';
+            btn.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg bg-violet-500 text-white shadow-sm transition-all';
             window.renderUserManagementTab(btn.dataset.tab);
         });
     });
@@ -2698,9 +3024,9 @@ function initAdminNavigation() {
     logTabBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             logTabBtns.forEach(b => {
-                b.className = 'cursor-pointer pb-3 px-2 text-sm font-bold border-b-2 border-transparent text-slate-500 hover:text-slate-700 transition-colors';
+                b.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all';
             });
-            btn.className = 'cursor-pointer pb-3 px-2 text-sm font-bold border-b-2 border-primary text-primary transition-colors';
+            btn.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg bg-red-500 text-white shadow-sm transition-all';
             window.renderRequestLogsTab(btn.dataset.tab);
         });
     });
@@ -2784,24 +3110,24 @@ async function loadPublicTriageQueue() {
             <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                 <div class="flex items-start justify-between gap-2 mb-2">
                     <div class="flex items-center gap-2 min-w-0">
-                        <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-xs shrink-0">${r.bloodType}</span>
+                        <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-xs shrink-0">${esc(r.bloodType)}</span>
                         <div class="min-w-0">
-                            <p class="text-sm font-bold text-slate-800 truncate">${r.category || 'General Request'}</p>
-                            <p class="text-[10px] text-slate-500 truncate">${r.hospitalName}${r.isRegisteredHospital ? ' (Partner)' : ''}${r.ward ? ' · ' + r.ward : ''} · ${r.city}</p>
+                            <p class="text-sm font-bold text-slate-800 truncate">${esc(r.category) || 'General Request'}</p>
+                            <p class="text-[10px] text-slate-500 truncate">${esc(r.hospitalName)}${r.isRegisteredHospital ? ' (Partner)' : ''}${r.ward ? ' · ' + esc(r.ward) : ''} · ${esc(r.city)}</p>
                         </div>
                     </div>
                     <div class="flex flex-col items-end gap-1 shrink-0">
-                        <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${statusStyle[r.status] || 'text-slate-500 bg-slate-100'}">${r.status}</span>
-                        ${r.verificationLevel ? `<span class="text-[9px] font-bold px-2 py-0.5 rounded-full ${verificationStyle[r.verificationLevel] || 'text-slate-500 bg-slate-100'}">${r.verificationLevel}</span>` : ''}
+                        <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${statusStyle[r.status] || 'text-slate-500 bg-slate-100'}">${esc(r.status)}</span>
+                        ${r.verificationLevel ? `<span class="text-[9px] font-bold px-2 py-0.5 rounded-full ${verificationStyle[r.verificationLevel] || 'text-slate-500 bg-slate-100'}">${esc(r.verificationLevel)}</span>` : ''}
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-500 mb-3">
-                    <p>Submitted by: <span class="font-bold text-slate-700">${r.submitterName || 'Anonymous'}</span> (${r.relationship || '—'})</p>
-                    <p>Phone: <span class="font-bold text-slate-700">${r.contactPhone || '—'}</span></p>
-                    <p>Urgency: <span class="font-bold text-slate-700">${r.urgency}</span></p>
-                    <p>Track ${r.track || '—'} · <span class="font-bold px-1.5 py-0.5 rounded ${trustStyle[r.phoneTrust] || 'text-slate-500 bg-slate-100'}">${r.phoneTrust || 'unknown'}</span></p>
+                    <p>Submitted by: <span class="font-bold text-slate-700">${esc(r.submitterName) || 'Anonymous'}</span> (${esc(r.relationship) || '—'})</p>
+                    <p>Phone: <span class="font-bold text-slate-700">${esc(r.contactPhone) || '—'}</span></p>
+                    <p>Urgency: <span class="font-bold text-slate-700">${esc(r.urgency)}</span></p>
+                    <p>Track ${esc(r.track) || '—'} · <span class="font-bold px-1.5 py-0.5 rounded ${trustStyle[r.phoneTrust] || 'text-slate-500 bg-slate-100'}">${esc(r.phoneTrust) || 'unknown'}</span></p>
                 </div>
-                ${r.documentUrl ? `<a href="${r.documentUrl}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline mb-3"><span class="material-symbols-outlined text-xs">description</span>View attached document</a>` : '<p class="text-[10px] text-slate-400 mb-3">No proof document attached</p>'}
+                ${r.documentUrl ? `<a href="${safeUrl(r.documentUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline mb-3"><span class="material-symbols-outlined text-xs">description</span>View attached document</a>` : '<p class="text-[10px] text-slate-400 mb-3">No proof document attached</p>'}
                 <p class="text-[10px] text-slate-400 mb-3">${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</p>
                 ${actions ? `<div class="flex flex-wrap">${actions}</div>` : ''}
             </div>
@@ -2883,14 +3209,14 @@ async function loadShadowHospitalsLeaderboard() {
             <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-5">
                 <div class="flex items-start justify-between gap-2 mb-3">
                     <div class="min-w-0">
-                        <p class="text-sm font-bold text-slate-800 truncate">${h.name}</p>
-                        <p class="text-[10px] text-slate-500">${h.city}</p>
+                        <p class="text-sm font-bold text-slate-800 truncate">${esc(h.name)}</p>
+                        <p class="text-[10px] text-slate-500">${esc(h.city)}</p>
                     </div>
-                    <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${statusStyle[h.status] || 'text-slate-500 bg-slate-100'} shrink-0">${(h.status || 'unclaimed').replace('_', ' ')}</span>
+                    <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${statusStyle[h.status] || 'text-slate-500 bg-slate-100'} shrink-0">${esc((h.status || 'unclaimed').replace('_', ' '))}</span>
                 </div>
-                <p class="text-2xl font-black text-slate-900">${h.requestCount || 0}</p>
+                <p class="text-2xl font-black text-slate-900">${Number(h.requestCount) || 0}</p>
                 <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-3">Patient requests</p>
-                <p class="text-[10px] text-slate-500 mb-3">${h.contactPhone || h.contactEmail ? `Contact: ${h.contactPhone || h.contactEmail}` : 'No contact info on file'}</p>
+                <p class="text-[10px] text-slate-500 mb-3">${h.contactPhone || h.contactEmail ? `Contact: ${esc(h.contactPhone || h.contactEmail)}` : 'No contact info on file'}</p>
                 <div class="flex gap-1.5">
                     <button onclick="window.addShadowHospitalContact('${h.id}')" class="text-[10px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors">Add Contact</button>
                     <button onclick="window.sendShadowHospitalInvite('${h.id}')" class="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors">Send Invite</button>
@@ -3051,14 +3377,14 @@ async function loadSafetyOversightView() {
                 patientGridEl.innerHTML = patientReports.map(r => `
                     <div class="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4">
                         <div class="flex items-start justify-between gap-2 mb-2">
-                            <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-xs shrink-0">${r.bloodType || '?'}</span>
-                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${patientSeverityStyle[r.severity] || 'text-slate-500 bg-slate-100'}">${(r.severity || '').replace(/_/g, ' ')}</span>
+                            <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-xs shrink-0">${esc(r.bloodType) || '?'}</span>
+                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${patientSeverityStyle[r.severity] || 'text-slate-500 bg-slate-100'}">${esc((r.severity || '').replace(/_/g, ' '))}</span>
                         </div>
-                        <p class="text-xs font-bold text-slate-800">${(r.reactionType || '').replace(/_/g, ' ')}</p>
-                        <p class="text-[10px] text-slate-500 mt-0.5">${r.hospitalName || 'Unknown hospital'} · ${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''}</p>
-                        <p class="text-[10px] text-slate-600 mt-2">${r.description || ''}</p>
+                        <p class="text-xs font-bold text-slate-800">${esc((r.reactionType || '').replace(/_/g, ' '))}</p>
+                        <p class="text-[10px] text-slate-500 mt-0.5">${esc(r.hospitalName) || 'Unknown hospital'} · ${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''}</p>
+                        <p class="text-[10px] text-slate-600 mt-2">${esc(r.description) || ''}</p>
                         <div class="flex items-center justify-between mt-3">
-                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${r.status === 'resolved' ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'}">${(r.status || 'pending_review').replace(/_/g, ' ')}</span>
+                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${r.status === 'resolved' ? 'text-emerald-600 bg-emerald-50' : 'text-amber-600 bg-amber-50'}">${esc((r.status || 'pending_review').replace(/_/g, ' '))}</span>
                             ${r.status !== 'resolved' ? `<button onclick="window.adminResolveHemoReport('${r.id}')" class="text-[10px] font-bold text-emerald-600 hover:underline cursor-pointer">Mark Resolved</button>` : ''}
                         </div>
                     </div>
@@ -3074,14 +3400,14 @@ async function loadSafetyOversightView() {
                 donorGridEl.innerHTML = donorReports.map(r => `
                     <div class="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4">
                         <div class="flex items-start justify-between gap-2 mb-2">
-                            <span class="w-9 h-9 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-black text-xs shrink-0">${r.bloodType || '?'}</span>
-                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${donorSeverityStyle[r.severity] || 'text-slate-500 bg-slate-100'}">${r.severity}</span>
+                            <span class="w-9 h-9 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-black text-xs shrink-0">${esc(r.bloodType) || '?'}</span>
+                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${donorSeverityStyle[r.severity] || 'text-slate-500 bg-slate-100'}">${esc(r.severity)}</span>
                         </div>
-                        <p class="text-xs font-bold text-slate-800">${r.donorName || 'Unknown Donor'} — ${(r.reactionType || '').replace(/_/g, ' ')}</p>
-                        <p class="text-[10px] text-slate-500 mt-0.5">${r.hospitalName || 'Unknown hospital'} · ${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''}</p>
-                        <p class="text-[10px] text-slate-600 mt-2">${r.description || ''}</p>
+                        <p class="text-xs font-bold text-slate-800">${esc(r.donorName) || 'Unknown Donor'} — ${esc((r.reactionType || '').replace(/_/g, ' '))}</p>
+                        <p class="text-[10px] text-slate-500 mt-0.5">${esc(r.hospitalName) || 'Unknown hospital'} · ${r.createdAt ? new Date(r.createdAt).toLocaleDateString() : ''}</p>
+                        <p class="text-[10px] text-slate-600 mt-2">${esc(r.description) || ''}</p>
                         <div class="flex items-center justify-between mt-3">
-                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${r.status === 'resolved' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-500 bg-slate-100'}">${r.status}</span>
+                            <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${r.status === 'resolved' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-500 bg-slate-100'}">${esc(r.status)}</span>
                             ${r.status !== 'resolved' ? `<button onclick="window.adminResolveDonorReaction('${r.id}')" class="text-[10px] font-bold text-emerald-600 hover:underline cursor-pointer">Mark Resolved</button>` : ''}
                         </div>
                     </div>
@@ -3228,19 +3554,19 @@ function initAdminGlobalSearch() {
             const hospitalItems = matchedHospitals.map(h => `
                 <div onclick="window.viewHospitalDetail('${h.id}'); document.getElementById('adminSearchResults').classList.add('hidden');" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                     <span class="material-symbols-outlined text-slate-400 text-base">local_hospital</span>
-                    <span class="text-sm font-bold text-slate-700 truncate">${h.name}</span>
+                    <span class="text-sm font-bold text-slate-700 truncate">${esc(h.name)}</span>
                 </div>`).join('');
 
             const donorItems = matchedDonors.map(d => `
                 <div onclick="window.viewDonorDetail('${d.id}'); document.getElementById('adminSearchResults').classList.add('hidden');" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                     <span class="material-symbols-outlined text-slate-400 text-base">bloodtype</span>
-                    <span class="text-sm font-bold text-slate-700 truncate">${d.name || d.email || 'Donor'}</span>
+                    <span class="text-sm font-bold text-slate-700 truncate">${esc(d.name || d.email || 'Donor')}</span>
                 </div>`).join('');
 
             const requestItems = matchedRequests.map(r => `
                 <div onclick="window.viewRequestDetail('${r.id}'); document.getElementById('adminSearchResults').classList.add('hidden');" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                     <span class="material-symbols-outlined text-slate-400 text-base">emergency</span>
-                    <span class="text-sm font-bold text-slate-700 truncate">#${r.id.slice(0, 8).toUpperCase()} · ${r.bloodType || 'Any'}</span>
+                    <span class="text-sm font-bold text-slate-700 truncate">#${r.id.slice(0, 8).toUpperCase()} · ${esc(r.bloodType) || 'Any'}</span>
                 </div>`).join('');
 
             resultsEl.innerHTML = section('Hospitals', hospitalItems) + section('Donors', donorItems) + section('Requests', requestItems);
@@ -3272,28 +3598,84 @@ function initAdminGlobalSearch() {
     });
 }
 
+const requestStatusLc = (status) => (status || '').toLowerCase();
+const isRequestStatusActive = (status) => REQUEST_ACTIVE_STATUSES.map(s => s.toLowerCase()).includes(requestStatusLc(status));
+const isRequestStatusClosed = (status) => REQUEST_CLOSED_STATUSES.map(s => s.toLowerCase()).includes(requestStatusLc(status));
+
 let adminLogsCache = [];
+let adminLogsQuery = '';
+let adminHospitalsTab = '';
+let adminHospitalsQuery = '';
+let adminHospitalsPage = 1;
+let adminHospitalsPerPage = 8;
+let adminUsersTab = '';
+let adminUsersQuery = '';
+let adminUsersPage = 1;
+let adminUsersPerPage = 8;
+
+function renderAdminPagination(container, page, totalPages, total, key) {
+    if (!container) return;
+    if (totalPages <= 1) {
+        container.innerHTML = `<span class="text-xs font-bold text-slate-500">${total} record${total === 1 ? '' : 's'}</span>`;
+        return;
+    }
+    container.innerHTML = `
+        <span class="text-xs font-bold text-slate-500">${total} records</span>
+        <div class="flex items-center gap-2">
+            <button onclick="window.adminPageNav('${key}', -1)" ${page <= 1 ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Prev</button>
+            <span class="text-xs font-bold text-slate-600">${page} / ${Math.max(totalPages, 1)}</span>
+            <button onclick="window.adminPageNav('${key}', 1)" ${page >= totalPages ? 'disabled' : ''} class="px-3 py-1.5 rounded-lg text-xs font-bold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+        </div>`;
+}
+
+window.adminPageNav = (key, delta) => {
+    if (key === 'hospitals') {
+        adminHospitalsPage = Math.max(1, adminHospitalsPage + delta);
+        window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+    } else if (key === 'users') {
+        adminUsersPage = Math.max(1, adminUsersPage + delta);
+        window.renderUserManagementTab(document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all');
+    }
+};
 
 window.renderRequestLogsTab = async (tab) => {
     const tableBody = document.getElementById('adminLogsTableBody');
     if (!tableBody) return;
 
-    tableBody.innerHTML = '<tr><td colspan="6" class="px-6 py-8 text-center text-slate-500">Retrieving operational logs...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500">Retrieving operational logs...</td></tr>';
 
     try {
         const allRequests = await fetchAllSystemRequests();
+
+        // Populate the stats cards (Total / Active / Resolved)
+        const statTotal = document.getElementById('statTotalRequests');
+        const statActive = document.getElementById('statActiveRequests');
+        const statResolved = document.getElementById('statResolvedRequests');
+        if (statTotal) statTotal.textContent = allRequests.length;
+        if (statActive) statActive.textContent = allRequests.filter(r => isRequestStatusActive(r.status)).length;
+        if (statResolved) statResolved.textContent = allRequests.filter(r => isRequestStatusClosed(r.status)).length;
+
         let filtered = [];
         if (tab === 'open') {
-            filtered = allRequests.filter(r => ['Open', 'open', 'Matching', 'matched', 'Donor Assigned', 'Donor En Route'].includes(r.status));
+            filtered = allRequests.filter(r => isRequestStatusActive(r.status));
         } else if (tab === 'resolved') {
-            filtered = allRequests.filter(r => r.status === 'Resolved' || r.status === 'resolved');
+            filtered = allRequests.filter(r => isRequestStatusClosed(r.status));
         } else {
             filtered = allRequests;
+        }
+
+        if (adminLogsQuery) {
+            const q = adminLogsQuery.toLowerCase();
+            filtered = filtered.filter(r =>
+                (r.bloodType || r.type || '').toLowerCase().includes(q) ||
+                (r.hospital || r.hospitalName || '').toLowerCase().includes(q) ||
+                r.id.toLowerCase().includes(q)
+            );
         }
         adminLogsCache = filtered;
 
         if (filtered.length === 0) {
-            tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-500 font-medium tracking-wide">No ${tab} requests logged.</td></tr>`;
+            tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500 font-medium tracking-wide">No ${tab} requests logged.</td></tr>`;
             return;
         }
 
@@ -3308,53 +3690,58 @@ window.renderRequestLogsTab = async (tab) => {
              } else if (r.status === 'Resolved' || r.status === 'resolved') {
                  statusUI = '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Resolved</span>';
              } else {
-                 statusUI = `<span class="px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold tracking-widest uppercase">${r.status}</span>`;
+                 statusUI = `<span class="px-2 py-1 bg-slate-100 text-slate-700 rounded-md text-[10px] font-bold tracking-widest uppercase">${esc(r.status)}</span>`;
              }
 
-             // Handle relative time logic
-             const reqDate = r.timestamp ? new Date(r.timestamp) : new Date();
-             const now = new Date();
-             const diffMs = now - reqDate;
-             const diffMins = Math.floor(diffMs / 60000);
+             // Handle relative time logic — the requests collection stores requestedAt,
+             // but legacy docs may only have timestamp or createdAt.
+             const reqDateRaw = r.requestedAt || r.timestamp || r.createdAt || r.updatedAt;
              let timeString = '';
-             if(diffMins < 60) {
-                 timeString = `${diffMins} mins ago`;
-             } else if(diffMins < 1440) {
-                 timeString = `${Math.floor(diffMins / 60)} hrs ago`;
+             if (!reqDateRaw) {
+                 timeString = '—';
              } else {
-                 timeString = `${Math.floor(diffMins / 1440)} days ago`;
+                 const reqDate = new Date(reqDateRaw);
+                 const now = new Date();
+                 const diffMs = now - reqDate;
+                 let diffMins = Math.floor(diffMs / 60000);
+                 if (diffMins < 0) diffMins = 0;
+                 if (diffMins < 60) {
+                     timeString = `${diffMins} min${diffMins === 1 ? '' : 's'} ago`;
+                 } else if (diffMins < 1440) {
+                     timeString = `${Math.floor(diffMins / 60)} hr${Math.floor(diffMins / 60) === 1 ? '' : 's'} ago`;
+                 } else {
+                     timeString = `${Math.floor(diffMins / 1440)} day${Math.floor(diffMins / 1440) === 1 ? '' : 's'} ago`;
+                 }
              }
 
-             const origin = r.hospitalName || 'Central Command';
+             const origin = r.hospital || r.hospitalName || 'Central Command';
              
              return `
              <tr class="hover:bg-slate-50 transition-colors">
                 <td class="p-4">
                     <p class="font-mono text-xs font-bold text-slate-700">${r.id.slice(0,8).toUpperCase()}</p>
                 </td>
-                <td class="p-4"><span class="font-black text-primary bg-primary/5 px-2 py-1 rounded text-xs">${r.bloodType || 'Any'}</span></td>
+                <td class="p-4"><span class="font-black text-primary bg-primary/5 px-2 py-1 rounded text-xs">${esc(r.bloodType) || 'Any'}</span></td>
                 <td class="p-4">
                     <div class="flex items-center gap-2">
                         <span class="material-symbols-outlined text-[14px] text-slate-400" data-icon="${origin === 'Central Command' ? 'admin_panel_settings' : 'local_hospital'}">${origin === 'Central Command' ? 'admin_panel_settings' : 'local_hospital'}</span>
-                        <span class="text-xs font-bold text-on-surface truncate max-w-[150px]">${origin}</span>
+                        <span class="text-xs font-bold text-on-surface truncate max-w-[150px]">${esc(origin)}</span>
                     </div>
                 </td>
-                <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${r.unitsRequired || 1} Units</span></td>
+                <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${Number(r.unitsRequired) || 1} Units</span></td>
                 <td class="p-4">${statusUI}</td>
+                <td class="p-4"><span class="text-[11px] font-bold text-slate-400">${timeString}</span></td>
                 <td class="p-4 text-right">
-                    <div class="flex items-center justify-end gap-2">
-                        <span class="text-[11px] font-bold text-slate-400">${timeString}</span>
-                        <button onclick="window.viewRequestDetail('${r.id}')" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer" title="View Detail">
-                            <span class="material-symbols-outlined text-sm">visibility</span>
-                        </button>
-                    </div>
+                    <button onclick="window.viewRequestDetail('${r.id}')" class="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer" title="View Detail">
+                        <span class="material-symbols-outlined text-sm">visibility</span>
+                    </button>
                 </td>
              </tr>
              `;
         }).join('');
     } catch (err) {
         console.error(err);
-        tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-error py-4">Failed to load request logs.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-error py-4">Failed to load request logs.</td></tr>';
     }
 };
 
@@ -3381,8 +3768,8 @@ window.viewRequestDetail = (requestId) => {
 
     const field = (label, value) => `
         <div class="flex items-center justify-between py-2.5 border-b border-slate-100 last:border-0">
-            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">${label}</span>
-            <span class="text-sm font-bold text-slate-800 text-right">${value ?? '—'}</span>
+            <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">${esc(label)}</span>
+            <span class="text-sm font-bold text-slate-800 text-right">${esc(value) ?? '—'}</span>
         </div>`;
 
     content.innerHTML = `
@@ -3403,7 +3790,7 @@ window.viewRequestDetail = (requestId) => {
             ${r.labResolvedAt ? field('Lab Resolved At', new Date(r.labResolvedAt).toLocaleString()) : ''}
             ${r.issuedAt ? field('Issued At', new Date(r.issuedAt).toLocaleString()) : ''}
             ${r.resolvedAt ? field('Resolved At', new Date(r.resolvedAt).toLocaleString()) : ''}
-            ${r.resolutionReason ? field('Resolution Note', r.resolutionReason) : ''}
+            ${(r.adminResolutionNote || r.resolutionReason) ? field('Resolution Note', r.adminResolutionNote || r.resolutionReason) : ''}
         </div>
     `;
 
@@ -3417,6 +3804,7 @@ window.viewRequestDetail = (requestId) => {
 // searchable/filterable/exportable full view it was always supposed to link out to.
 // ============================================
 let adminActivityLogCache = [];
+let adminActivityLogFiltered = [];
 
 async function loadFullActivityLog(filter = 'all', searchTerm = '') {
     const body = document.getElementById('activityLogBody');
@@ -3430,7 +3818,7 @@ async function loadFullActivityLog(filter = 'all', searchTerm = '') {
 
         let filtered = logs;
         if (filter === 'admin') {
-            filtered = filtered.filter(l => (l.title || '').toLowerCase().includes('admin'));
+            filtered = filtered.filter(l => l.actor);
         } else if (filter !== 'all') {
             filtered = filtered.filter(l => l.type === filter);
         }
@@ -3438,6 +3826,7 @@ async function loadFullActivityLog(filter = 'all', searchTerm = '') {
             const term = searchTerm.trim().toLowerCase();
             filtered = filtered.filter(l => (l.title || '').toLowerCase().includes(term) || (l.description || '').toLowerCase().includes(term));
         }
+        adminActivityLogFiltered = filtered;
 
         if (countEl) countEl.textContent = `${filtered.length} events`;
 
@@ -3458,8 +3847,8 @@ async function loadFullActivityLog(filter = 'all', searchTerm = '') {
                     <span class="material-symbols-outlined text-sm">${icon}</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-bold text-slate-800">${log.title}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">${log.description}</p>
+                    <p class="text-sm font-bold text-slate-800">${esc(log.title)}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">${esc(log.description)}</p>
                     <p class="text-[10px] text-slate-400 mt-1">${log.timestamp ? new Date(log.timestamp).toLocaleString() : ''}</p>
                 </div>
             </div>`;
@@ -3482,15 +3871,19 @@ function initAdminActivityLogModal() {
 
     let activeFilter = 'all';
 
-    const close = () => modal?.classList.add('hidden');
-    const open = () => { modal?.classList.remove('hidden'); loadFullActivityLog(activeFilter, searchInput?.value || ''); };
+    const close = () => { modal?.classList.add('hidden'); modal?.classList.remove('flex'); };
+    const open = () => { modal?.classList.remove('hidden'); modal?.classList.add('flex'); loadFullActivityLog(activeFilter, searchInput?.value || ''); };
 
     openBtns.forEach(btn => { if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); open(); }); });
     if (closeBtn) closeBtn.addEventListener('click', close);
     if (modal) modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
+    let searchDebounceTimer = null;
     if (searchInput) {
-        searchInput.addEventListener('input', () => loadFullActivityLog(activeFilter, searchInput.value));
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => loadFullActivityLog(activeFilter, searchInput.value), 300);
+        });
     }
 
     filterBtns.forEach(btn => {
@@ -3506,7 +3899,7 @@ function initAdminActivityLogModal() {
 
     if (exportBtn) {
         exportBtn.addEventListener('click', () => {
-            const rows = [['Timestamp', 'Title', 'Type', 'Description'], ...adminActivityLogCache.map(l => [l.timestamp, l.title, l.type, l.description])];
+            const rows = [['Timestamp', 'Title', 'Type', 'Actor', 'Description'], ...adminActivityLogFiltered.map(l => [l.timestamp, l.title, l.type, l.actor || '', l.description])];
             const csv = rows.map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
@@ -3543,6 +3936,19 @@ window.renderHospitalVerificationsTab = async (tab) => {
     
     try {
         const allHospitals = await fetchAllHospitals();
+
+        // Populate the stats cards (Total / Pending / Verified / Rejected)
+        const statTotal = document.getElementById('statTotalHospitals');
+        const statPending = document.getElementById('statPendingHospitals');
+        const statVerified = document.getElementById('statVerifiedHospitals');
+        const statRejected = document.getElementById('statRejectedHospitals');
+        if (statTotal) statTotal.textContent = allHospitals.length;
+        if (statPending) statPending.textContent = allHospitals.filter(h => h.isVerified === false && !h.rejected).length;
+        if (statVerified) statVerified.textContent = allHospitals.filter(h => h.isVerified === true).length;
+        if (statRejected) statRejected.textContent = allHospitals.filter(h => h.rejected === true).length;
+
+        if (tab !== adminHospitalsTab) { adminHospitalsTab = tab; adminHospitalsPage = 1; }
+
         let filtered = [];
         if (tab === 'verified') {
             filtered = allHospitals.filter(h => h.isVerified === true);
@@ -3552,12 +3958,26 @@ window.renderHospitalVerificationsTab = async (tab) => {
             filtered = allHospitals.filter(h => h.isVerified === false && !h.rejected);
         }
 
-        if (filtered.length === 0) {
+        if (adminHospitalsQuery) {
+            const q = adminHospitalsQuery.toLowerCase();
+            filtered = filtered.filter(h =>
+                (h.name || '').toLowerCase().includes(q) ||
+                (h.city || '').toLowerCase().includes(q) ||
+                h.id.toLowerCase().includes(q)
+            );
+        }
+
+        const hospitalTotalPages = Math.max(1, Math.ceil(filtered.length / adminHospitalsPerPage));
+        adminHospitalsPage = Math.min(adminHospitalsPage, hospitalTotalPages);
+        const hospitalPageItems = filtered.slice((adminHospitalsPage - 1) * adminHospitalsPerPage, adminHospitalsPage * adminHospitalsPerPage);
+
+        if (hospitalPageItems.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500 font-medium tracking-wide">No ${tab} institutions found.</td></tr>`;
+            renderAdminPagination(document.getElementById('adminHospitalsPagination'), adminHospitalsPage, hospitalTotalPages, filtered.length, 'hospitals');
             return;
         }
 
-        tableBody.innerHTML = filtered.map(h => {
+        tableBody.innerHTML = hospitalPageItems.map(h => {
              const statusBadge = h.rejected ? '<span class="px-2 py-1 bg-red-100 text-red-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Rejected</span>' :
                                  h.isVerified ? '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Verified</span>' : 
                                  '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Pending</span>';
@@ -3565,10 +3985,10 @@ window.renderHospitalVerificationsTab = async (tab) => {
              let actions = '';
              if(!h.rejected && !h.isVerified) {
                  actions = `<div class="flex items-center justify-end gap-2">
-                     <button onclick="window.handleAdminApprove('${h.id}', '${h.name}')" class="cursor-pointer w-8 h-8 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors shadow-sm" title="Approve">
+                     <button onclick="window.handleAdminApprove('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors shadow-sm" title="Approve">
                          <span class="material-symbols-outlined text-sm" data-icon="check">check</span>
                      </button>
-                     <button onclick="window.handleAdminReject('${h.id}', '${h.name}')" class="cursor-pointer w-8 h-8 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Reject">
+                     <button onclick="window.handleAdminReject('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Reject">
                          <span class="material-symbols-outlined text-sm" data-icon="close">close</span>
                      </button>
                  </div>`;
@@ -3584,12 +4004,12 @@ window.renderHospitalVerificationsTab = async (tab) => {
                             <span class="material-symbols-outlined text-sm" data-icon="local_hospital">local_hospital</span>
                         </div>
                         <div class="min-w-0">
-                            <p class="font-bold text-on-surface truncate">${h.name}</p>
+                            <p class="font-bold text-on-surface truncate">${esc(h.name)}</p>
                             <p class="text-[10px] text-slate-500 font-mono">ID: ${h.id.slice(0,8).toUpperCase()}</p>
                         </div>
                     </div>
                 </td>
-                <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${h.city || 'Unspecified'}</span></td>
+                <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${esc(h.city) || 'Unspecified'}</span></td>
                 <td class="p-4">
                     <button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 hover:bg-slate-200 transition-colors">
                         <span class="material-symbols-outlined text-[12px]" data-icon="description">description</span> License
@@ -3600,16 +4020,29 @@ window.renderHospitalVerificationsTab = async (tab) => {
              </tr>
              `;
         }).join('');
+
+        renderAdminPagination(document.getElementById('adminHospitalsPagination'), adminHospitalsPage, hospitalTotalPages, filtered.length, 'hospitals');
     } catch (err) {
         console.error(err);
         tableBody.innerHTML = '<tr><td colspan="5" class="text-center text-error py-4">Failed to load directory.</td></tr>';
     }
 };
 
-// Global exposure for onClick handlers
+// Global exposure for onClick handlers. Name is optional — rows call with just the id (safe
+// against names containing quotes), so the handler fetches the institution to build the
+// confirmation message and pass the real name downstream.
 window.handleAdminApprove = async (id, name) => {
+    if (!name) {
+        try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
+    }
     if(confirm(`Approve ${name}?`)) {
-        await verifyHospital(id, name, true);
+        try {
+            await verifyHospital(id, name, true);
+        } catch (err) {
+            console.error('Failed to approve hospital:', err);
+            alert('Failed to approve hospital. Please try again.');
+            return;
+        }
         loadAdminDashboard();
         const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
@@ -3617,8 +4050,17 @@ window.handleAdminApprove = async (id, name) => {
 };
 
 window.handleAdminReject = async (id, name) => {
+    if (!name) {
+        try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
+    }
     if(confirm(`Reject ${name}?`)) {
-        await rejectHospital(id, name);
+        try {
+            await rejectHospital(id, name);
+        } catch (err) {
+            console.error('Failed to reject hospital:', err);
+            alert('Failed to reject hospital. Please try again.');
+            return;
+        }
         loadAdminDashboard();
         const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
@@ -3644,6 +4086,13 @@ function initHospitalDetailModal() {
     
     if (closeBtn) {
         closeBtn.addEventListener('click', closeModal);
+    }
+
+    if (modal && !modal.dataset.overlayCloseBound) {
+        modal.dataset.overlayCloseBound = '1';
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
     }
 }
 
@@ -3688,8 +4137,8 @@ window.viewHospitalDetail = async (hospitalId) => {
                         <span class="material-symbols-outlined text-3xl">local_hospital</span>
                     </div>
                     <div class="flex-1">
-                        <h3 class="text-xl font-black text-on-surface">${hospital.name || 'Unnamed Hospital'}</h3>
-                        <p class="text-sm text-slate-500">${hospital.city || 'No city specified'}, Cameroon</p>
+                        <h3 class="text-xl font-black text-on-surface">${esc(hospital.name) || 'Unnamed Hospital'}</h3>
+                        <p class="text-sm text-slate-500">${esc(hospital.city) || 'No city specified'}, Cameroon</p>
                         <div class="mt-2">${statusBadge}</div>
                     </div>
                 </div>
@@ -3697,11 +4146,11 @@ window.viewHospitalDetail = async (hospitalId) => {
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Email</p>
-                        <p class="text-sm font-medium text-on-surface">${hospital.email || 'N/A'}</p>
+                        <p class="text-sm font-medium text-on-surface">${esc(hospital.email) || 'N/A'}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Phone</p>
-                        <p class="text-sm font-medium text-on-surface">${hospital.phone || 'N/A'}</p>
+                        <p class="text-sm font-medium text-on-surface">${esc(hospital.phone) || 'N/A'}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Registration Date</p>
@@ -3719,8 +4168,10 @@ window.viewHospitalDetail = async (hospitalId) => {
                         <span class="material-symbols-outlined text-slate-400">description</span>
                     </div>
                     ${hospital.licenseUrl 
-                        ? `<a href="${hospital.licenseUrl}" target="_blank" class="text-primary text-sm font-bold hover:underline flex items-center gap-2">
-                            <span class="material-symbols-outlined text-sm">open_in_new</span> View Document
+                        ? `<a href="${safeUrl(hospital.licenseUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-primary text-sm font-bold hover:underline">
+                            <span class="material-symbols-outlined text-sm">${(hospital.licenseFileName || '').match(/\.(png|jpe?g|webp|gif)$/i) ? 'image' : 'description'}</span>
+                            ${esc(hospital.licenseFileName || 'View Document')}
+                            <span class="material-symbols-outlined text-sm">open_in_new</span>
                            </a>`
                         : `<div class="flex items-center gap-2 text-slate-500 text-sm">
                             <span class="material-symbols-outlined text-sm">warning</span>
@@ -3731,10 +4182,10 @@ window.viewHospitalDetail = async (hospitalId) => {
                 
                 ${!hospital.isVerified && !hospital.rejected ? `
                 <div class="flex gap-3 pt-4 border-t border-slate-200">
-                    <button onclick="window.handleAdminApprove('${hospital.id}', '${hospital.name}'); document.getElementById('hospitalDetailModal').classList.add('hidden');" class="flex-1 bg-emerald-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2">
+                    <button onclick="window.handleAdminApprove('${hospital.id}'); document.getElementById('hospitalDetailModal').classList.add('hidden');" class="flex-1 bg-emerald-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2">
                         <span class="material-symbols-outlined text-sm">check</span> Approve
                     </button>
-                    <button onclick="window.handleAdminReject('${hospital.id}', '${hospital.name}'); document.getElementById('hospitalDetailModal').classList.add('hidden');" class="flex-1 bg-red-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
+                    <button onclick="window.handleAdminReject('${hospital.id}'); document.getElementById('hospitalDetailModal').classList.add('hidden');" class="flex-1 bg-red-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
                         <span class="material-symbols-outlined text-sm">close</span> Reject
                     </button>
                 </div>
@@ -3755,6 +4206,17 @@ window.renderUserManagementTab = async (tab) => {
     
     try {
         const allDonors = await fetchAllDonors();
+
+        // Populate the stats cards (Total / Active / Suspended)
+        const statTotal = document.getElementById('statTotalDonorsAdmin');
+        const statActive = document.getElementById('statActiveDonors');
+        const statSuspended = document.getElementById('statSuspendedDonors');
+        if (statTotal) statTotal.textContent = allDonors.length;
+        if (statActive) statActive.textContent = allDonors.filter(u => u.isSuspended !== true).length;
+        if (statSuspended) statSuspended.textContent = allDonors.filter(u => u.isSuspended === true).length;
+
+        if (tab !== adminUsersTab) { adminUsersTab = tab; adminUsersPage = 1; }
+
         let filtered = [];
         if (tab === 'active') {
             filtered = allDonors.filter(u => u.isSuspended !== true);
@@ -3764,14 +4226,29 @@ window.renderUserManagementTab = async (tab) => {
             filtered = allDonors;
         }
 
-        if (filtered.length === 0) {
+        if (adminUsersQuery) {
+            const q = adminUsersQuery.toLowerCase();
+            filtered = filtered.filter(u =>
+                (u.name || '').toLowerCase().includes(q) ||
+                (u.city || '').toLowerCase().includes(q) ||
+                (u.bloodType || '').toLowerCase().includes(q) ||
+                u.id.toLowerCase().includes(q)
+            );
+        }
+
+        const userTotalPages = Math.max(1, Math.ceil(filtered.length / adminUsersPerPage));
+        adminUsersPage = Math.min(adminUsersPage, userTotalPages);
+        const userPageItems = filtered.slice((adminUsersPage - 1) * adminUsersPerPage, adminUsersPage * adminUsersPerPage);
+
+        if (userPageItems.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-500 font-medium tracking-wide">No ${tab} donors found.</td></tr>`;
+            renderAdminPagination(document.getElementById('adminUsersPagination'), adminUsersPage, userTotalPages, filtered.length, 'users');
             return;
         }
 
-        tableBody.innerHTML = filtered.map(u => {
+        tableBody.innerHTML = userPageItems.map(u => {
              const isSuspended = u.isSuspended === true;
-             const isAvailable = u.isAvailable === true;
+             const isAvailable = u.isAvailable !== false;
 
              const statusBadge = isSuspended ? '<span class="px-2 py-1 bg-red-100 text-red-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Suspended</span>' :
                                  '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Active</span>';
@@ -3788,14 +4265,14 @@ let actions = '';
                       <button onclick="window.viewDonorDetail('${u.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1.5 rounded text-xs font-bold hover:bg-slate-200 transition-colors shadow-sm" title="View Profile">
                           <span class="material-symbols-outlined text-sm">visibility</span>
                       </button>
-                      <button onclick="window.handleAdminSuspendUser('${u.id}', '${u.name}')" class="cursor-pointer bg-red-50 text-red-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">Suspend</button>
+                      <button onclick="window.handleAdminSuspendUser('${u.id}')" class="cursor-pointer bg-red-50 text-red-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">Suspend</button>
                   </div>`;
               } else {
                   actions = `<div class="flex items-center gap-2 justify-end">
                       <button onclick="window.viewDonorDetail('${u.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1.5 rounded text-xs font-bold hover:bg-slate-200 transition-colors shadow-sm" title="View Profile">
                           <span class="material-symbols-outlined text-sm">visibility</span>
                       </button>
-                      <button onclick="window.handleAdminReactivateUser('${u.id}', '${u.name}')" class="cursor-pointer bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm">Reactivate</button>
+                      <button onclick="window.handleAdminReactivateUser('${u.id}')" class="cursor-pointer bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm">Reactivate</button>
                   </div>`;
               }
 
@@ -3804,16 +4281,16 @@ let actions = '';
                 <td class="p-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden shrink-0">
-                            <img src="https://api.dicebear.com/7.x/initials/svg?seed=${u.name}" alt="${u.name}" class="w-full h-full object-cover"/>
+                            <img src="https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name)}" alt="${esc(u.name)}" class="w-full h-full object-cover"/>
                         </div>
                         <div class="min-w-0">
-                            <p class="font-bold text-on-surface truncate">${u.name}</p>
+                            <p class="font-bold text-on-surface truncate">${esc(u.name)}</p>
                             <p class="text-[10px] text-slate-500 font-mono">ID: ${u.id.slice(0,8).toUpperCase()}</p>
                         </div>
                     </div>
                 </td>
-                <td class="p-4"><span class="font-black text-primary bg-primary/5 px-2 py-1 rounded text-xs">${u.bloodType || 'N/A'}</span></td>
-                <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${u.city || 'Unspecified'}</span></td>
+                <td class="p-4"><span class="font-black text-primary bg-primary/5 px-2 py-1 rounded text-xs">${esc(u.bloodType) || 'N/A'}</span></td>
+                <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${esc(u.city) || 'Unspecified'}</span></td>
                 <td class="p-4">
                     <p class="text-[10px] text-slate-500 font-medium">Joined: ${registeredOn}</p>
                     <div class="mt-0.5">${availBadge}</div>
@@ -3825,6 +4302,8 @@ let actions = '';
              </tr>
              `;
         }).join('');
+
+        renderAdminPagination(document.getElementById('adminUsersPagination'), adminUsersPage, userTotalPages, filtered.length, 'users');
     } catch (err) {
         console.error(err);
         tableBody.innerHTML = '<tr><td colspan="6" class="text-center text-error py-4">Failed to load directory.</td></tr>';
@@ -3832,8 +4311,17 @@ let actions = '';
 };
 
 window.handleAdminSuspendUser = async (id, name) => {
+    if (!name) {
+        try { const d = await fetchDonorById(id); name = d?.name || ''; } catch { /* keep default */ }
+    }
     if(confirm(`WARNING: Are you sure you want to suspend ${name}?\n\nThey will be immediately removed from the matchmaking pool.`)) {
-        await suspendDonor(id, name);
+        try {
+            await suspendDonor(id, name);
+        } catch (err) {
+            console.error('Failed to suspend donor:', err);
+            alert('Failed to suspend donor. Please try again.');
+            return;
+        }
         loadAdminDashboard();
         const activeTab = document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all';
         if (window.renderUserManagementTab) window.renderUserManagementTab(activeTab);
@@ -3841,8 +4329,17 @@ window.handleAdminSuspendUser = async (id, name) => {
 };
 
 window.handleAdminReactivateUser = async (id, name) => {
+    if (!name) {
+        try { const d = await fetchDonorById(id); name = d?.name || ''; } catch { /* keep default */ }
+    }
     if(confirm(`Reactivate ${name}?\n\nThey will become eligible for blood requests again.`)) {
-        await reactivateDonor(id, name);
+        try {
+            await reactivateDonor(id, name);
+        } catch (err) {
+            console.error('Failed to reactivate donor:', err);
+            alert('Failed to reactivate donor. Please try again.');
+            return;
+        }
         loadAdminDashboard();
         const activeTab = document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all';
         if (window.renderUserManagementTab) window.renderUserManagementTab(activeTab);
@@ -3863,6 +4360,13 @@ function initDonorDetailModal() {
     
     if (backdrop) backdrop.addEventListener('click', closeModal);
     if (closeBtn) closeBtn.addEventListener('click', closeModal);
+
+    if (modal && !modal.dataset.overlayCloseBound) {
+        modal.dataset.overlayCloseBound = '1';
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
 }
 
 window.viewDonorDetail = async (donorId) => {
@@ -3898,6 +4402,23 @@ window.viewDonorDetail = async (donorId) => {
         
         const createdDate = donor.createdAt ? new Date(donor.createdAt).toLocaleDateString() : 'N/A';
         
+        // Eligibility / identity info
+        const cniLast4 = donor.cniLast4 || null;
+        const lastDonationDate = donor.lastDonationDate || donor.lastDonatedAt || null;
+        let eligibleHtml = '';
+        if (lastDonationDate) {
+            const daysAgo = Math.floor((new Date().getTime() - new Date(lastDonationDate).getTime()) / (1000 * 60 * 60 * 24));
+            const eligible = daysAgo >= 56;
+            const badgeColor = eligible ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-100 text-red-800 border-red-200';
+            eligibleHtml = `<span class="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wider ${badgeColor} border">${eligible ? '✓ ELIGIBLE' : '✗ NOT ELIGIBLE'}</span>`;
+        } else {
+            eligibleHtml = '<span class="inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200">✓ ELIGIBLE</span>';
+        }
+        const lastDonationDisplay = lastDonationDate ? new Date(lastDonationDate).toLocaleDateString() : 'No prior donation';
+        const emergencyContact = donor.emergencyContactName || donor.emergencyContactPhone
+            ? `${donor.emergencyContactName || '—'} ${donor.emergencyContactPhone ? '· ' + donor.emergencyContactPhone : ''}`
+            : 'Not set';
+        
         const donations = donor.donations || [];
         const completedDonations = donations.filter(d => d.status === 'completed' || d.status === 'approved');
         
@@ -3917,14 +4438,14 @@ window.viewDonorDetail = async (donorId) => {
                 return `
                 <div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg">
                     <div class="flex items-center gap-3">
-                        <span class="font-black text-primary bg-primary/5 px-2 py-1 rounded text-xs">${d.bloodType}</span>
+                        <span class="font-black text-primary bg-primary/5 px-2 py-1 rounded text-xs">${esc(d.bloodType)}</span>
                         <div>
-                            <p class="text-sm font-medium text-on-surface">${d.units || 1} Unit${(d.units || 1) > 1 ? 's' : ''}</p>
-                            <p class="text-[10px] text-slate-500">${d.preferredLocation || 'No location'}</p>
+                            <p class="text-sm font-medium text-on-surface">${Number(d.units) || 1} Unit${(Number(d.units) || 1) > 1 ? 's' : ''}</p>
+                            <p class="text-[10px] text-slate-500">${esc(d.preferredLocation) || 'No location'}</p>
                         </div>
                     </div>
                     <div class="text-right">
-                        <span class="px-2 py-1 ${statusColors[d.status] || 'bg-slate-100 text-slate-700'} rounded text-[10px] font-bold capitalize">${d.status}</span>
+                        <span class="px-2 py-1 ${statusColors[d.status] || 'bg-slate-100 text-slate-700'} rounded text-[10px] font-bold capitalize">${esc(d.status)}</span>
                         <p class="text-[10px] text-slate-400 mt-1">${date}</p>
                     </div>
                 </div>
@@ -3940,27 +4461,53 @@ window.viewDonorDetail = async (donorId) => {
             <div class="space-y-6">
                 <div class="flex items-start gap-4">
                     <div class="w-16 h-16 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden shrink-0">
-                        <img src="https://api.dicebear.com/7.x/initials/svg?seed=${donor.name}" alt="${donor.name}" class="w-full h-full object-cover"/>
+                        <img src="https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(donor.name || '')}" alt="${esc(donor.name)}" class="w-full h-full object-cover"/>
                     </div>
                     <div class="flex-1">
-                        <h3 class="text-xl font-black text-on-surface">${donor.name || 'Unknown Donor'}</h3>
-                        <p class="text-sm text-slate-500">${donor.city || 'No city'}, Cameroon</p>
+                        <h3 class="text-xl font-black text-on-surface">${esc(donor.name) || 'Unknown Donor'}</h3>
+                        <p class="text-sm text-slate-500">${esc(donor.city) || 'No city'}, Cameroon</p>
                         <div class="mt-2 flex items-center gap-2">${statusBadge}</div>
                     </div>
                 </div>
                 
+                <div class="bg-slate-50/80 rounded-xl p-3.5 border border-slate-100">
+                    <p class="text-[9px] font-bold uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-xs">badge</span>
+                        Identity Verification
+                    </p>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <span class="text-slate-500">CNI (last 4)</span>
+                            <p class="font-extrabold text-on-surface tracking-widest font-mono">${cniLast4 ? '••••••' + esc(cniLast4) : '<span class="text-slate-400 font-normal">Not on file</span>'}</p>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Last Donation</span>
+                            <p class="font-bold text-on-surface">${esc(lastDonationDisplay)}</p>
+                        </div>
+                    </div>
+                    <div class="mt-2">${eligibleHtml}</div>
+                </div>
+
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Blood Type</p>
-                        <p class="text-2xl font-black text-primary">${donor.bloodType || 'N/A'}</p>
+                        <p class="text-2xl font-black text-primary">${esc(donor.bloodType) || 'N/A'}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Donations</p>
                         <p class="text-2xl font-black text-on-surface">${completedDonations.length}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Phone</p>
+                        <p class="text-sm font-bold text-on-surface">${esc(donor.phone) || 'N/A'}</p>
+                    </div>
+                    <div class="bg-surface-container-low p-4 rounded-lg">
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Emergency Contact</p>
+                        <p class="text-sm font-medium text-on-surface">${esc(emergencyContact)}</p>
+                    </div>
+                    <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Email</p>
-                        <p class="text-sm font-medium text-on-surface truncate">${donor.email || 'N/A'}</p>
+                        <p class="text-sm font-medium text-on-surface truncate">${esc(donor.email) || 'N/A'}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Member Since</p>
@@ -3977,13 +4524,13 @@ window.viewDonorDetail = async (donorId) => {
                 
                 ${!isSuspended ? `
                 <div class="flex gap-3 pt-4 border-t border-slate-200">
-                    <button onclick="window.handleAdminSuspendUser('${donor.id}', '${donor.name}'); document.getElementById('donorDetailModal').classList.add('hidden');" class="flex-1 bg-red-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
+                    <button onclick="window.handleAdminSuspendUser('${donor.id}'); document.getElementById('donorDetailModal').classList.add('hidden');" class="flex-1 bg-red-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-red-600 transition-colors flex items-center justify-center gap-2">
                         <span class="material-symbols-outlined text-sm">block</span> Suspend
                     </button>
                 </div>
                 ` : `
                 <div class="flex gap-3 pt-4 border-t border-slate-200">
-                    <button onclick="window.handleAdminReactivateUser('${donor.id}', '${donor.name}'); document.getElementById('donorDetailModal').classList.add('hidden');" class="flex-1 bg-emerald-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2">
+                    <button onclick="window.handleAdminReactivateUser('${donor.id}'); document.getElementById('donorDetailModal').classList.add('hidden');" class="flex-1 bg-emerald-500 text-white py-3 px-4 rounded-lg font-bold text-sm hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2">
                         <span class="material-symbols-outlined text-sm">check_circle</span> Reactivate
                     </button>
                 </div>
@@ -4072,7 +4619,25 @@ async function loadAnalyticsDashboard() {
             donorRetentionEl.textContent = distinctDonors > 0 ? Math.round((returningDonors / distinctDonors) * 100) + '%' : '--%';
         }
 
+        const acceptanceRateEl = document.getElementById('analyticsAcceptanceRate');
+        if (acceptanceRateEl) {
+            const accepted = allDonations.filter(d => d.status === 'approved' || d.status === 'completed').length;
+            const rejected = allDonations.filter(d => d.status === 'rejected').length;
+            const total = accepted + rejected;
+            acceptanceRateEl.textContent = total > 0 ? Math.round((accepted / total) * 100) + '%' : '--%';
+        }
+
+        const citiesCoveredEl = document.getElementById('analyticsCitiesCovered');
+        if (citiesCoveredEl) {
+            const covered = new Set();
+            allDonors.forEach(d => { if (d.city) covered.add(d.city); });
+            allHospitals.forEach(h => { if (h.city) covered.add(h.city); });
+            citiesCoveredEl.textContent = covered.size;
+        }
+
         if (bloodStockChartEl) {
+            const existing = Chart.getChart(bloodStockChartEl);
+            if (existing) existing.destroy();
             const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
             const stockData = bloodTypes.map(type => inventoryEntries.filter(inv => inv.bloodType === type).reduce((sum, inv) => sum + (inv.unitsAvailable || 0), 0));
             new Chart(bloodStockChartEl, {
@@ -4090,6 +4655,8 @@ async function loadAnalyticsDashboard() {
         }
 
         if (bloodTypeDemandChartEl) {
+            const existing = Chart.getChart(bloodTypeDemandChartEl);
+            if (existing) existing.destroy();
             const bloodTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
             const demandData = bloodTypes.map(type => allRequests.filter(r => r.bloodType === type).length);
             new Chart(bloodTypeDemandChartEl, {
@@ -4332,28 +4899,29 @@ async function loadSettingsDashboard() {
 // ============================================
 
 let notifications = [];
-const NOTIFICATION_KEY = 'vitalpulse_notifications';
+let notificationSystemInitialized = false;
+let adminNotifUnsub = null;
 
 function initNotificationSystem() {
+    if (notificationSystemInitialized) return;
+    notificationSystemInitialized = true;
+
     const notifBtn = document.getElementById('btnAdminNotifications');
     const notifDropdown = document.getElementById('notificationDropdown');
-    const notifList = document.getElementById('notificationList');
-    const notifBadge = document.getElementById('notificationBadge');
     const clearBtn = document.getElementById('btnClearNotifications');
     const settingsBtn = document.getElementById('btnNotificationSettings');
-    
-    // Load stored notifications
-    const stored = localStorage.getItem(NOTIFICATION_KEY);
-    if (stored) {
-        notifications = JSON.parse(stored);
+
+    adminNotifUnsub = subscribeToAdminNotifications((items) => {
+        notifications = items;
+        renderNotificationList();
         updateNotificationBadge();
-    }
-    
+    });
+
     if (notifBtn && notifDropdown) {
         notifBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             notifDropdown.classList.toggle('hidden');
-            renderNotificationList();
+            if (!notifDropdown.classList.contains('hidden')) renderNotificationList();
         });
         
         document.addEventListener('click', (e) => {
@@ -4365,10 +4933,7 @@ function initNotificationSystem() {
     
     if (clearBtn) {
         clearBtn.addEventListener('click', () => {
-            notifications = [];
-            saveNotifications();
-            renderNotificationList();
-            updateNotificationBadge();
+            clearAllAdminNotifications();
         });
     }
     
@@ -4378,47 +4943,6 @@ function initNotificationSystem() {
             switchView('settings');
         });
     }
-    
-    // Add sample notifications for demo
-    addSampleNotifications();
-}
-
-function addSampleNotifications() {
-    const now = new Date();
-    if (notifications.length === 0) {
-        notifications = [
-            {
-                id: 1,
-                title: 'New Hospital Registration',
-                message: 'Douala Central Hospital has registered and needs verification.',
-                type: 'info',
-                time: new Date(now - 1000 * 60 * 30).toISOString(),
-                read: false
-            },
-            {
-                id: 2,
-                title: 'Low Stock Alert',
-                message: 'Blood type O- is below minimum threshold (3 units).',
-                type: 'warning',
-                time: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
-                read: false
-            },
-            {
-                id: 3,
-                title: 'Donation Approved',
-                message: 'Mai Randy\'s donation of A+ has been processed.',
-                type: 'success',
-                time: new Date(now - 1000 * 60 * 60 * 5).toISOString(),
-                read: true
-            }
-        ];
-        saveNotifications();
-        updateNotificationBadge();
-    }
-}
-
-function saveNotifications() {
-    localStorage.setItem(NOTIFICATION_KEY, JSON.stringify(notifications));
 }
 
 function updateNotificationBadge() {
@@ -4426,11 +4950,8 @@ function updateNotificationBadge() {
     const markReadBtn = document.getElementById('btnMarkNotifsRead');
     const unread = notifications.filter(n => !n.read).length;
     if (badge) {
-        if (unread > 0) {
-            badge.classList.remove('hidden');
-        } else {
-            badge.classList.add('hidden');
-        }
+        badge.textContent = unread > 9 ? '9+' : unread;
+        badge.classList.toggle('hidden', unread === 0);
     }
     if (markReadBtn) markReadBtn.classList.toggle('hidden', unread === 0);
 }
@@ -4458,9 +4979,9 @@ function initAdminNotificationDropdownControls() {
     if (markReadBtn) {
         markReadBtn.addEventListener('click', () => {
             notifications.forEach(n => { n.read = true; });
-            saveNotifications();
             renderNotificationList();
             updateNotificationBadge();
+            markAllAdminNotificationsRead();
         });
     }
     if (closeBtn) {
@@ -4480,7 +5001,7 @@ function renderNotificationList() {
     }
     
     list.innerHTML = notifications.map(n => {
-        const timeAgo = getTimeAgo(n.time);
+        const timeAgo = getTimeAgo(n.createdAt);
         const icon = n.type === 'warning' ? 'warning' : n.type === 'success' ? 'check_circle' : 'info';
         const iconClass = n.type === 'warning' ? 'text-amber-500' : n.type === 'success' ? 'text-emerald-500' : 'text-blue-500';
         
@@ -4489,8 +5010,8 @@ function renderNotificationList() {
             <div class="flex items-start gap-3">
                 <span class="material-symbols-outlined ${iconClass} text-lg">${icon}</span>
                 <div class="flex-1 min-w-0">
-                    <p class="font-bold text-sm text-on-surface">${n.title}</p>
-                    <p class="text-xs text-slate-500 truncate">${n.message}</p>
+                    <p class="font-bold text-sm text-on-surface">${esc(n.title)}</p>
+                    <p class="text-xs text-slate-500 truncate">${esc(n.message)}</p>
                     <p class="text-[10px] text-slate-400 mt-1">${timeAgo}</p>
                 </div>
                 ${!n.read ? '<span class="w-2 h-2 bg-primary rounded-full"></span>' : ''}
@@ -4502,6 +5023,7 @@ function renderNotificationList() {
 
 function getTimeAgo(dateStr) {
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '';
     const now = new Date();
     const diff = Math.floor((now - date) / 1000);
     
@@ -4513,26 +5035,12 @@ function getTimeAgo(dateStr) {
 
 window.markNotificationRead = (id) => {
     const notif = notifications.find(n => n.id === id);
-    if (notif) {
+    if (notif && !notif.read) {
         notif.read = true;
-        saveNotifications();
-        updateNotificationBadge();
         renderNotificationList();
+        updateNotificationBadge();
+        markAdminNotificationRead(id);
     }
-};
-
-window.addNotification = (title, message, type = 'info') => {
-    notifications.unshift({
-        id: Date.now(),
-        title,
-        message,
-        type,
-        time: new Date().toISOString(),
-        read: false
-    });
-    saveNotifications();
-    updateNotificationBadge();
-    renderNotificationList();
 };
 
 // ============================================
@@ -4591,15 +5099,15 @@ async function loadCampaignsDashboard() {
                     <div class="p-3 ${colors.text.replace('text-', 'bg-').replace('600', '50').replace('800', '100')} rounded-xl ${colors.text}">
                         <span class="material-symbols-outlined" data-icon="celebration">celebration</span>
                     </div>
-                    <span class="${colors.badge} text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-widest">${c.status}</span>
+                    <span class="${colors.badge} text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-widest">${esc(c.status)}</span>
                 </div>
-                <h3 class="font-black text-xl text-on-surface mb-1">${c.title}</h3>
-                <p class="text-xs text-slate-500 flex items-center gap-1 mb-2"><span class="material-symbols-outlined text-[14px]" data-icon="location_on">location_on</span> ${c.location}</p>
+                <h3 class="font-black text-xl text-on-surface mb-1">${esc(c.title)}</h3>
+                <p class="text-xs text-slate-500 flex items-center gap-1 mb-2"><span class="material-symbols-outlined text-[14px]" data-icon="location_on">location_on</span> ${esc(c.location)}</p>
                 <p class="text-xs text-slate-400 mb-4">Start: ${startDate}</p>
                 
                 <div class="mt-auto space-y-2">
                     <div class="flex justify-between text-xs font-bold text-on-surface">
-                        <span>Target: ${c.targetUnits || 0} Units</span>
+                        <span>Target: ${Number(c.targetUnits) || 0} Units</span>
                         <span class="${colors.text}">${progress}%</span>
                     </div>
                     <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
@@ -4608,9 +5116,9 @@ async function loadCampaignsDashboard() {
                 </div>
                 
                 <div class="flex gap-2 mt-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onclick="window.viewCampaignParticipants('${c.id}', '${c.title.replace(/'/g, "\\'")}')" class="flex-1 bg-emerald-50 text-emerald-600 py-2 px-3 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors">Participants</button>
+                    <button onclick="window.viewCampaignParticipants('${c.id}')" class="flex-1 bg-emerald-50 text-emerald-600 py-2 px-3 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-colors">Participants</button>
                     <button onclick="window.editCampaign('${c.id}')" class="flex-1 bg-slate-100 text-slate-600 py-2 px-3 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">Edit</button>
-                    <button onclick="window.deleteCampaign('${c.id}', '${c.title}')" class="flex-1 bg-red-50 text-red-600 py-2 px-3 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">Delete</button>
+                    <button onclick="window.deleteCampaign('${c.id}')" class="flex-1 bg-red-50 text-red-600 py-2 px-3 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors">Delete</button>
                 </div>
             </div>
             `;
@@ -4743,6 +5251,12 @@ window.editCampaign = async (id) => {
 };
 
 window.deleteCampaign = async (id, title) => {
+    if (!title) {
+        try {
+            const campaigns = await fetchAllCampaigns();
+            title = campaigns.find(c => c.id === id)?.title || '';
+        } catch { /* keep default */ }
+    }
     if (confirm(`Delete campaign "${title}"? This action cannot be undone.`)) {
         try {
             await deleteCampaign(id);
@@ -4777,7 +5291,7 @@ window.viewCampaignParticipants = async (campaignId, title) => {
     const body = document.getElementById('campaignParticipantsBody');
     if (!modal || !body) return;
 
-    if (subtitle) subtitle.textContent = title || 'Campaign participants overview';
+    if (subtitle) subtitle.textContent = title || 'Loading campaign...';
     body.innerHTML = '<p class="text-center text-slate-500 py-8 text-sm">Loading participants...</p>';
     modal.classList.remove('hidden');
     modal.classList.add('flex');
@@ -4790,6 +5304,8 @@ window.viewCampaignParticipants = async (campaignId, title) => {
         const campaign = campaigns.find(c => c.id === campaignId);
         const hospitalParticipants = campaign?.participants || [];
 
+        if (subtitle && campaign?.title) subtitle.textContent = campaign.title;
+
         const hospitalSection = `
             <div>
                 <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Organizing Hospitals (${hospitalParticipants.length})</p>
@@ -4799,9 +5315,9 @@ window.viewCampaignParticipants = async (campaignId, title) => {
                         <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-slate-400 text-base">local_hospital</span>
-                                <span class="text-sm font-bold text-slate-700">${p.hospitalName}</span>
+                                <span class="text-sm font-bold text-slate-700">${esc(p.hospitalName)}</span>
                             </div>
-                            <span class="text-xs text-slate-400">${p.hospitalCity || ''}</span>
+                            <span class="text-xs text-slate-400">${esc(p.hospitalCity) || ''}</span>
                         </div>
                     `).join('')}
             </div>`;
@@ -4815,7 +5331,7 @@ window.viewCampaignParticipants = async (campaignId, title) => {
                         <div class="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
                             <div class="flex items-center gap-2">
                                 <span class="material-symbols-outlined text-slate-400 text-base">bloodtype</span>
-                                <span class="text-sm font-bold text-slate-700">${d.donorName || 'Donor'}</span>
+                                <span class="text-sm font-bold text-slate-700">${esc(d.donorName) || 'Donor'}</span>
                             </div>
                             <span class="text-xs text-slate-400">${d.createdAt ? new Date(d.createdAt).toLocaleDateString() : ''}</span>
                         </div>
@@ -5049,8 +5565,34 @@ function initHospitalNotifications() {
     notifBtn.addEventListener('click', async () => {
         const currentUser = getCurrentUser();
         if (!currentUser) return;
+
+        // Create panel with skeleton immediately — no await
+        const panel = document.createElement('div');
+        panel.id = 'hospitalNotifPanel';
+        panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
+        panel.innerHTML = `
+            <div class="absolute inset-0 bg-black/20" onclick="document.getElementById('hospitalNotifPanel')?.remove()"></div>
+            <div class="relative bg-white w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+                    <h3 class="font-black text-on-surface flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary">notifications</span>
+                        Notifications
+                    </h3>
+                    <button onclick="document.getElementById('hospitalNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors">
+                        <span class="material-symbols-outlined text-sm">close</span>
+                    </button>
+                </div>
+                <div id="hospitalNotifBody" class="overflow-y-auto flex-1 p-3 space-y-1">
+                    <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-slate-200"></div><div class="flex-1 space-y-2"><div class="h-3 bg-slate-200 rounded w-3/4"></div><div class="h-2 bg-slate-200/60 rounded w-1/2"></div></div></div>
+                    <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-slate-200"></div><div class="flex-1 space-y-2"><div class="h-3 bg-slate-200 rounded w-2/3"></div><div class="h-2 bg-slate-200/60 rounded w-1/3"></div></div></div>
+                    <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-slate-200"></div><div class="flex-1 space-y-2"><div class="h-3 bg-slate-200 rounded w-5/6"></div><div class="h-2 bg-slate-200/60 rounded w-2/3"></div></div></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(panel);
+
+        // Now fetch data (from cache or network) and fill in
         try {
-            // Use cache first for instant display, then refresh silently
             let notifications = _hospitalNotifCache?.notifications;
             let unreadCount = _hospitalNotifCache?.unreadCount || 0;
             if (!notifications) {
@@ -5075,57 +5617,46 @@ function initHospitalNotifications() {
                     badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
                     badge.classList.remove('hidden');
                     badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                    badge.style.width = '18px';
+                    badge.style.height = '18px';
                 } else {
                     badge.classList.add('hidden');
                     badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                    badge.style.width = '';
+                    badge.style.height = '';
                 }
             }
-            if (notifications.length === 0) {
-                showToast('No notifications yet.');
-            } else {
-                const panel = document.createElement('div');
-                panel.id = 'hospitalNotifPanel';
-                panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
-                panel.innerHTML = `
-                    <div class="absolute inset-0 bg-black/20" onclick="document.getElementById('hospitalNotifPanel')?.remove()"></div>
-                    <div class="relative bg-white w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-                        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
-                            <h3 class="font-black text-on-surface flex items-center gap-2">
-                                <span class="material-symbols-outlined text-primary">notifications</span>
-                                Notifications
-                            </h3>
-                            <div class="flex items-center gap-2">
-                                ${unreadCount > 0 ? `<button onclick="(async () => { const cu = getCurrentUser(); if(cu){await markAllHospitalNotificationsRead(cu.uid); document.getElementById('hospitalNotifPanel')?.remove();} })()" class="text-[10px] font-bold text-primary hover:underline">Mark all read</button>` : ''}
-                                <button onclick="document.getElementById('hospitalNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-colors">
-                                    <span class="material-symbols-outlined text-sm">close</span>
-                                </button>
+            const body = document.getElementById('hospitalNotifBody');
+            if (body) {
+                if (notifications.length === 0) {
+                    body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-slate-500"><span class="material-symbols-outlined text-3xl mb-2 text-slate-300">notifications_off</span><p class="text-sm font-medium">No notifications yet</p></div>';
+                } else {
+                    const header = document.querySelector('#hospitalNotifPanel h3')?.closest('.flex');
+                    if (header && unreadCount > 0) {
+                        header.insertAdjacentHTML('beforeend', `<button onclick="(async () => { const cu = getCurrentUser(); if(cu){await markAllHospitalNotificationsRead(cu.uid); const p = document.getElementById('hospitalNotifPanel'); if(p) p.remove();} })()" class="text-[10px] font-bold text-primary hover:underline ml-auto">Mark all read</button>`);
+                    }
+                    body.innerHTML = notifications.map(n => {
+                        const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
+                        const colors = { 'error': 'text-red-600 bg-red-50', 'success': 'text-emerald-600 bg-emerald-50', 'info': 'text-blue-600 bg-blue-50', 'warning': 'text-amber-600 bg-amber-50' };
+                        const c = colors[n.type] || colors.info;
+                        const icon = icons[n.type] || icons.info;
+                        return `
+                            <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markHospitalNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.style.opacity='0.6'; })()` : ''}">
+                                <span class="material-symbols-outlined text-sm mt-0.5 ${c.split(' ')[0]}">${icon}</span>
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-bold text-on-surface ${n.read ? '' : ''}">${n.title}</p>
+                                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${n.message}</p>
+                                    <p class="text-[9px] text-slate-400 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
+                                </div>
+                                ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
                             </div>
-                        </div>
-                        <div class="overflow-y-auto flex-1 p-3 space-y-1">
-                            ${notifications.map(n => {
-                                const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
-                                const colors = { 'error': 'text-red-600 bg-red-50', 'success': 'text-emerald-600 bg-emerald-50', 'info': 'text-blue-600 bg-blue-50', 'warning': 'text-amber-600 bg-amber-50' };
-                                const c = colors[n.type] || colors.info;
-                                const icon = icons[n.type] || icons.info;
-                                return `
-                                    <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markHospitalNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.style.opacity='0.6'; })()` : ''}">
-                                        <span class="material-symbols-outlined text-sm mt-0.5 ${c.split(' ')[0]}">${icon}</span>
-                                        <div class="min-w-0 flex-1">
-                                            <p class="text-xs font-bold text-on-surface ${n.read ? '' : ''}">${n.title}</p>
-                                            <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${n.message}</p>
-                                            <p class="text-[9px] text-slate-400 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
-                                        </div>
-                                        ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
-                                    </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(panel);
+                        `;
+                    }).join('');
+                }
             }
         } catch (e) {
-            showToast('No new notifications');
+            const body = document.getElementById('hospitalNotifBody');
+            if (body) body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-slate-500"><span class="material-symbols-outlined text-3xl mb-2 text-slate-300">error_outline</span><p class="text-sm font-medium">Could not load notifications</p></div>';
         }
     });
 
@@ -5558,7 +6089,7 @@ window.openRequestTimeline = async (requestId) => {
         }
         const req = reqDoc.data();
         const timeline = [
-            { status: 'Opened', description: 'Request was created', timestamp: req.timestamp || req.createdAt, color: 'text-blue-500', icon: 'add_circle' },
+            { status: 'Opened', description: 'Request was created', timestamp: req.requestedAt || req.timestamp || req.createdAt, color: 'text-blue-500', icon: 'add_circle' },
             { status: 'Matching', description: `Looking for ${req.bloodType} donors in ${req.city}`, timestamp: req.matchedAt, color: 'text-amber-500', icon: 'search' },
             { status: 'Donor Assigned', description: 'A donor accepted the request', timestamp: req.assignedAt, color: 'text-indigo-500', icon: 'person_pin' },
             { status: 'Donor En Route', description: 'Donor is heading to the hospital', timestamp: req.enRouteAt, color: 'text-purple-500', icon: 'directions_car' },
