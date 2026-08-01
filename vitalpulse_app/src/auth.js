@@ -7,8 +7,11 @@ import {
     sendPasswordResetEmail,
     sendEmailVerification
 } from "firebase/auth";
-import { doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { doc, setDoc, getDoc, updateDoc, addDoc, collection } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from './firebase';
+
+const checkDuplicateCniFn = httpsCallable(getFunctions(), 'checkDuplicateCni');
 
 let currentUser = null;
 export async function hashNationalId(nationalIdText) {
@@ -43,25 +46,31 @@ function fallbackHash(str) {
 
 export async function registerUser(email, password, role, additionalData) {
     try {
+        // Account is created FIRST because the duplicate-CNI check below is a
+        // Cloud Function that requires the caller to be authenticated — the old
+        // ordering queried the users collection before account creation, i.e.
+        // unauthenticated, which deny-by-default rules reject outright
+        // ("Missing or insufficient permissions" broke every donor registration
+        // with a national ID). If the hash is a duplicate, the function rolls
+        // the just-created account back server-side.
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        await updateProfile(user, { displayName: additionalData.name });
+
         let cniHash = null;
         let cniLast4 = null;
         if (role === 'donor' && additionalData.nationalId) {
             cniHash = await hashNationalId(additionalData.nationalId);
             if (cniHash) {
-                const dupQuery = query(collection(db, 'users'), where('cniHash', '==', cniHash));
-                const dupSnap = await getDocs(dupQuery);
-                if (!dupSnap.empty) {
+                const dupRes = await checkDuplicateCniFn({ cniHash });
+                if (dupRes.data.duplicate) {
                     throw new Error('A donor account with this National ID Number (CNI) is already registered.');
                 }
             }
             const cleanId = additionalData.nationalId.trim().replace(/[\s-]/g, '');
             cniLast4 = cleanId.length >= 4 ? cleanId.slice(-4) : cleanId;
         }
-
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        await updateProfile(user, { displayName: additionalData.name });
 
         // Admin's "Hospital Registration Approval" setting controls whether a new hospital
         // needs manual review (the historical, default behavior) or is auto-verified. Read

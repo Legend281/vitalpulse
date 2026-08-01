@@ -44,3 +44,14 @@ export const hospitalStatusSchema = z
   .strict();
 
 export type HospitalStatusInput = z.infer<typeof hospitalStatusSchema>;
+
+// SHA-256 hex digests are exactly 64 lowercase hex chars (see auth.js hashNationalId).
+export const cniHashSchema = z.string().regex(/^[0-9a-f]{64}$/, 'must be a 64-char hex SHA-256 digest');
+
+export const checkDuplicateCniSchema = z
+  .object({
+    cniHash: cniHashSchema,
+  })
+  .strict();
+
+export type CheckDuplicateCniInput = z.infer<typeof checkDuplicateCniSchema>;
