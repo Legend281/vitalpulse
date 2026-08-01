@@ -35,6 +35,7 @@ vi.mock('firebase/firestore', () => ({
 import { getDocs, updateDoc, where } from 'firebase/firestore';
 import {
     getCompatibleBloodTypes,
+    getCompatibleDonorTypes,
     findMatchingDonors,
     autoMatchDonors,
     fetchMatchedRequestsForDonor,
@@ -46,13 +47,49 @@ function fakeSnapshot(items) {
 
 const ALL_TYPES = ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'];
 
-describe('getCompatibleBloodTypes — "receives from" compatibility matrix', () => {
+// Real-world ABO/Rh whole-blood tables (db.js WHOLE_BLOOD_DONOR_TO_RECIPIENT and its
+// inverse). NOTE on direction semantics: getCompatibleBloodTypes(X) answers "who X can
+// donate TO"; getCompatibleDonorTypes(X) answers "who can donate TO X / X can receive
+// FROM". These are genuinely different matrices — confusing them was the 2026-07-24
+// inverted-compatibility bug.
+const DONATES_TO = {
+    'O-':  ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+    'O+':  ['O+', 'A+', 'B+', 'AB+'],
+    'A-':  ['A-', 'A+', 'AB-', 'AB+'],
+    'A+':  ['A+', 'AB+'],
+    'B-':  ['B-', 'B+', 'AB-', 'AB+'],
+    'B+':  ['B+', 'AB+'],
+    'AB-': ['AB-', 'AB+'],
+    'AB+': ['AB+'],
+};
+
+describe('getCompatibleBloodTypes — "donates to" compatibility matrix (donor → recipients)', () => {
+    it('O- (universal donor) donates to all 8 types', () => {
+        expect(getCompatibleBloodTypes('O-').slice().sort()).toEqual([...ALL_TYPES].sort());
+    });
+
+    it('AB+ can only donate to AB+', () => {
+        expect(getCompatibleBloodTypes('AB+')).toEqual(['AB+']);
+    });
+
+    it('matches real-world ABO/Rh compatibility for every blood type', () => {
+        for (const type of ALL_TYPES) {
+            expect(getCompatibleBloodTypes(type).slice().sort()).toEqual(DONATES_TO[type].slice().sort());
+        }
+    });
+
+    it('falls back to [bloodType] for an unrecognized type', () => {
+        expect(getCompatibleBloodTypes('X+')).toEqual(['X+']);
+    });
+});
+
+describe('getCompatibleDonorTypes — "receives from" compatibility matrix (recipient → donors)', () => {
     it('O- (universal donor) can only receive from O-', () => {
-        expect(getCompatibleBloodTypes('O-')).toEqual(['O-']);
+        expect(getCompatibleDonorTypes('O-')).toEqual(['O-']);
     });
 
     it('AB+ (universal recipient) can receive from every type', () => {
-        expect(getCompatibleBloodTypes('AB+').slice().sort()).toEqual([...ALL_TYPES].sort());
+        expect(getCompatibleDonorTypes('AB+').slice().sort()).toEqual([...ALL_TYPES].sort());
     });
 
     it('matches real-world ABO/Rh compatibility for every blood type', () => {
@@ -67,34 +104,27 @@ describe('getCompatibleBloodTypes — "receives from" compatibility matrix', () 
             'AB+': ['A-', 'A+', 'B-', 'B+', 'AB-', 'AB+', 'O-', 'O+'],
         };
         for (const type of ALL_TYPES) {
-            expect(getCompatibleBloodTypes(type).slice().sort()).toEqual(expected[type].slice().sort());
+            expect(getCompatibleDonorTypes(type).slice().sort()).toEqual(expected[type].slice().sort());
         }
     });
 
     it('falls back to [bloodType] for an unrecognized type', () => {
-        expect(getCompatibleBloodTypes('X+')).toEqual(['X+']);
+        expect(getCompatibleDonorTypes('X+')).toEqual(['X+']);
     });
 });
 
-describe('"donates to" direction — regression guard for the 2026-07-24 inverted-compatibility bug', () => {
-    // getCompatibleBloodTypes(X) answers "who can X receive from", not "who does X donate to".
-    // main.js's compatibility modal used to call getCompatibleBloodTypes(type) directly for its
-    // "Donates to" grid, which is backwards — fixed by inverting the matrix instead. These tests
-    // pin the correct derivation so that bug class can't silently come back.
-    function donatesTo(type) {
-        return ALL_TYPES.filter((t) => getCompatibleBloodTypes(t).includes(type));
-    }
-
-    it('O- (universal donor) donates to all 8 types', () => {
-        expect(donatesTo('O-').slice().sort()).toEqual([...ALL_TYPES].sort());
+describe('direction regression guard for the 2026-07-24 inverted-compatibility bug', () => {
+    // A request for O- must not match donors of every blood type, and a donor must not
+    // be shown their own "donates to" list under a "Receives from" label. The two
+    // functions must stay genuinely different computations.
+    it('donate-to and receive-from are genuinely different matrices for a mixed type', () => {
+        expect(getCompatibleDonorTypes('A+')).not.toEqual(getCompatibleBloodTypes('A+'));
     });
 
-    it('AB+ can only donate to AB+', () => {
-        expect(donatesTo('AB+')).toEqual(['AB+']);
-    });
-
-    it('donate-to and receive-from are genuinely different computations for a mixed type', () => {
-        expect(donatesTo('A+')).not.toEqual(getCompatibleBloodTypes('A+'));
+    it('the modal\'s "Donates to" grid must not equal its "Receives from" grid for the same type', () => {
+        for (const type of ['A+', 'O+', 'B-', 'AB-']) {
+            expect(getCompatibleDonorTypes(type).slice().sort()).not.toEqual(getCompatibleBloodTypes(type).slice().sort());
+        }
     });
 });
 
@@ -111,7 +141,7 @@ describe('findMatchingDonors', () => {
         const result = await findMatchingDonors('A+', 'Yaounde');
 
         expect(where).toHaveBeenCalledWith('role', '==', 'donor');
-        expect(where).toHaveBeenCalledWith('bloodType', 'in', getCompatibleBloodTypes('A+'));
+        expect(where).toHaveBeenCalledWith('bloodType', 'in', getCompatibleDonorTypes('A+'));
         expect(where).toHaveBeenCalledWith('isAvailable', '==', true);
         expect(where).toHaveBeenCalledWith('city', '==', 'Yaounde');
         expect(result).toEqual([{ id: 'donor1', bloodType: 'O-', city: 'Yaounde' }]);
@@ -184,20 +214,27 @@ describe('fetchMatchedRequestsForDonor', () => {
         vi.clearAllMocks();
     });
 
-    it('filters open requests by compatible blood type only — location is accepted but not applied', async () => {
-        // Known gap, not changed here: this function takes a `location` parameter but never uses
-        // it to filter the query (Plan Tracker Part 3.1) — a donor's "matched requests" feed
-        // today shows every compatible open request nationwide, not just their own city.
-        // Documented via this test rather than silently "fixed", since it's unclear whether
-        // that's an oversight or an intentional browse-all-compatible-requests view.
+    it('queries Open requests, filters compatible blood types client-side, and applies the donor city filter', async () => {
+        // Compatibility cannot be a Firestore `in` query here because it depends on the
+        // component each request needs (plasma compatibility is reversed), so it's computed
+        // per-request client-side. The location param IS applied — as an exact city match
+        // plus National/Central Command broadcasts (see db.js fetchMatchedRequestsForDonor).
         getDocs.mockResolvedValueOnce(fakeSnapshot([
-            { id: 'req1', data: { bloodType: 'A+', status: 'Open', requestedAt: '2026-01-01T00:00:00.000Z' } },
+            { id: 'req1', data: { bloodType: 'A+', status: 'Open', city: 'Douala', requestedAt: '2026-01-01T00:00:00.000Z', patientName: 'PHI', diagnosis: 'PHI' } },
+            { id: 'req2', data: { bloodType: 'O-', status: 'Open', city: 'Douala', requestedAt: '2026-01-02T00:00:00.000Z' } },
+            { id: 'req3', data: { type: 'AB+', status: 'Open', city: 'National', requestedAt: '2026-01-03T00:00:00.000Z' } },
+            { id: 'req4', data: { bloodType: 'A+', status: 'Open', city: 'Yaounde', requestedAt: '2026-01-04T00:00:00.000Z' } },
         ]));
 
-        await fetchMatchedRequestsForDonor('A+', 'SomeCityThatIsNeverQueried');
+        const result = await fetchMatchedRequestsForDonor('A+', 'Douala');
 
-        expect(where).toHaveBeenCalledWith('bloodType', 'in', getCompatibleBloodTypes('A+'));
         expect(where).toHaveBeenCalledWith('status', '==', 'Open');
-        expect(where).not.toHaveBeenCalledWith('city', '==', expect.anything());
+        expect(where).not.toHaveBeenCalledWith('bloodType', expect.anything(), expect.anything());
+        // A+ donor can fulfill requests needing A+ or AB+; O- and other-city requests are
+        // excluded. Urgent-first, then most-recent (req3 posted later than req1).
+        expect(result.map((r) => r.id)).toEqual(['req3', 'req1']);
+        // Medical Privacy Enforcement: patient fields are stripped from the donor-facing payload.
+        expect(result[0]).not.toHaveProperty('patientName');
+        expect(result[0]).not.toHaveProperty('diagnosis');
     });
 });

@@ -5,7 +5,15 @@ service cloud.firestore {
 
     // Helper: check if the requester is authenticated
     function isAuth() {
-      return request.auth != null;
+      // Suspension guard (2026-07-31): a suspended user's Firebase ID token stays
+      // cryptographically valid for up to ~1h after admin.revokeRefreshTokens-style
+      // suspension, and Firestore rules can't see revocation status. Cross-checking
+      // the users doc's isSuspended field closes that gap immediately: suspension
+      // takes effect on the next rule evaluation. Costs 1 extra read per rule
+      // evaluation (documented tradeoff; revisit when suspension moves to a
+      // Cloud-Function verifyIdToken path).
+      return request.auth != null
+        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuspended;
     }
 
     // Helper: get user role from the users collection
@@ -53,17 +61,22 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Activity logs: read by authenticated users, written by server
+    // Activity logs: admin-only reads (IDOR fix 2026-07-31 — previously readable by any
+    // authenticated user); creation stays open because every client writes its own
+    // activity entries.
     match /activity_logs/{logId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && isAdmin();
       allow create: if isAuth();
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
-    // Donation requests
+    // Donation requests (donor-scheduled donations)
+    // IDOR fix (2026-07-31): donors may only read their OWN records — previously any
+    // authenticated user could list the whole collection (bloodType, preferredLocation,
+    // notes of every donor). Hospitals/admins may read all (booking management).
     match /donation_requests/{donationId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (isHospital() || isAdmin() || resource.data.donorId == request.auth.uid);
       allow create: if isAuth();
       allow update: if isAuth() && (isAdmin() || isHospital());
       allow delete: if isAdmin();
@@ -77,11 +90,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Hospital notifications
+    // Hospital notifications — owner-scoped reads (IDOR fix 2026-07-31):
+    // a hospital may read only notifications addressed to its own uid.
     match /hospital_notifications/{notificationId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && (isAdmin() || resource.data.hospitalId == request.auth.uid);
       allow create: if isAuth();
-      allow update: if isAuth();
+      allow update: if isAuth() && (isAdmin() || resource.data.hospitalId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
@@ -124,19 +138,22 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Admin notifications
+    // Admin notifications — admin-only reads (IDOR fix 2026-07-31); creation stays open
+    // because hospital signups create them client-side to alert admins.
     match /admin_notifications/{notificationId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && isAdmin();
       allow create: if isAuth();
-      allow update: if isAuth();
+      allow update: if isAuth() && isAdmin();
       allow delete: if isAdmin();
     }
 
-    // Donor notifications
+    // Donor notifications — owner-scoped reads (IDOR fix 2026-07-31): a donor may read
+    // only notifications addressed to their own uid. Creation stays open (client-driven
+    // matching/lab flows notify donors); writes restricted to the owner.
     match /donor_notifications/{notificationId} {
-      allow read: if isAuth();
+      allow read: if isAuth() && resource.data.donorId == request.auth.uid;
       allow create: if isAuth();
-      allow update: if isAuth();
+      allow update: if isAuth() && resource.data.donorId == request.auth.uid;
       allow delete: if isAdmin();
     }
 

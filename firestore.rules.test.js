@@ -54,6 +54,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'requests/R2'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor Assigned', matchedDonor: 'donorA', matchedAt: 'now', requestedAt: 'now', isEmergency: true });
 
     await setDoc(doc(db, 'inventory/H1_O-'), { bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 10 });
+    await setDoc(doc(db, 'inventory/H2_A+'), { bloodType: 'A+', hospital: 'Hospital Two', hospitalId: 'H2', unitsAvailable: 3 });
 
     await setDoc(doc(db, 'donation_requests/D1'), { donorId: 'donorA', bloodType: 'O-', status: 'pending' });
 
@@ -117,6 +118,19 @@ describe('users', () => {
 
   it('HOSTILE: hospital_admin cannot suspend a donor (not their call)', async () =>
     assertFails(updateDoc(doc(ctx('hAdminH1'), 'users/donorA'), { isSuspended: true })));
+
+  it('system_admin rejects a hospital (rejectHospital write shape)', async () =>
+    assertSucceeds(updateDoc(doc(ctx('sysAdmin'), 'users/H2'), {
+      isVerified: false, rejected: true, rejectedAt: 'now',
+    })));
+
+  it('system_admin deactivates/reactivates a hospital (isActive write shape)', async () => {
+    await assertSucceeds(updateDoc(doc(ctx('sysAdmin'), 'users/H2'), { isActive: false, statusChangedAt: 'now' }));
+    await assertSucceeds(updateDoc(doc(ctx('sysAdmin'), 'users/H2'), { isActive: true, statusChangedAt: 'now' }));
+  });
+
+  it('HOSTILE: donor cannot self-write isActive (privilege-adjacent field)', async () =>
+    assertFails(updateDoc(doc(ctx('donorA'), 'users/donorA'), { isActive: false })));
 });
 
 describe('requests', () => {
@@ -210,6 +224,17 @@ describe('inventory', () => {
 
   it('lab_tech CAN still read their own hospital\'s inventory', async () =>
     assertSucceeds(getDoc(doc(ctx('labH1'), 'inventory/H1_O-'))));
+
+  it('hospital_staff adjusts the minimum threshold via a partial update (setInventoryThreshold shape)', async () =>
+    assertSucceeds(updateDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), { minimumThreshold: 3 })));
+
+  it('HOSTILE: hospital_staff cannot create inventory without stamping their own hospitalId', async () =>
+    assertFails(setDoc(doc(ctx('staffH1'), 'inventory/H1_O+'), {
+      bloodType: 'O+', hospital: 'Hospital One', unitsAvailable: 5,
+    })));
+
+  it('HOSTILE: hospital_staff cannot partial-update another hospital\'s inventory doc', async () =>
+    assertFails(updateDoc(doc(ctx('staffH1'), 'inventory/H2_A+'), { unitsAvailable: 1 })));
 });
 
 describe('donation_requests', () => {

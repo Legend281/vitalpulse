@@ -17,7 +17,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, runTransaction } from 'firebase/firestore';
 
 let env;
 
@@ -77,19 +77,21 @@ describe('S3 — donor response stampede: exactly-once accept', () => {
 
 describe('S5 — inventory consistency under concurrent mutations', () => {
   // This intentionally does NOT import db.js — its Firestore instance is bound to
-  // the real project (firebase.js), not this emulator. It reproduces
-  // deductInventoryStock's exact logic (db.js, read unitsAvailable via getDoc, compute
-  // newUnits, updateDoc the absolute new value — no transaction) so the test exercises
-  // the real, shipped read-modify-write pattern, not a reimplementation of correct
-  // behavior.
+  // the real project (firebase.js), not this emulator. It mirrors deductInventoryStock's
+  // current shipped pattern (db.js, runTransaction: read unitsAvailable, compute
+  // newUnits, update the absolute new value) so the test exercises the real,
+  // shipped transactional logic against the emulator.
   async function deductOneUnitLikeDbJs(firestoreCtx, docPath) {
     const ref = doc(firestoreCtx, docPath);
-    const snap = await getDoc(ref);
-    const current = snap.data().unitsAvailable;
-    await updateDoc(ref, { unitsAvailable: Math.max(0, current - 1) });
+    await runTransaction(firestoreCtx, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('inventory missing');
+      const current = snap.data().unitsAvailable;
+      tx.update(ref, { unitsAvailable: Math.max(0, current - 1) });
+    });
   }
 
-  it('KNOWN BUG (PHASE0_AUDIT.md §5, not fixed here — Phase 3 scope): concurrent non-transactional deducts lose updates', async () => {
+  it('concurrent transactional deducts are serialized — no lost updates (fix for the former KNOWN BUG, PHASE0_AUDIT.md §5)', async () => {
     const startingUnits = 20;
     const concurrentDeducts = 10;
 
@@ -102,24 +104,50 @@ describe('S5 — inventory consistency under concurrent mutations', () => {
 
     const staffFirestore = env.authenticatedContext('staffH1', { role: 'hospital_staff', hospitalId: 'H1' }).firestore();
 
+    // Every deduct now runs as a Firestore transaction (same as db.js's
+    // deductInventoryStock), so Firestore serializes them: each one sees the
+    // committed value written by the previous one, and no update is lost.
     await Promise.all(
       Array.from({ length: concurrentDeducts }, () => deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_O-'))
     );
 
-    // staffH1 can get() their own hospital's inventory under these rules, so read back
-    // through that normal authenticated context rather than a second
-    // withSecurityRulesDisabled call.
     const final = (await getDoc(doc(staffFirestore, 'inventory/H1_O-'))).data();
 
-    // Correct (transactional) behavior would leave exactly startingUnits - concurrentDeducts.
-    // This assertion documents the actual, current, buggy behavior: because every deduct
-    // reads the same pre-write value before any of them commit, most writes overwrite each
-    // other instead of compounding, and units are silently lost from the count (not
-    // duplicated, not preserved — just dropped). If this ever starts asserting the CORRECT
-    // total, it means someone already fixed deductInventoryStock/updateInventoryStock to
-    // use a transaction (Phase 3's updateInventory Cloud Function) — update this test to
-    // assert the correct total instead of deleting it.
+    // Correct (transactional) behavior: exactly startingUnits - concurrentDeducts
+    // survive. If this ever drifts, a lost-update regression has been reintroduced.
     const correctTotal = startingUnits - concurrentDeducts;
-    expect(final.unitsAvailable).toBeGreaterThan(correctTotal);
+    expect(final.unitsAvailable).toBe(correctTotal);
+  });
+
+  it('concurrent mixed add + deduct are serialized — total matches net change', async () => {
+    const startingUnits = 10;
+
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), 'inventory/H1_A+'), {
+        bloodType: 'A+', hospital: 'Hospital One', hospitalId: 'H1',
+        unitsAvailable: startingUnits,
+      });
+    });
+
+    const staffFirestore = env.authenticatedContext('staffH1', { role: 'hospital_staff', hospitalId: 'H1' }).firestore();
+    const addTwoUnits = async (firestoreCtx, docPath) => {
+      const ref = doc(firestoreCtx, docPath);
+      await runTransaction(firestoreCtx, async (tx) => {
+        const snap = await tx.get(ref);
+        const current = snap.data().unitsAvailable;
+        tx.update(ref, { unitsAvailable: current + 2 });
+      });
+    };
+
+    await Promise.all([
+      deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_A+'),
+      deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_A+'),
+      deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_A+'),
+      addTwoUnits(staffFirestore, 'inventory/H1_A+'),
+      addTwoUnits(staffFirestore, 'inventory/H1_A+'),
+    ]);
+
+    const final = (await getDoc(doc(staffFirestore, 'inventory/H1_A+'))).data();
+    expect(final.unitsAvailable).toBe(startingUnits - 3 + 4);
   });
 });

@@ -151,8 +151,14 @@ export async function fetchActiveRequests() {
 }
 
 export async function createEmergencyRequest(requestData) {
+    // Stamp the owning hospital's uid so the claims-based security rules (staged
+    // firestore.rules) can scope the request to the creator's hospitalId. For admin
+    // Central-Command broadcasts there is no owning hospital; the rules' system_admin
+    // branch permits those without a hospitalId.
+    const hospitalId = getCurrentUser()?.uid || requestData.hospitalId || null;
     const docRef = await addDoc(collection(db, 'requests'), {
         ...requestData,
+        hospitalId,
         status: 'Open',
         isEmergency: true,
         requestedAt: new Date().toISOString()
@@ -722,6 +728,11 @@ export async function autoMatchDonors(requestId, requestData) {
 
     if (!bloodTypeNeeded) {
         console.warn('Auto-match: missing bloodType, skipping');
+        return [];
+    }
+
+    if (!location) {
+        console.warn('Auto-match: missing city/hospitalCity, skipping');
         return [];
     }
 
@@ -1370,6 +1381,7 @@ export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'a
         transaction.set(inventoryRef, {
             bloodType,
             hospital: hospitalName,
+            hospitalId: getCurrentUser()?.uid || existing.hospitalId || null,
             unitsAvailable: aggregates.unitsAvailable,
             unitsPendingTest: aggregates.unitsPendingTest,
             unitsRejected: aggregates.unitsRejected,
@@ -1428,6 +1440,7 @@ export async function resolveLabTest(hospitalName, bloodType, batchId, result, r
         transaction.set(inventoryRef, {
             ...data,
             batches,
+            hospitalId: getCurrentUser()?.uid || data.hospitalId || null,
             unitsAvailable: aggregates.unitsAvailable,
             unitsPendingTest: aggregates.unitsPendingTest,
             unitsRejected: aggregates.unitsRejected,
@@ -2325,6 +2338,7 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
         transaction.set(inventoryRef, {
             bloodType,
             hospital: hospitalName,
+            hospitalId: getCurrentUser()?.uid || data.hospitalId || null,
             unitsAvailable: aggregates.unitsAvailable,
             unitsPendingTest: aggregates.unitsPendingTest,
             unitsRejected: aggregates.unitsRejected,
@@ -3483,11 +3497,27 @@ export async function checkNetworkInventory(bloodType, componentType = null, req
 // ============================================
 
 export async function createBloodTransferRequest(transferData) {
+    // Stamp owning hospital uids so the claims-based security rules can scope transfers
+    // to the hospitals involved (rules can't verify free-text names). Non-blocking: if
+    // the target name can't be resolved, the request still posts (admin can intervene).
+    let targetHospitalId = null;
+    try {
+        const targetQ = query(
+            collection(db, 'users'),
+            where('name', '==', transferData.targetHospital),
+            where('role', '==', 'hospital')
+        );
+        const targetSnap = await getDocs(targetQ);
+        if (!targetSnap.empty) targetHospitalId = targetSnap.docs[0].id;
+    } catch (e) { /* non-blocking */ }
+
     const newDoc = doc(collection(db, 'blood_transfers'));
     const payload = {
         id: newDoc.id,
         requestingHospital: transferData.requestingHospital,
+        requestingHospitalId: getCurrentUser()?.uid || null,
         targetHospital: transferData.targetHospital,
+        targetHospitalId,
         bloodType: transferData.bloodType,
         componentType: transferData.componentType || 'Whole Blood',
         units: parseInt(transferData.units || 1, 10),
@@ -3532,71 +3562,105 @@ export async function dispatchBloodTransfer(transferId) {
 
 export async function receiveBloodTransfer(transferId) {
     const ref = doc(db, 'blood_transfers', transferId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) throw new Error('Transfer request not found');
 
-    const data = snap.data();
-    if (data.status === 'Completed') throw new Error('Transfer already completed');
+    // Entire stock movement + status flip inside one transaction so two hospitals
+    // confirming receipts (or a receipt racing an issue at either hospital) can never
+    // read-then-write stale quantities. Previously this was three independent
+    // getDoc/updateDoc calls with no transaction, and it queried a non-existent
+    // 'hospitalName' field on batch-model inventory docs, so transfers never moved
+    // real stock (and created orphan records the batch system ignores).
+    const transfer = await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(ref);
+        if (!snap.exists()) throw new Error('Transfer request not found');
+        const data = snap.data();
+        if (data.status === 'Completed') throw new Error('Transfer already completed');
+        if (data.status === 'Cancelled') throw new Error('Transfer was cancelled');
+        const units = parseInt(data.units, 10) || 0;
+        if (units <= 0) throw new Error('Transfer has no units to move');
 
-    // 1. Deduct stock from target/source hospital
-    const targetQuery = query(
-        collection(db, 'inventory'),
-        where('hospitalName', '==', data.targetHospital),
-        where('bloodType', '==', data.bloodType)
-    );
-    const targetSnap = await getDocs(targetQuery);
-    if (!targetSnap.empty) {
-        const stockDoc = targetSnap.docs[0];
-        const currentQty = stockDoc.data().quantity || 0;
-        const newQty = Math.max(0, currentQty - data.units);
-        await updateDoc(doc(db, 'inventory', stockDoc.id), {
-            quantity: newQty,
-            units: newQty
-        });
-    }
+        // 1. Deduct from the dispatching hospital (targetHospital) — cleared batches only.
+        const sourceRef = doc(db, 'inventory', invDocId(data.targetHospital, data.bloodType));
+        const sourceSnap = await transaction.get(sourceRef);
+        if (sourceSnap.exists()) {
+            const srcData = sourceSnap.data();
+            let srcBatches = srcData.batches || [];
+            const clearedAvailable = srcBatches
+                .filter(b => (b.testStatus || 'Cleared') === 'Cleared')
+                .reduce((sum, b) => sum + b.units, 0);
+            if (units > clearedAvailable) {
+                throw new Error(`Only ${clearedAvailable} cleared unit(s) of ${data.bloodType} available at ${data.targetHospital} to transfer.`);
+            }
+            let toDeduct = units;
+            srcBatches = srcBatches.map(b => ({ ...b })).filter(b => {
+                if (toDeduct <= 0) return true;
+                if ((b.testStatus || 'Cleared') !== 'Cleared') return true;
+                if (b.units <= toDeduct) {
+                    toDeduct -= b.units;
+                    return false;
+                }
+                b.units -= toDeduct;
+                toDeduct = 0;
+                return true;
+            });
+            const srcAgg = computeInventoryAggregates(srcBatches);
+            transaction.set(sourceRef, {
+                ...srcData,
+                batches: srcBatches,
+                unitsAvailable: srcAgg.unitsAvailable,
+                unitsPendingTest: srcAgg.unitsPendingTest,
+                unitsRejected: srcAgg.unitsRejected,
+                componentTotals: srcAgg.componentTotals,
+                lastUpdated: new Date().toISOString()
+            }, { merge: true });
+        }
 
-    // 2. Add stock to requesting hospital as cleared inventory
-    const reqQuery = query(
-        collection(db, 'inventory'),
-        where('hospitalName', '==', data.requestingHospital),
-        where('bloodType', '==', data.bloodType)
-    );
-    const reqSnap = await getDocs(reqQuery);
-    if (!reqSnap.empty) {
-        const stockDoc = reqSnap.docs[0];
-        const currentQty = stockDoc.data().quantity || 0;
-        await updateDoc(doc(db, 'inventory', stockDoc.id), {
-            quantity: currentQty + data.units,
-            units: currentQty + data.units
-        });
-    } else {
-        // Create inventory record
-        const newInvDoc = doc(collection(db, 'inventory'));
-        await setDoc(newInvDoc, {
-            hospitalName: data.requestingHospital,
-            bloodType: data.bloodType,
+        // 2. Add to the requesting hospital as already-cleared inventory.
+        const destRef = doc(db, 'inventory', invDocId(data.requestingHospital, data.bloodType));
+        const destSnap = await transaction.get(destRef);
+        const destData = destSnap.exists() ? destSnap.data() : {};
+        const destBatches = destData.batches || [];
+        destBatches.push({
+            id: `batch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            units,
             componentType: data.componentType || 'Whole Blood',
-            quantity: data.units,
-            units: data.units,
+            expiresAt: null,
             testStatus: 'Cleared',
-            status: 'Cleared',
+            rejectionReason: null,
+            sourceDonationId: null,
             source: `Transfer from ${data.targetHospital}`,
-            createdAt: new Date().toISOString()
+            addedAt: new Date().toISOString()
         });
-    }
+        const destAgg = computeInventoryAggregates(destBatches);
+        transaction.set(destRef, {
+            bloodType: data.bloodType,
+            hospital: data.requestingHospital,
+            hospitalId: getCurrentUser()?.uid || destData.hospitalId || null,
+            unitsAvailable: destAgg.unitsAvailable,
+            unitsPendingTest: destAgg.unitsPendingTest,
+            unitsRejected: destAgg.unitsRejected,
+            unitsReserved: destData.unitsReserved || 0,
+            batches: destBatches,
+            componentTotals: destAgg.componentTotals,
+            minimumThreshold: destData.minimumThreshold || 5,
+            lastUpdated: new Date().toISOString()
+        }, { merge: true });
 
-    // 3. Mark transfer as Completed
-    await updateDoc(ref, {
-        status: 'Completed',
-        receivedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        // 3. Mark the transfer Completed in the same transaction (idempotent: a second
+        // concurrent confirm sees status already 'Completed' and is rejected).
+        transaction.update(ref, {
+            status: 'Completed',
+            receivedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        });
+
+        return data;
     });
 
     await logActivity(
         'Blood Transfer Completed',
-        `${data.requestingHospital} received and logged ${data.units} unit(s) of ${data.bloodType} from ${data.targetHospital}`,
+        `${transfer.requestingHospital} received and logged ${transfer.units} unit(s) of ${transfer.bloodType} from ${transfer.targetHospital}`,
         'success',
-        data.requestingHospital
+        transfer.requestingHospital
     );
 }
 
