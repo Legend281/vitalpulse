@@ -24,3 +24,13 @@ export const revokeRoleSchema = z
   .strict();
 
 export type RevokeRoleInput = z.infer<typeof revokeRoleSchema>;
+
+export const suspendUserSchema = z
+  .object({
+    targetUid: idString,
+    suspend: z.boolean(),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export type SuspendUserInput = z.infer<typeof suspendUserSchema>;

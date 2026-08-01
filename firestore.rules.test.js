@@ -423,31 +423,24 @@ describe('abuse-case: list() regression coverage — collections already correct
     assertFails(getDocs(query(collection(ctx('staffH2'), 'issuance_log'), where('hospitalId', '==', 'H1')))));
 });
 
-describe('GAP (not fixed here — Phase 3 scope): admin.html\'s suspendDonor/reactivateDonor are broken by these rules', () => {
-  // db.js's suspendDonor()/reactivateDonor() — still called directly from admin.html via
-  // window.handleAdminSuspendUser/ReactivateUser, per PHASE0_AUDIT.md §4 — write
-  // { isSuspended, isAvailable, statusChangedAt } in one updateDoc call. The system_admin
-  // privileged-update rule only whitelists ['isVerified','isSuspended','rejected',
-  // 'verifiedAt','statusChangedAt'] — isAvailable isn't in it, so this exact write is
-  // rejected outright, for ANY caller including system_admin, once these rules are deployed.
-  //
-  // Not widened to allow isAvailable here, because that would only paper over the *visible*
-  // symptom. The deeper problem: this flow never touches the `suspended` custom claim that
-  // signedIn() actually gates Firestore access on (it's a leftover from the pre-Phase-1,
-  // pre-custom-claims suspension model). Even a "fixed" version of this exact client call
-  // would only ever update a cosmetic Firestore field — a donor "suspended" this way keeps
-  // full read/write access to every collection these rules protect, indefinitely, because
-  // nothing ever calls revokeRole to set the claim. PHASE0_AUDIT.md §9 already scoped
-  // moving suspendDonor/reactivateDonor into a Cloud Function for Phase 3; this test just
-  // pins the specific, concrete way the current client code breaks so it isn't
-  // rediscovered as a mystery bug report once rules deploy, and isn't "fixed" halfway by
-  // someone widening the whitelist without also closing the claims gap.
-  it('system_admin\'s suspendDonor() write (isSuspended+isAvailable+statusChangedAt) is currently rejected', async () =>
+describe('suspension is server-only (Phase 3): client writes to users.suspended/isAvailable stay denied', () => {
+  // RESOLVED 2026-08-01 by Phase 3's suspendUser/reactivateUser Cloud Functions
+  // (functions/src/suspendUser.ts). db.js's suspendDonor()/reactivateDonor() no
+  // longer write { isSuspended, isAvailable, statusChangedAt } directly — they
+  // call the callable functions, which flip the `suspended` custom claim (the
+  // thing signedIn() actually gates access on), revoke refresh tokens, mirror
+  // the state onto the users doc via the Admin SDK, and write the authoritative
+  // audit event. These tests now pin the PERMANENT guarantee, not a GAP: no
+  // client write path to suspension fields exists for ANY caller, including
+  // system_admin — even though a whitelist entry for these fields would look
+  // harmless, the claim can only be flipped server-side, so letting clients
+  // write the cosmetic mirror would only create a desync vector.
+  it('HOSTILE: system_admin cannot write the suspension mirror fields directly', async () =>
     assertFails(updateDoc(doc(ctx('sysAdmin'), 'users/donorA'), {
       isSuspended: true, isAvailable: false, statusChangedAt: 'now',
     })));
 
-  it('system_admin\'s reactivateDonor() write (isSuspended+isAvailable+statusChangedAt) is currently rejected', async () =>
+  it('HOSTILE: system_admin cannot write reactivation fields directly either', async () =>
     assertFails(updateDoc(doc(ctx('sysAdmin'), 'users/donorA'), {
       isSuspended: false, isAvailable: true, statusChangedAt: 'now',
     })));

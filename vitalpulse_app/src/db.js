@@ -16,6 +16,7 @@ onSnapshot,
 runTransaction
 } from "firebase/firestore";
 import { db } from './firebase';
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { getCurrentUser } from './auth';
 
 // Input sanitization — strips HTML tags and trims whitespace for string fields
@@ -1068,13 +1069,17 @@ export async function fetchDonorById(donorId) {
     return donor;
 }
 
+// Phase 3: suspension is a privileged server-side operation. The old client
+// updateDoc (isSuspended + isAvailable) is rejected by the deny-by-default
+// rules and never touched the `suspended` custom claim that signedIn() gates
+// access on. These wrappers call the suspendUser/reactivateUser Cloud
+// Functions, which flip the claim, revoke refresh tokens, mirror the users doc,
+// and write the authoritative audit event — atomically, with zod validation.
+const suspendFn = httpsCallable(getFunctions(), 'suspendUser');
+const reactivateFn = httpsCallable(getFunctions(), 'reactivateUser');
+
 export async function suspendDonor(userId, userName) {
-    const userDoc = doc(db, 'users', userId);
-    await updateDoc(userDoc, {
-        isSuspended: true,
-        isAvailable: false,
-        statusChangedAt: new Date().toISOString()
-    });
+    await suspendFn({ targetUid: userId, suspend: true, reason: `suspended by ${getCurrentUser()?.name || 'Admin'}` });
     await logActivity('Donor Suspended', `Donor ${userName || userId} was suspended by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
     logAuditTrail('donor.suspended', `Donor ${userName || userId} suspended by admin`, {
         targetId: userId,
@@ -1083,12 +1088,7 @@ export async function suspendDonor(userId, userName) {
 }
 
 export async function reactivateDonor(userId, userName) {
-    const userDoc = doc(db, 'users', userId);
-    await updateDoc(userDoc, {
-        isSuspended: false,
-        isAvailable: true,
-        statusChangedAt: new Date().toISOString()
-    });
+    await reactivateFn({ targetUid: userId, suspend: false, reason: `reactivated by ${getCurrentUser()?.name || 'Admin'}` });
     await logActivity('Donor Reactivated', `Donor ${userName || userId} was reactivated by an administrator`, 'success', getCurrentUser()?.name || 'Admin');
     logAuditTrail('donor.reactivated', `Donor ${userName || userId} reactivated by admin`, {
         targetId: userId,

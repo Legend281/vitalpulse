@@ -32,6 +32,22 @@ vi.mock('firebase/firestore', () => ({
     onSnapshot: vi.fn(),
 }));
 
+const functionsMocks = vi.hoisted(() => ({
+    callables: {},
+    getFunctions: vi.fn(() => ({ __type: 'functions' })),
+    httpsCallable: vi.fn((_fns, name) => {
+        if (!functionsMocks.callables[name]) {
+            functionsMocks.callables[name] = vi.fn().mockResolvedValue({ data: { success: true } });
+        }
+        return functionsMocks.callables[name];
+    }),
+}));
+
+vi.mock('firebase/functions', () => ({
+    getFunctions: functionsMocks.getFunctions,
+    httpsCallable: functionsMocks.httpsCallable,
+}));
+
 import { getDocs, updateDoc, where } from 'firebase/firestore';
 import {
     getCompatibleBloodTypes,
@@ -236,5 +252,32 @@ describe('fetchMatchedRequestsForDonor', () => {
         // Medical Privacy Enforcement: patient fields are stripped from the donor-facing payload.
         expect(result[0]).not.toHaveProperty('patientName');
         expect(result[0]).not.toHaveProperty('diagnosis');
+    });
+});
+
+describe('suspendDonor/reactivateDonor (Phase 3)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('suspendDonor calls the suspendUser Cloud Function and never writes the users doc directly', async () => {
+        const { suspendDonor } = await import('./db.js');
+        await suspendDonor('donor-1', 'Jean');
+
+        expect(functionsMocks.callables.suspendUser).toHaveBeenCalledWith(
+            expect.objectContaining({ targetUid: 'donor-1', suspend: true })
+        );
+        expect(functionsMocks.callables.reactivateUser).not.toHaveBeenCalled();
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+
+    it('reactivateDonor calls the reactivateUser Cloud Function and never writes the users doc directly', async () => {
+        const { reactivateDonor } = await import('./db.js');
+        await reactivateDonor('donor-1', 'Jean');
+
+        expect(functionsMocks.callables.reactivateUser).toHaveBeenCalledWith(
+            expect.objectContaining({ targetUid: 'donor-1', suspend: false })
+        );
+        expect(updateDoc).not.toHaveBeenCalled();
     });
 });
