@@ -281,3 +281,104 @@ describe('suspendDonor/reactivateDonor (Phase 3)', () => {
         expect(updateDoc).not.toHaveBeenCalled();
     });
 });
+
+describe('Inventory Cloud Functions (Phase 3)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('updateInventoryStock(add) calls addInventoryStock and never writes Firestore directly', async () => {
+        const { updateInventoryStock } = await import('./db.js');
+        functionsMocks.callables.addInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 12 } });
+
+        const result = await updateInventoryStock('O+', 5, 'add', 'General Hospital', { componentType: 'Plasma', expiresAt: '2026-09-01' });
+
+        expect(functionsMocks.callables.addInventoryStock).toHaveBeenCalledWith({
+            bloodType: 'O+',
+            units: 5,
+            componentType: 'Plasma',
+            expiresAt: '2026-09-01',
+        });
+        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 12 });
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+
+    it('updateInventoryStock(add) omits optional fields entirely rather than sending null', async () => {
+        const { updateInventoryStock } = await import('./db.js');
+        functionsMocks.callables.addInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 1 } });
+
+        await updateInventoryStock('O+', 1, 'add', 'General Hospital', {});
+
+        expect(functionsMocks.callables.addInventoryStock).toHaveBeenCalledWith({
+            bloodType: 'O+',
+            units: 1,
+            componentType: 'Whole Blood',
+        });
+    });
+
+    it('updateInventoryStock(remove) calls deductInventoryStock, not addInventoryStock', async () => {
+        const { updateInventoryStock } = await import('./db.js');
+        functionsMocks.callables.deductInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 3, deducted: 2 } });
+
+        const result = await updateInventoryStock('O+', 2, 'remove', 'General Hospital');
+
+        expect(functionsMocks.callables.deductInventoryStock).toHaveBeenCalledWith({ bloodType: 'O+', units: 2 });
+        expect(functionsMocks.callables.addInventoryStock).not.toHaveBeenCalled();
+        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 3 });
+    });
+
+    it('deductInventoryStock calls the Cloud Function and never runs a client transaction', async () => {
+        const { deductInventoryStock } = await import('./db.js');
+        functionsMocks.callables.deductInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 6, deducted: 4 } });
+
+        const result = await deductInventoryStock('O+', 4, 'spoilage', 'General Hospital');
+
+        expect(functionsMocks.callables.deductInventoryStock).toHaveBeenCalledWith({
+            bloodType: 'O+',
+            units: 4,
+            reason: 'spoilage',
+        });
+        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 6, deducted: 4 });
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+
+    it('deductInventoryStock rejects a non-positive unit count without ever calling the Cloud Function', async () => {
+        const { deductInventoryStock } = await import('./db.js');
+        await expect(deductInventoryStock('O+', 0, 'spoilage', 'General Hospital')).rejects.toThrow();
+        expect(functionsMocks.callables.deductInventoryStock).not.toHaveBeenCalled();
+    });
+
+    it('resolveLabTest calls the Cloud Function with only the supplied optional fields and notifies from the response', async () => {
+        const { resolveLabTest } = await import('./db.js');
+        getDocs.mockResolvedValue(fakeSnapshot([]));
+        functionsMocks.callables.resolveLabTest.mockResolvedValueOnce({
+            data: { batch: { id: 'b1', units: 3, componentType: 'Whole Blood', sourceDonationId: null } },
+        });
+
+        const result = await resolveLabTest('General Hospital', 'O+', 'b1', 'Cleared', null, { labTechName: 'T. Nkeng' });
+
+        expect(functionsMocks.callables.resolveLabTest).toHaveBeenCalledWith({
+            bloodType: 'O+',
+            batchId: 'b1',
+            result: 'Cleared',
+            labTechName: 'T. Nkeng',
+        });
+        expect(result).toEqual({ id: 'b1', units: 3, componentType: 'Whole Blood', sourceDonationId: null });
+        expect(updateDoc).not.toHaveBeenCalledWith(expect.objectContaining({ path: 'inventory' }), expect.anything());
+    });
+
+    it('resolveLabTest rejects an invalid result value without ever calling the Cloud Function', async () => {
+        const { resolveLabTest } = await import('./db.js');
+        await expect(resolveLabTest('General Hospital', 'O+', 'b1', 'Probably Fine')).rejects.toThrow();
+        expect(functionsMocks.callables.resolveLabTest).not.toHaveBeenCalled();
+    });
+
+    it('setInventoryThreshold calls the Cloud Function and never reads/writes the inventory doc directly', async () => {
+        const { setInventoryThreshold } = await import('./db.js');
+
+        await setInventoryThreshold('O+', 10, 'General Hospital');
+
+        expect(functionsMocks.callables.setInventoryThreshold).toHaveBeenCalledWith({ bloodType: 'O+', threshold: 10 });
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+});

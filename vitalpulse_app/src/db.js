@@ -1327,74 +1327,45 @@ export async function fetchGlobalInventory() {
     return inventory;
 }
 
+// Phase 3: inventory mutation — including the batch lab-test lifecycle that
+// decides whether blood is safe to issue — is a privileged server-side
+// operation. The old client-side transactions ran this business logic
+// entirely in the browser. These wrappers call the addInventoryStock/
+// deductInventoryStock/resolveLabTest/setInventoryThreshold Cloud Functions,
+// which validate input, resolve+enforce the caller's own hospital scope
+// server-side (never trusting a client-supplied hospital identity for
+// hospital_staff/hospital_admin/lab_tech), run the mutation in a Firestore
+// transaction, and write the audit event. hospitalName is still passed
+// through for display/logging and for system_admin proxy-on-behalf-of-a-
+// shadow-hospital flows (see ensureShadowHospital) — the server derives the
+// real target from the caller's own claim whenever the caller isn't
+// system_admin, so this can't be used to spoof another hospital's stock.
+const addStockFn = httpsCallable(getFunctions(), 'addInventoryStock');
+const deductStockFn = httpsCallable(getFunctions(), 'deductInventoryStock');
+const resolveLabTestFn = httpsCallable(getFunctions(), 'resolveLabTest');
+const setThresholdFn = httpsCallable(getFunctions(), 'setInventoryThreshold');
+
 export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'add', hospitalName, options = {}) {
     if (!hospitalName) throw new Error('hospitalName is required for inventory operations');
-    const docId = invDocId(hospitalName, bloodType);
-    const inventoryRef = doc(db, 'inventory', docId);
+    const units = parseInt(unitsToAdd, 10);
 
-    // Transaction guards against two concurrent stock changes (e.g. an add and an
-    // issue happening at once) silently clobbering each other's read-then-write.
-    const currentUnits = await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(inventoryRef);
-        const existing = snapshot.exists() ? snapshot.data() : {};
-        let batches = existing.batches || [];
-
-        if (operation === 'add') {
-            const units = parseInt(unitsToAdd, 10);
-            const componentType = options.componentType || 'Whole Blood';
-            const expiresAt = options.expiresAt || null;
-            // Donated/collected blood must be tested before it can be issued — callers pass
-            // testStatus: 'Waiting for Lab Test' for anything sourced from a donor (the default
-            // here), or 'Cleared' when the hospital is logging stock it has already verified.
-            const testStatus = options.testStatus || 'Waiting for Lab Test';
-            const batchId = `batch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-            batches.push({
-                id: batchId,
-                units,
-                componentType,
-                expiresAt,
-                testStatus,
-                rejectionReason: null,
-                sourceDonationId: options.sourceDonationId || null,
-                addedAt: new Date().toISOString()
-            });
-        } else {
-            // Manual stock removal (spoilage/waste/correction) — deduct oldest batches first,
-            // regardless of test status, same as before. Untested/rejected stock was never part
-            // of unitsAvailable anyway, so this can't accidentally "free up" available units.
-            const units = parseInt(unitsToAdd, 10);
-            let toDeduct = units;
-            batches = batches.filter(b => {
-                if (toDeduct <= 0) return true;
-                if (b.units <= toDeduct) {
-                    toDeduct -= b.units;
-                    return false;
-                }
-                b.units -= toDeduct;
-                toDeduct = 0;
-                return true;
-            });
-        }
-
-        const aggregates = computeInventoryAggregates(batches);
-
-        transaction.set(inventoryRef, {
-            bloodType,
-            hospital: hospitalName,
-            hospitalId: getCurrentUser()?.uid || existing.hospitalId || null,
-            unitsAvailable: aggregates.unitsAvailable,
-            unitsPendingTest: aggregates.unitsPendingTest,
-            unitsRejected: aggregates.unitsRejected,
-            unitsReserved: 0,
-            batches,
-            componentTotals: aggregates.componentTotals,
-            minimumThreshold: existing.minimumThreshold || 5,
-            lastUpdated: new Date().toISOString(),
-            expiresAt: options.expiresAt || null
-        }, { merge: true });
-
-        return aggregates.unitsAvailable;
-    });
+    let currentUnits;
+    if (operation === 'add') {
+        const payload = { bloodType, units, componentType: options.componentType || 'Whole Blood' };
+        // Donated/collected blood must be tested before it can be issued — callers pass
+        // testStatus: 'Waiting for Lab Test' for anything sourced from a donor (the server's
+        // own default), or 'Cleared' when the hospital is logging stock it has already verified.
+        if (options.expiresAt) payload.expiresAt = options.expiresAt;
+        if (options.testStatus) payload.testStatus = options.testStatus;
+        if (options.sourceDonationId) payload.sourceDonationId = options.sourceDonationId;
+        const { data } = await addStockFn(payload);
+        currentUnits = data.unitsAvailable;
+    } else {
+        // Manual stock removal (spoilage/waste/correction) — server deducts oldest
+        // batches first, regardless of test status, same as before.
+        const { data } = await deductStockFn({ bloodType, units });
+        currentUnits = data.unitsAvailable;
+    }
 
     const action = operation === 'add' ? 'Added' : 'Removed';
     await logActivity(
@@ -1414,42 +1385,16 @@ export async function resolveLabTest(hospitalName, bloodType, batchId, result, r
     if (result !== 'Cleared' && result !== 'Rejected, Not Safe') {
         throw new Error("result must be 'Cleared' or 'Rejected, Not Safe'");
     }
-    const docId = invDocId(hospitalName, bloodType);
-    const inventoryRef = doc(db, 'inventory', docId);
 
-    const resolvedBatch = await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(inventoryRef);
-        if (!snapshot.exists()) throw new Error('Inventory record not found');
-        const data = snapshot.data();
-        const batches = data.batches || [];
-        const target = batches.find(b => b.id === batchId);
-        if (!target) throw new Error('Batch not found');
-        if ((target.testStatus || 'Cleared') !== 'Waiting for Lab Test') {
-            throw new Error('This batch has already been resolved.');
-        }
+    const payload = { bloodType, batchId, result };
+    if (rejectionReason) payload.rejectionReason = rejectionReason;
+    if (extraDetails.labTechName) payload.labTechName = extraDetails.labTechName;
+    if (extraDetails.screeningResults) payload.screeningResults = extraDetails.screeningResults;
+    if (extraDetails.componentType) payload.componentType = extraDetails.componentType;
+    if (extraDetails.expiryDate) payload.expiryDate = extraDetails.expiryDate;
 
-        target.testStatus = result;
-        target.rejectionReason = result === 'Rejected, Not Safe' ? (rejectionReason || 'Not specified') : null;
-        target.resolvedAt = new Date().toISOString();
-        if (extraDetails.labTechName) target.labTechName = extraDetails.labTechName;
-        if (extraDetails.screeningResults) target.screeningResults = extraDetails.screeningResults;
-        if (extraDetails.componentType) target.componentType = extraDetails.componentType;
-        if (extraDetails.expiryDate) target.expiryDate = extraDetails.expiryDate;
-
-        const aggregates = computeInventoryAggregates(batches);
-        transaction.set(inventoryRef, {
-            ...data,
-            batches,
-            hospitalId: getCurrentUser()?.uid || data.hospitalId || null,
-            unitsAvailable: aggregates.unitsAvailable,
-            unitsPendingTest: aggregates.unitsPendingTest,
-            unitsRejected: aggregates.unitsRejected,
-            componentTotals: aggregates.componentTotals,
-            lastUpdated: new Date().toISOString()
-        }, { merge: true });
-
-        return { ...target };
-    });
+    const { data } = await resolveLabTestFn(payload);
+    const resolvedBatch = data.batch;
 
     await logActivity(
         result === 'Cleared' ? 'Blood Cleared for Use' : 'Blood Rejected',
@@ -1503,23 +1448,8 @@ export async function resolveLabTest(hospitalName, bloodType, batchId, result, r
 
 export async function setInventoryThreshold(bloodType, threshold, hospitalName) {
     if (!hospitalName) throw new Error('hospitalName is required');
-    const docId = invDocId(hospitalName, bloodType);
-    const inventoryRef = doc(db, 'inventory', docId);
-    const snapshot = await getDoc(inventoryRef);
-    
-    if (snapshot.exists()) {
-        await updateDoc(inventoryRef, { minimumThreshold: parseInt(threshold, 10) });
-    } else {
-        await setDoc(inventoryRef, {
-            bloodType,
-            hospital: hospitalName,
-            unitsAvailable: 0,
-            unitsReserved: 0,
-            minimumThreshold: parseInt(threshold, 10),
-            lastUpdated: new Date().toISOString()
-        });
-    }
-    
+    await setThresholdFn({ bloodType, threshold: parseInt(threshold, 10) });
+
     await logActivity(
         'Threshold Updated',
         `Minimum stock threshold for ${bloodType} at ${hospitalName} set to ${threshold} units`,
@@ -2427,45 +2357,9 @@ export async function deductInventoryStock(bloodType, units, reason = 'adjustmen
     if (!hospitalName) throw new Error('hospitalName is required');
     const parsedUnits = parseInt(units, 10);
     if (!parsedUnits || parsedUnits <= 0) throw new Error('Units must be a positive integer');
-    const docId = invDocId(hospitalName, bloodType);
-    const inventoryRef = doc(db, 'inventory', docId);
 
-    const result = await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(inventoryRef);
-
-        if (!snapshot.exists()) throw new Error(`No inventory found for ${bloodType} at ${hospitalName}`);
-        const data = snapshot.data();
-        const currentUnits = data.unitsAvailable || 0;
-        if (currentUnits < parsedUnits) throw new Error(`Insufficient stock: ${currentUnits} units available, ${parsedUnits} requested`);
-        const newUnits = currentUnits - parsedUnits;
-
-        let batches = data.batches || [];
-        let toDeduct = parsedUnits;
-        batches = batches.filter(b => {
-            if (toDeduct <= 0) return true;
-            if (b.units <= toDeduct) {
-                toDeduct -= b.units;
-                return false;
-            }
-            b.units -= toDeduct;
-            toDeduct = 0;
-            return true;
-        });
-
-        const componentTotals = {};
-        batches.forEach(b => {
-            componentTotals[b.componentType] = (componentTotals[b.componentType] || 0) + b.units;
-        });
-
-        await transaction.update(inventoryRef, {
-            unitsAvailable: newUnits,
-            batches,
-            componentTotals,
-            lastUpdated: new Date().toISOString()
-        });
-
-        return { bloodType, unitsAvailable: newUnits, deducted: parsedUnits };
-    });
+    const { data } = await deductStockFn({ bloodType, units: parsedUnits, reason });
+    const result = { bloodType, unitsAvailable: data.unitsAvailable, deducted: data.deducted };
 
     // Non-blocking low stock check after deduction completes
     _postDeductLowStockCheck(hospitalName, bloodType, result.unitsAvailable).catch(() => {});
