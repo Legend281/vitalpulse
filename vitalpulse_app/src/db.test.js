@@ -281,3 +281,30 @@ describe('suspendDonor/reactivateDonor (Phase 3)', () => {
         expect(updateDoc).not.toHaveBeenCalled();
     });
 });
+
+describe('deactivateHospital/reactivateHospital (Phase 3)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('deactivateHospital calls the Cloud Function and never writes the users doc directly', async () => {
+        const { deactivateHospital } = await import('./db.js');
+        await deactivateHospital('H1', 'Central Hospital');
+
+        expect(functionsMocks.callables.deactivateHospital).toHaveBeenCalledWith(
+            expect.objectContaining({ hospitalId: 'H1', active: false })
+        );
+        expect(functionsMocks.callables.reactivateHospital).not.toHaveBeenCalled();
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+
+    it('reactivateHospital calls the Cloud Function and never writes the users doc directly', async () => {
+        const { reactivateHospital } = await import('./db.js');
+        await reactivateHospital('H1', 'Central Hospital');
+
+        expect(functionsMocks.callables.reactivateHospital).toHaveBeenCalledWith(
+            expect.objectContaining({ hospitalId: 'H1', active: true })
+        );
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+});

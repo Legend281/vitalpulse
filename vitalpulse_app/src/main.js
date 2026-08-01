@@ -5,7 +5,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'fi
 import { db, storage } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -3973,6 +3973,7 @@ window.renderHospitalVerificationsTab = async (tab) => {
 
         tableBody.innerHTML = hospitalPageItems.map(h => {
              const statusBadge = h.rejected ? '<span class="px-2 py-1 bg-red-100 text-red-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Rejected</span>' :
+                                 h.isVerified && h.isActive === false ? '<span class="px-2 py-1 bg-slate-200 text-slate-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Deactivated</span>' :
                                  h.isVerified ? '<span class="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Verified</span>' : 
                                  '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Pending</span>';
              
@@ -3986,6 +3987,18 @@ window.renderHospitalVerificationsTab = async (tab) => {
                          <span class="material-symbols-outlined text-sm" data-icon="close">close</span>
                      </button>
                  </div>`;
+             } else if (h.isVerified) {
+                 actions = h.isActive === false
+                     ? `<div class="text-right">
+                         <button onclick="window.handleAdminReactivateHospital('${h.id}')" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-sm text-[10px] font-bold">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="power_settings_new">power_settings_new</span> Reactivate
+                         </button>
+                        </div>`
+                     : `<div class="text-right">
+                         <button onclick="window.handleAdminDeactivateHospital('${h.id}')" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm text-[10px] font-bold">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="toggle_off">toggle_off</span> Deactivate
+                         </button>
+                        </div>`;
              } else {
                  actions = `<div class="text-right text-xs text-slate-400 font-medium">Processed</div>`;
              }
@@ -4053,6 +4066,45 @@ window.handleAdminReject = async (id, name) => {
         } catch (err) {
             console.error('Failed to reject hospital:', err);
             alert('Failed to reject hospital. Please try again.');
+            return;
+        }
+        loadAdminDashboard();
+        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
+    }
+};
+
+// Deactivation kicks the hospital's entire staff out (revokes their refresh
+// tokens and flips the suspended kill-switch claim server-side) — not just a
+// cosmetic label. The hospital's history stays intact for audit/record-keeping.
+window.handleAdminDeactivateHospital = async (id, name) => {
+    if (!name) {
+        try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
+    }
+    if(confirm(`WARNING: Deactivate ${name}?\n\nAll of the hospital's staff will be signed out and locked out immediately. The hospital will no longer appear in the verified network. This can be undone with Reactivate — nothing is deleted.`)) {
+        try {
+            await deactivateHospital(id, name);
+        } catch (err) {
+            console.error('Failed to deactivate hospital:', err);
+            alert('Failed to deactivate hospital. Please try again.');
+            return;
+        }
+        loadAdminDashboard();
+        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
+    }
+};
+
+window.handleAdminReactivateHospital = async (id, name) => {
+    if (!name) {
+        try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
+    }
+    if(confirm(`Reactivate ${name}?\n\nStaff locked out by the deactivation will regain access. Staff suspended individually (for personal reasons) stay suspended.`)) {
+        try {
+            await reactivateHospital(id, name);
+        } catch (err) {
+            console.error('Failed to reactivate hospital:', err);
+            alert('Failed to reactivate hospital. Please try again.');
             return;
         }
         loadAdminDashboard();

@@ -26,6 +26,8 @@ export interface CallerClaims {
   role?: Role;
   hospitalId?: string;
   suspended?: boolean;
+  /** Set by deactivateHospital; reactivateHospital only clears suspensions carrying this marker. */
+  hospitalSuspendedAt?: string;
 }
 
 /**

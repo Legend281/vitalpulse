@@ -1077,6 +1077,8 @@ export async function fetchDonorById(donorId) {
 // and write the authoritative audit event — atomically, with zod validation.
 const suspendFn = httpsCallable(getFunctions(), 'suspendUser');
 const reactivateFn = httpsCallable(getFunctions(), 'reactivateUser');
+const deactivateHospitalFn = httpsCallable(getFunctions(), 'deactivateHospital');
+const reactivateHospitalFn = httpsCallable(getFunctions(), 'reactivateHospital');
 
 export async function suspendDonor(userId, userName) {
     await suspendFn({ targetUid: userId, suspend: true, reason: `suspended by ${getCurrentUser()?.name || 'Admin'}` });
@@ -1129,19 +1131,28 @@ export async function rejectHospital(hospitalId, hospitalName) {
     });
 }
 
+// Phase 3: hospital activation state is a privileged server-side operation.
+// The old client updateDoc only flipped the cosmetic isActive field — it never
+// touched the suspended claim, so a "deactivated" hospital's staff kept full
+// access. These wrappers call the deactivateHospital/reactivateHospital Cloud
+// Functions, which flip the kill-switch claim for every account scoped to the
+// hospital (including the hospital's own account), revoke their tokens, mirror
+// the users doc, and write the authoritative audit event.
 export async function deactivateHospital(hospitalId, hospitalName) {
-    const userDoc = doc(db, 'users', hospitalId);
-    await updateDoc(userDoc, {
-        isActive: false,
-        statusChangedAt: new Date().toISOString()
+    await deactivateHospitalFn({ hospitalId, active: false, reason: `deactivated by ${getCurrentUser()?.name || 'Admin'}` });
+    await logActivity('Hospital Deactivated', `Hospital ${hospitalName || hospitalId} was deactivated by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('hospital.deactivated', `Hospital ${hospitalName || hospitalId} deactivated by admin`, {
+        targetId: hospitalId,
+        newState: { isActive: false }
     });
 }
 
 export async function reactivateHospital(hospitalId, hospitalName) {
-    const userDoc = doc(db, 'users', hospitalId);
-    await updateDoc(userDoc, {
-        isActive: true,
-        statusChangedAt: new Date().toISOString()
+    await reactivateHospitalFn({ hospitalId, active: true, reason: `reactivated by ${getCurrentUser()?.name || 'Admin'}` });
+    await logActivity('Hospital Reactivated', `Hospital ${hospitalName || hospitalId} was reactivated by an administrator`, 'success', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('hospital.reactivated', `Hospital ${hospitalName || hospitalId} reactivated by admin`, {
+        targetId: hospitalId,
+        newState: { isActive: true }
     });
 }
 

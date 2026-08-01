@@ -34,3 +34,13 @@ export const suspendUserSchema = z
   .strict();
 
 export type SuspendUserInput = z.infer<typeof suspendUserSchema>;
+
+export const hospitalStatusSchema = z
+  .object({
+    hospitalId: idString,
+    active: z.boolean(),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export type HospitalStatusInput = z.infer<typeof hospitalStatusSchema>;
