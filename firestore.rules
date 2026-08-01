@@ -95,13 +95,17 @@ service cloud.firestore {
                     && request.resource.data.email is string;
 
       // Self-update: everything EXCEPT the fields that grant privilege or bypass
-      // review. role/isVerified/isSuspended/rejected are never client-settable, on
-      // self or others — those are system_admin actions (see below) or, longer-term,
-      // Cloud Functions (Phase 3). email is Firebase Auth's job, not Firestore's.
+      // review. role/isVerified/isSuspended/rejected/isActive are never client-
+      // settable, on self or others — those are system_admin actions (see below) or,
+      // longer-term, Cloud Functions (Phase 3). email is Firebase Auth's job, not
+      // Firestore's. isActive self-deactivation would let a hospital silently remove
+      // itself from the verified donor-facing network (donor-dashboard filters
+      // isActive !== false), and lets any user mark themselves inactive — only
+      // system_admin may set it (deactivate/reactivateHospital).
       allow update: if signedIn() && request.auth.uid == uid
                     && unchangedExcept(request.resource.data.diff(resource.data).affectedKeys())
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                         .hasAny(['role', 'isVerified', 'isSuspended', 'rejected', 'email', 'verifiedAt', 'statusChangedAt']);
+                         .hasAny(['role', 'isVerified', 'isSuspended', 'rejected', 'isActive', 'email', 'verifiedAt', 'statusChangedAt']);
 
       // Privileged changes to ANY user doc (hospital verification, donor suspension,
       // rejection, deactivation) — system_admin only. Matches Master Plan: "hospital_admin
