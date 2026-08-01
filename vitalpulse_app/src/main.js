@@ -74,7 +74,7 @@ function initThemeToggle() {
 applyTheme(getStoredTheme());
 document.addEventListener('DOMContentLoaded', initThemeToggle);
 
-window.addEventListener('load', () => {
+document.addEventListener('DOMContentLoaded', () => {
     const loader = document.getElementById('global-loader');
     if (loader) {
         loader.style.opacity = '0';
