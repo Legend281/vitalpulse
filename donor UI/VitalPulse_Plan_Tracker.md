@@ -352,6 +352,9 @@ Security Lead's report from testing the live KYC upload flow: a stray SHA-256 cl
 | I5 | Cameroon map: label-free tiles, country bounds, real city labels | Dev | ✅ | `donor-dashboard.js` (`renderNearbyMap`, `renderCentersMap`, new `renderCityLabels`/`CAMEROON_BOUNDS`). |
 | I6 | `kyc.test.ts` updated/extended for front+back National ID (missing-back rejection, non-national-id doesn't require back, front+back upload assertions) | Dev | ✅ | 3 tests added/modified; 43/43 passing in this file. |
 | I7 | Regression pass | Dev | ✅ | `npm run lint` (0 errors), `npm run typecheck` (clean), `npm run build` (clean), `npm run test:unit` (178 functions + 89 client = 267 passing — client suite needed 3 reruns due to this machine's vitest worker-pool timing out under concurrent load, not real failures; every file was eventually confirmed green, including `donor-dashboard.test.js` in isolation). |
+| I8 | Hide header nav / hamburger drawer / account menu / logo link while `view === 'kyc'` so donors can't route away mid-flow | Dev | ✅ | `donor.html` (`donorPrimaryNav`/`donorAccountMenuWrap`/`donorLogoLink` ids), `donor-dashboard.js` (`setKycNavLocked`, called from `switchDonorView`). Regression-tested: lint 0 errors, build clean, 89/89 client tests. |
+| I9 | Commit all outstanding work (this session + prior undeployed streams) | Dev | ✅ | 9 commits on `security`: rules, inventory/roles/schemas, KYC+auth-hardening functions, auth UI hardening, donor dashboard redesign, e2e config, docs/mockups, firebase.json fixup, nav-lock. Excludes stray pre-hardening `Firebase/` dir (flagged to you, not deleted). |
+| I10 | Deploy functions to `vitalpulse-fa458` | Security Lead | ⛔ **blocked** | Deploy attempt fails: `Missing permissions... iam.serviceAccounts.ActAs on vitalpulse-fa458@appspot.gserviceaccount.com`. This environment authenticates via a `FIREBASE_TOKEN`, not an interactive login, and that identity lacks the "Service Account User" role. Fix: grant it at https://console.cloud.google.com/iam-admin/iam?project=vitalpulse-fa458, or deploy from a machine where you're already authorized. **submitKYC (and the storage-bucket fix) stay broken in production until this happens.** |
 
 ---
 
@@ -388,5 +391,5 @@ Security Lead's report from testing the live KYC upload flow: a stray SHA-256 cl
 | F — Testing & Gates | 7 | 5 | 2 (F5, F7 — Prisco's) |
 | G — Donor Account Approval & Liveness | 7 | 7 | 0 — complete |
 | H — Dashboard Data Gated Behind Admin Approval | 4 | 4 | 0 — complete |
-| I — KYC Upload Hardening + Map/Copy Fixes | 7 | 6 | 1 (I4 code done, needs your `firebase deploy --only functions`) |
-| **TOTAL** | **105** | **100** | **5** |
+| I — KYC Upload Hardening + Map/Copy Fixes | 10 | 9 | 1 (I10 — deploy blocked on IAM permission, needs you) |
+| **TOTAL** | **108** | **103** | **5** |
