@@ -428,6 +428,46 @@ window.closeDonationModal = () => {
   if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
 };
 
+// Verification is mandatory (no skip), and the KYC flow is multi-step (doc type, front/back
+// upload, liveness capture) — routing away mid-flow via the header nav/hamburger drawer/
+// account menu/logo would abandon that state inconsistently (e.g. a live camera stream still
+// running, a selected-but-unsubmitted file) rather than cleanly, so all of them are hidden
+// for the duration of the 'kyc' view. Inline style (not the "hidden" utility class) because
+// these elements' own classes already encode responsive breakpoints (e.g. "hidden md:flex");
+// toggling the same "hidden" class again wouldn't reliably win against md:flex at wider
+// widths, whereas an inline style always does, and clearing it back to '' on unlock hands
+// control back to those responsive classes exactly as before.
+function setKycNavLocked(locked) {
+  const display = locked ? 'none' : '';
+  const primaryNav = document.getElementById('donorPrimaryNav');
+  if (primaryNav) primaryNav.style.display = display;
+  const hamburger = document.getElementById('btnMobileMenu');
+  if (hamburger) hamburger.style.display = display;
+  const accountMenuWrap = document.getElementById('donorAccountMenuWrap');
+  if (accountMenuWrap) accountMenuWrap.style.display = display;
+
+  const logo = document.getElementById('donorLogoLink');
+  if (logo) {
+    if (locked) {
+      logo.dataset.hrefLocked = logo.getAttribute('href') || '';
+      logo.removeAttribute('href');
+      logo.classList.add('pointer-events-none');
+    } else if (logo.dataset.hrefLocked !== undefined) {
+      logo.setAttribute('href', logo.dataset.hrefLocked);
+      delete logo.dataset.hrefLocked;
+      logo.classList.remove('pointer-events-none');
+    }
+  }
+
+  // Force-close the mobile drawer / account dropdown if either was left open when the donor
+  // navigated into KYC (e.g. picked "Complete Verification" from inside the drawer itself).
+  if (locked) {
+    document.getElementById('mobileNavDrawer')?.classList.add('hidden');
+    document.getElementById('donorAccountMenu')?.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+}
+
 export function switchDonorView(view) {
   window.scrollTo(0, 0);
   // Leaving the Requests view? Drop its real-time listener so it doesn't keep running (and
@@ -436,6 +476,7 @@ export function switchDonorView(view) {
   // Leaving the KYC view mid-liveness-capture? Turn the camera off immediately rather than
   // leaving it running in the background until the next loadKycView() reset.
   if (view !== 'kyc') stopLivenessCamera();
+  setKycNavLocked(view === 'kyc');
   const views = ['dashboard', 'requests', 'centers', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
   views.forEach(v => {
     const el = document.getElementById('view-' + v);
