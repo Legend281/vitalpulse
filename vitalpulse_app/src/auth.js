@@ -1,14 +1,36 @@
-import { 
-    createUserWithEmailAndPassword, 
+import {
+    createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
     signOut,
     onAuthStateChanged,
     updateProfile,
     sendPasswordResetEmail,
-    sendEmailVerification
+    sendEmailVerification,
+    setPersistence,
+    browserLocalPersistence,
+    browserSessionPersistence,
+    verifyPasswordResetCode,
+    confirmPasswordReset
 } from "firebase/auth";
 import { doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from './firebase';
+
+// Sign In (C1): resolves a "phone or email" identifier to the real email
+// signInWithEmailAndPassword needs, via the unauthenticated resolveSignInIdentifier
+// Cloud Function (an unauthenticated client can't query `users` directly — see
+// functions/src/resolveSignInIdentifier.ts for why this has to be server-side).
+const resolveSignInIdentifierFn = httpsCallable(getFunctions(), 'resolveSignInIdentifier');
+
+export async function resolveSignInEmail(identifier) {
+    const result = await resolveSignInIdentifierFn({ identifier });
+    return result.data?.email || null;
+}
+
+// Sign Up (C2.8): bootstraps a freshly-created donor account's custom claims +
+// donors/{uid} KYC record. See the call site in registerUser() below for why this has
+// to be invoked from here rather than firing automatically.
+const onDonorSignUpFn = httpsCallable(getFunctions(), 'onDonorSignUp');
 
 let currentUser = null;
 export async function hashNationalId(nationalIdText) {
@@ -100,6 +122,27 @@ export async function registerUser(email, password, role, additionalData) {
             lastActiveAt: new Date().toISOString()
         });
 
+        // Stream C2.8: bootstrap the donor's custom claims + donors/{uid} KYC record
+        // right after account creation. This is the client-side half of the B4 deviation
+        // (onDonorSignUp is a callable, not a real Auth trigger — see functions/src/kyc.ts's
+        // header comment) — it must be called from here, the one place that knows this is
+        // really a donor signup, not just "any new Firebase Auth user."
+        // Non-fatal by design: the Auth account and Firestore profile already exist by this
+        // point, so a transient failure here shouldn't be reported as "signup failed" — it's
+        // surfaced via the return value instead so the caller can decide how to handle it.
+        let kycBootstrapFailed = false;
+        if (role === 'donor') {
+            try {
+                await onDonorSignUpFn();
+                // Claims were just set server-side; force-refresh so this session's token
+                // reflects them immediately rather than waiting out its ~1h natural expiry.
+                await user.getIdToken(true);
+            } catch (bootstrapError) {
+                console.warn('onDonorSignUp bootstrap failed (account still created):', bootstrapError);
+                kycBootstrapFailed = true;
+            }
+        }
+
         // Notify admin about new hospital registration
         if (role === 'hospital' && requireHospitalApproval) {
             addDoc(collection(db, 'admin_notifications'), {
@@ -135,8 +178,8 @@ export async function registerUser(email, password, role, additionalData) {
         sendVerificationEmailToUser(user).catch(err =>
             console.warn('Failed to send verification email:', err)
         );
-        
-        const newUser = { uid: user.uid, email, role, ...additionalData };
+
+        const newUser = { uid: user.uid, email, role, kycBootstrapFailed, ...additionalData };
         // Strip sensitive PII from localStorage — phone, city, raw CNI never stored client-side
         delete newUser.phone;
         delete newUser.city;
@@ -182,19 +225,38 @@ export async function sendPasswordReset(email) {
     await sendPasswordResetEmail(auth, email);
 }
 
+// Set New Password (Stream C4.2): the `oobCode` comes from the link Firebase emailed —
+// verify it's still valid BEFORE ever showing the form (C4.4, expired/invalid-link
+// state), then use it once to actually change the password.
+export async function verifyResetCode(oobCode) {
+    return verifyPasswordResetCode(auth, oobCode);
+}
+
+export async function confirmReset(oobCode, newPassword) {
+    await confirmPasswordReset(auth, oobCode, newPassword);
+}
+
+// Sign In (C1.4, "Remember me"): must be called BEFORE loginUser() — Firebase Auth
+// persistence is set on the auth instance ahead of the actual sign-in call, not after.
+// browserSessionPersistence (the un-checked default) clears on tab close; browserLocalPersistence
+// survives browser restarts.
+export async function setLoginPersistence(remember) {
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+}
+
 export async function loginUser(email, password) {
     try {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
-        
+
         let role = 'donor';
         let userData = {};
-        
+
         // Gracefully handle Firestore permission errors
         try {
             const userDocRef = doc(db, 'users', user.uid);
             const userDoc = await getDoc(userDocRef);
-            
+
             if (userDoc.exists()) {
                 userData = userDoc.data();
                 role = userData.role || role;
@@ -202,13 +264,29 @@ export async function loginUser(email, password) {
         } catch (firestoreError) {
             console.warn("Firestore read failed (rules may be locked), defaulting to donor role:", firestoreError);
         }
-        
+
+        // Custom claims (role/kycStatus/suspended) are the REAL authority — the Firestore
+        // `role` field above is cosmetic routing only (see firestore.rules' header comment).
+        // Force a refresh so a claim change since the last cached token (suspension, KYC
+        // review) is reflected immediately rather than up to ~1h later.
+        let claims = {};
+        try {
+            const tokenResult = await user.getIdTokenResult(true);
+            claims = tokenResult.claims || {};
+        } catch (claimsError) {
+            console.warn('Failed to read ID token claims:', claimsError);
+        }
+
         const fullUser = {
             uid: user.uid,
             email: user.email,
             name: user.displayName || email.split('@')[0],
-            role,
-            ...userData
+            ...userData,
+            // Deliberately placed AFTER the ...userData spread so the token claim always
+            // wins if a field ever collides — role here overrides userData.role.
+            role: claims.role || role,
+            kycStatus: claims.kycStatus || null,
+            suspended: claims.suspended === true,
         };
         // Strip sensitive PII from localStorage
         delete fullUser.phone;

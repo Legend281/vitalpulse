@@ -12,6 +12,8 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         login: resolve(__dirname, 'login.html'),
         signup: resolve(__dirname, 'signup.html'),
+        'forgot-password': resolve(__dirname, 'forgot-password.html'),
+        'reset-password': resolve(__dirname, 'reset-password.html'),
         donor: resolve(__dirname, 'donor.html'),
         hospital: resolve(__dirname, 'hospital.html'),
         admin: resolve(__dirname, 'admin.html'),
