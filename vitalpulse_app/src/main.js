@@ -1,11 +1,15 @@
 import './style.css'
-import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser } from './auth';
+import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser, resolveSignInEmail, setLoginPersistence, verifyResetCode, confirmReset } from './auth';
+import { readLoginFailureState, recordLoginFailure, clearLoginFailures, isLockedOut, shouldShowAttemptsWarning, lockoutSecondsRemaining, recordAttemptedIdentifier, hasAttemptedIdentifier } from './loginAttempts';
+import { evaluatePasswordCriteria, passwordStrengthScore, isPasswordValid, suggestStrongPassword } from './passwordPolicy';
+import { normalizeCameroonPhone, formatCameroonNationalNumber } from './phone';
+import { passwordsMatch, isSignupFormValid } from './signupValidation';
 import { doc, getDoc, updateDoc, onSnapshot, collection } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db } from './firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingKycReviews, fetchKycDocumentUrl, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -74,7 +78,7 @@ function initThemeToggle() {
 applyTheme(getStoredTheme());
 document.addEventListener('DOMContentLoaded', initThemeToggle);
 
-window.addEventListener('load', () => {
+document.addEventListener('DOMContentLoaded', () => {
     const loader = document.getElementById('global-loader');
     if (loader) {
         loader.style.opacity = '0';
@@ -127,163 +131,550 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Handle Login Form
+    // Handle Login Form (Stream C1 — Sign In, donor UI/VitalPulse_Plan_Tracker.md)
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
-        loginForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            const errorMsg = document.getElementById('errorMessage');
-            const submitBtn = loginForm.querySelector('button[type="submit"]');
-            
-            try {
-                errorMsg.classList.add('hidden');
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = 'Connecting...';
-                
-                const user = await loginUser(email, password);
-                
-                // Route based on role
-                if (user.role === 'admin') window.location.href = '/admin.html';
-                else if (user.role === 'hospital') window.location.href = '/hospital.html';
-                else window.location.href = '/donor.html';
-                
-            } catch (error) {
-                errorMsg.textContent = "Invalid credentials. Please try again.";
-                errorMsg.classList.remove('hidden');
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Log In <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
-            }
-        });
+        const identifierInput = document.getElementById('loginIdentifier');
+        const passwordInput = document.getElementById('loginPassword');
+        const errorBanner = document.getElementById('loginErrorBanner');
+        const errorText = document.getElementById('loginErrorText');
+        const attemptsWarning = document.getElementById('loginAttemptsWarning');
+        const rememberCheckbox = document.getElementById('loginRememberMe');
+        const submitBtn = document.getElementById('btnLoginSubmit');
+        const toggleBtn = document.getElementById('btnToggleLoginPassword');
 
-        // Forgot Password handler
-        const forgotLink = document.getElementById('forgotPasswordLink');
-        if (forgotLink) {
-            forgotLink.addEventListener('click', async (e) => {
-                e.preventDefault();
-                const email = document.getElementById('email').value;
-                if (!email || !email.includes('@')) {
-                    showToast('Please enter your email address first');
-                    return;
-                }
-                try {
-                    await sendPasswordReset(email);
-                    showToast('Password reset link sent to your email');
-                } catch (err) {
-                    console.error('Reset password error:', err);
-                    showToast('Failed to send reset email. Please try again.');
-                }
+        // C1.1: show/hide password.
+        if (toggleBtn && passwordInput) {
+            toggleBtn.addEventListener('click', () => {
+                const showing = passwordInput.type === 'text';
+                passwordInput.type = showing ? 'password' : 'text';
+                const icon = toggleBtn.querySelector('.material-symbols-outlined');
+                if (icon) icon.textContent = showing ? 'visibility' : 'visibility_off';
+                toggleBtn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
             });
         }
+
+        const showError = (message) => {
+            if (errorText) errorText.textContent = message;
+            errorBanner?.classList.remove('hidden');
+            identifierInput?.classList.add('border-error');
+            passwordInput?.classList.add('border-error');
+        };
+        const hideError = () => {
+            errorBanner?.classList.add('hidden');
+            identifierInput?.classList.remove('border-error');
+            passwordInput?.classList.remove('border-error');
+        };
+
+        // Submit button stays disabled (same "blurred until ready" treatment as Sign Up)
+        // until both fields actually have something in them — separate from, and layered
+        // under, the lockout state below (lockout always wins).
+        const updateLoginSubmitEnabled = () => {
+            const hasIdentifier = Boolean(identifierInput?.value.trim());
+            const hasPassword = Boolean(passwordInput?.value);
+            submitBtn.disabled = !(hasIdentifier && hasPassword);
+        };
+        identifierInput?.addEventListener('input', updateLoginSubmitEnabled);
+        passwordInput?.addEventListener('input', updateLoginSubmitEnabled);
+
+        // C1.2: reflect any lockout already in effect from a previous page load.
+        const refreshAttemptsUI = () => {
+            const state = readLoginFailureState();
+            attemptsWarning?.classList.toggle('hidden', !shouldShowAttemptsWarning(state));
+            if (isLockedOut(state)) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = `Too many attempts — try again in ${lockoutSecondsRemaining(state)}s`;
+                setTimeout(refreshAttemptsUI, 1000);
+            } else {
+                submitBtn.textContent = 'Sign In';
+                updateLoginSubmitEnabled();
+            }
+        };
+        refreshAttemptsUI();
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideError();
+
+            const state = readLoginFailureState();
+            if (isLockedOut(state)) { refreshAttemptsUI(); return; }
+
+            const identifier = identifierInput.value.trim();
+            const password = passwordInput.value;
+            const GENERIC_ERROR = 'Incorrect email/phone or password. Please try again.';
+
+            // Forgot Password gate (see loginAttempts.js): record that this identifier was
+            // actually used to attempt a sign-in, regardless of outcome — Forgot Password
+            // checks this before it'll do anything.
+            recordAttemptedIdentifier(identifier);
+
+            try {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Signing in…';
+
+                // C1.4 "Remember me" — must be set before the actual sign-in call.
+                await setLoginPersistence(Boolean(rememberCheckbox?.checked));
+
+                // C1's mockup accepts "Phone or Email"; signInWithEmailAndPassword only
+                // accepts an email. Emails pass straight through; phone numbers are
+                // resolved server-side (see auth.js / functions/src/resolveSignInIdentifier.ts).
+                const email = identifier.includes('@') ? identifier : await resolveSignInEmail(identifier);
+                if (!email) {
+                    // Same generic message as a wrong-password failure — this codepath must
+                    // never reveal "that phone/email isn't registered" (C1.2, anti-enumeration).
+                    throw new Error('no-matching-account');
+                }
+
+                const user = await loginUser(email, password);
+
+                if (user.suspended) {
+                    // C1.3: suspended -> block entirely, do not route anywhere.
+                    await logoutUser();
+                    showError('Your account has been suspended. Please contact support for assistance.');
+                    return;
+                }
+
+                clearLoginFailures();
+
+                // C1.3: route by role. "Pending Dashboard" vs full dashboard for donors
+                // (kycStatus pending/verified) is Stream D's in-page banner/blur logic —
+                // not built yet, so both land on donor.html for now; Stream D reads the
+                // same kycStatus claim live once it exists.
+                if (user.role === 'system_admin' || user.role === 'admin' || user.role === 'nbtp_viewer') window.location.href = '/admin.html';
+                else if ((user.role && user.role.startsWith('hospital')) || user.role === 'lab_tech') window.location.href = '/hospital.html';
+                else window.location.href = '/donor.html';
+
+            } catch (error) {
+                console.error('Login error:', error);
+                recordLoginFailure();
+                showError(GENERIC_ERROR);
+                refreshAttemptsUI();
+            } finally {
+                if (!isLockedOut(readLoginFailureState())) {
+                    submitBtn.textContent = 'Sign In';
+                    updateLoginSubmitEnabled();
+                }
+            }
+        });
     }
 
-    // Handle Signup Form
+    // Handle Signup Form (Stream C2 — Sign Up, donor UI/VitalPulse_Plan_Tracker.md)
     const signupForm = document.getElementById('signupForm');
     if (signupForm) {
+        const passwordInput = document.getElementById('password');
+        const confirmInput = document.getElementById('confirmPassword');
+        const confirmFeedback = document.getElementById('confirmPasswordFeedback');
+        const phoneNationalInput = document.getElementById('phoneNational');
+        const phoneError = document.getElementById('phoneError');
+        const toggleBtn = document.getElementById('btnToggleSignupPassword');
+        const suggestBtn = document.getElementById('btnSuggestPassword');
+
+        // C2.1: show/hide password.
+        if (toggleBtn && passwordInput) {
+            toggleBtn.addEventListener('click', () => {
+                const showing = passwordInput.type === 'text';
+                passwordInput.type = showing ? 'password' : 'text';
+                const icon = toggleBtn.querySelector('.material-symbols-outlined');
+                if (icon) icon.textContent = showing ? 'visibility' : 'visibility_off';
+            });
+        }
+
+        // C2.2/C2.3: live strength bar + criteria checklist as the donor types. Never
+        // shown before the first keystroke (starts empty, so an untouched field shows
+        // nothing to judge).
+        if (passwordInput) {
+            passwordInput.addEventListener('input', () => {
+                const criteria = evaluatePasswordCriteria(passwordInput.value);
+                const score = passwordStrengthScore(passwordInput.value);
+                const segColors = ['bg-outline-variant/30', 'bg-error', 'bg-warning', 'bg-tertiary', 'bg-success'];
+                document.querySelectorAll('.pw-seg').forEach((seg, i) => {
+                    seg.className = `pw-seg h-1 rounded-full ${i < score ? segColors[score] : 'bg-outline-variant/30'}`;
+                });
+                document.querySelectorAll('.pw-criterion').forEach((el) => {
+                    const met = criteria[el.dataset.criterion];
+                    const icon = el.querySelector('.material-symbols-outlined');
+                    el.classList.toggle('text-success', met);
+                    el.classList.toggle('text-on-surface-variant', !met);
+                    if (icon) {
+                        icon.textContent = met ? 'check_circle' : 'radio_button_unchecked';
+                        icon.style.fontVariationSettings = met ? "'FILL' 1" : "'FILL' 0";
+                    }
+                });
+            });
+        }
+
+        // C2.4: Confirm Password validates onBlur only, never on keystroke.
+        const validateConfirmOnBlur = () => {
+            if (!confirmInput.value) { confirmFeedback.classList.add('hidden'); return; }
+            const matches = passwordsMatch(passwordInput.value, confirmInput.value);
+            confirmFeedback.textContent = matches ? 'Passwords match ✓' : 'Passwords do not match ✗';
+            confirmFeedback.className = `mt-1.5 text-xs font-semibold ${matches ? 'text-success' : 'text-error'}`;
+            confirmFeedback.classList.remove('hidden');
+        };
+        confirmInput?.addEventListener('blur', validateConfirmOnBlur);
+
+        // C2.5: "Suggest strong password" — fills both fields, autocomplete="new-password"
+        // already set in the markup so browser password managers offer to save it too.
+        suggestBtn?.addEventListener('click', () => {
+            const suggested = suggestStrongPassword();
+            passwordInput.value = suggested;
+            confirmInput.value = suggested;
+            passwordInput.dispatchEvent(new Event('input'));
+            passwordInput.type = 'text';
+            confirmInput.type = 'text';
+            const icon = toggleBtn?.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = 'visibility_off';
+            validateConfirmOnBlur();
+        });
+
+        // Phone: format as-you-type, normalize + validate on blur.
+        phoneNationalInput?.addEventListener('input', () => {
+            phoneNationalInput.value = formatCameroonNationalNumber(phoneNationalInput.value);
+        });
+        phoneNationalInput?.addEventListener('blur', () => {
+            const valid = !phoneNationalInput.value || normalizeCameroonPhone(phoneNationalInput.value);
+            phoneError?.classList.toggle('hidden', Boolean(valid));
+        });
+
+        // Submit button stays disabled (visibly "blurred" via the existing disabled:opacity-60
+        // style) until every field the current role actually requires is filled in — so
+        // there's nothing to be tempted to click prematurely. Exposed on window because
+        // signup.html's own inline toggleRoleFields() (donor <-> hospital) needs to
+        // re-check it too, since that changes which fields are required.
+        const submitBtnEl = signupForm.querySelector('button[type="submit"]');
+        window.updateSignupSubmitEnabled = () => {
+            const role = document.querySelector('input[name="role"]:checked')?.value;
+            const allValid = isSignupFormValid({
+                role,
+                fullName: document.getElementById('fullName')?.value,
+                email: document.getElementById('email')?.value,
+                city: document.getElementById('city')?.value,
+                termsChecked: document.getElementById('terms')?.checked,
+                phone: phoneNationalInput?.value,
+                password: passwordInput?.value,
+                confirmPassword: confirmInput?.value,
+                bloodType: document.getElementById('bloodType')?.value,
+            });
+            if (submitBtnEl) submitBtnEl.disabled = !allValid;
+        };
+        ['fullName', 'email', 'city'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('input', () => window.updateSignupSubmitEnabled());
+        });
+        document.getElementById('terms')?.addEventListener('change', () => window.updateSignupSubmitEnabled());
+        document.getElementById('bloodType')?.addEventListener('change', () => window.updateSignupSubmitEnabled());
+        phoneNationalInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
+        passwordInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
+        confirmInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
+        window.updateSignupSubmitEnabled();
+
+        // C2.6: a field's own inline error clears as soon as it's edited — errors from a
+        // previous submit attempt shouldn't linger once the donor starts fixing them.
+        [['fullName', 'input', 'fullNameError'], ['email', 'input', 'emailError'], ['city', 'input', 'cityError'],
+         ['bloodType', 'change', 'bloodTypeError'], ['terms', 'change', 'termsError']].forEach(([id, evt, errId]) => {
+            document.getElementById(id)?.addEventListener(evt, () => document.getElementById(errId)?.classList.add('hidden'));
+        });
+        phoneNationalInput?.addEventListener('input', () => phoneError?.classList.add('hidden'));
+        passwordInput?.addEventListener('input', () => document.getElementById('passwordError')?.classList.add('hidden'));
+
         signupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const fullName = document.getElementById('fullName').value;
-            const email = document.getElementById('email').value;
-            let role = document.querySelector('input[name="role"]:checked').value;
-            const city = document.getElementById('city').value;
-            const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
+            const fullName = document.getElementById('fullName').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const role = document.querySelector('input[name="role"]:checked').value;
+            const city = document.getElementById('city').value.trim();
+            const password = passwordInput.value;
+            const confirmPassword = confirmInput.value;
             const errorMsg = document.getElementById('errorMessage');
             const submitBtn = signupForm.querySelector('button[type="submit"]');
+            const btnLabel = document.getElementById('btnSignupLabel');
+            const resetBtn = (label) => { submitBtn.disabled = false; if (btnLabel) btnLabel.textContent = label; };
 
-            if (password !== confirmPassword) {
-                errorMsg.textContent = "Passwords do not match!";
+            // C2.6: submit guard — every field validated before any Firebase call, each
+            // field gets its OWN inline error (not one generic banner), all shown together
+            // rather than one-at-a-time, and nothing typed is ever cleared.
+            const fullNameError = document.getElementById('fullNameError');
+            const emailError = document.getElementById('emailError');
+            const cityError = document.getElementById('cityError');
+            const passwordError = document.getElementById('passwordError');
+            const bloodTypeErrorEl = document.getElementById('bloodTypeError');
+            const termsErrorEl = document.getElementById('termsError');
+            [fullNameError, emailError, cityError, phoneError, passwordError, bloodTypeErrorEl, termsErrorEl]
+                .forEach((el) => el?.classList.add('hidden'));
+            confirmFeedback?.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+
+            const showFieldError = (el, message) => { if (el) { el.textContent = message; el.classList.remove('hidden'); } };
+            let firstInvalidEl = null;
+            const invalidate = (inputEl) => { if (!firstInvalidEl) firstInvalidEl = inputEl; };
+
+            if (!fullName) {
+                showFieldError(fullNameError, role === 'hospital' ? 'Please enter your hospital name.' : 'Please enter your full name.');
+                invalidate(document.getElementById('fullName'));
+            }
+            if (!email) {
+                showFieldError(emailError, 'Please enter your email address.');
+                invalidate(document.getElementById('email'));
+            } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                showFieldError(emailError, 'Please enter a valid email address.');
+                invalidate(document.getElementById('email'));
+            }
+            if (!city) {
+                showFieldError(cityError, 'Please enter your city.');
+                invalidate(document.getElementById('city'));
+            }
+
+            const normalizedPhone = normalizeCameroonPhone(phoneNationalInput.value);
+            if (!normalizedPhone) {
+                showFieldError(phoneError, 'Enter a valid Cameroon mobile number (starts with 6, 9 digits).');
+                invalidate(phoneNationalInput);
+            }
+
+            if (!isPasswordValid(password)) {
+                showFieldError(passwordError, 'Password must be at least 8 characters.');
+                invalidate(passwordInput);
+            }
+
+            if (!confirmPassword) {
+                confirmFeedback.textContent = 'Please confirm your password.';
+                confirmFeedback.className = 'mt-1.5 text-xs font-semibold text-error';
+                confirmFeedback.classList.remove('hidden');
+                invalidate(confirmInput);
+            } else if (confirmPassword !== password) {
+                confirmFeedback.textContent = 'Passwords do not match ✗';
+                confirmFeedback.className = 'mt-1.5 text-xs font-semibold text-error';
+                confirmFeedback.classList.remove('hidden');
+                invalidate(confirmInput);
+            }
+
+            if (!document.getElementById('terms').checked) {
+                showFieldError(termsErrorEl, 'Please accept the Terms of Service and Privacy Policy to continue.');
+                invalidate(document.getElementById('terms'));
+            }
+
+            const extraData = { name: fullName, city, phone: normalizedPhone };
+
+            if (role === 'donor') {
+                const bt = document.getElementById('bloodType');
+                if (!bt || !bt.value) {
+                    showFieldError(bloodTypeErrorEl, 'Please select your blood group, or tell us you don\'t know it.');
+                    invalidate(bt);
+                } else {
+                    extraData.bloodType = bt.value;
+                }
+                // National ID (CNI) is collected on the KYC step (donor.html#kyc), not here —
+                // see "National ID / CNI" comment in donor-dashboard.js's KYC submit handler.
+            } else if (role === 'hospital') {
+                extraData.isVerified = false;
+                // License document upload moved out of Sign Up — hospital verification now
+                // happens on a KYC-style step after account creation, same as donor's C3
+                // (donor.html#kyc), not built yet for hospitals. See tracker note.
+            }
+
+            if (firstInvalidEl) {
+                errorMsg.textContent = 'Please fix the highlighted fields below.';
                 errorMsg.classList.remove('hidden');
+                firstInvalidEl.focus();
                 return;
             }
 
-            let uploadedLicenseRef = null; // hoisted so the catch block can clean up orphaned uploads
-
             try {
-                errorMsg.classList.add('hidden');
                 submitBtn.disabled = true;
-                submitBtn.innerHTML = 'Creating Account...';
-                
-                const extraData = { name: fullName, city };
-                
-                if (role === 'donor') {
-                    const bt = document.getElementById('bloodType');
-                    if(bt) extraData.bloodType = bt.value;
-                    const natId = document.getElementById('nationalId');
-                    if (!natId || !natId.value.trim()) {
-                        errorMsg.textContent = 'National ID (CNI) is required for donor accounts. Please enter your CNI number.';
-                        errorMsg.classList.remove('hidden');
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = 'Create Account <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
-                        return;
-                    }
-                    extraData.nationalId = natId.value.trim();
-                } else if (role === 'hospital') {
-                    const phoneInput = document.getElementById('phone');
-                    if (phoneInput && phoneInput.value) extraData.phone = phoneInput.value;
-                    extraData.isVerified = false;
-                    // The license document is mandatory for hospital accounts: the admin can
-                    // only review and approve a hospital that has submitted one. Without a file
-                    // the signup is blocked before any account is created.
-                    const licenseFileInput = document.getElementById('licenseFile');
-                    if (!licenseFileInput || !licenseFileInput.files || !licenseFileInput.files[0]) {
-                        errorMsg.textContent = 'Please upload your hospital license document before creating the account.';
-                        errorMsg.classList.remove('hidden');
-                        submitBtn.disabled = false;
-                        submitBtn.innerHTML = 'Create Account <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
-                        return;
-                    }
-                    // NOTE: the license file is uploaded AFTER registerUser() below — the
-                    // upload needs the freshly created auth session to satisfy Storage rules.
-                }
+                if (btnLabel) btnLabel.textContent = 'Creating Account…';
 
                 const user = await registerUser(email, password, role, extraData);
 
-                // Upload the license document to Firebase Storage (if one was selected) and
-                // attach the download URL + original file name to the user doc so the admin
-                // can open/verify it from the Institutional Directory. Runs post-registration
-                // so the upload is authenticated.
-                if (role === 'hospital') {
-                    const licenseFileInput = document.getElementById('licenseFile');
-                    if (licenseFileInput && licenseFileInput.files && licenseFileInput.files[0]) {
-                        const file = licenseFileInput.files[0];
-                        submitBtn.innerHTML = 'Uploading Document...';
-                        uploadedLicenseRef = storageRef(storage, `hospital_licenses/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`);
-                        await uploadBytes(uploadedLicenseRef, file);
-                        const licenseUrl = await getDownloadURL(uploadedLicenseRef);
-                        await updateDoc(doc(db, 'users', user.uid), {
-                            licenseUrl,
-                            licenseFileName: file.name
-                        });
-                    }
+                if (role === 'donor') {
+                    // C2.8: on to Step 2 (Identity) — the KYC view lives inside donor.html,
+                    // not a separate signup.html step (see "Identity Verification (KYC).png",
+                    // which renders inside the full donor-portal shell, not a standalone page).
+                    showToast(user.kycBootstrapFailed
+                        ? 'Account created! Verification setup is still finishing — you can complete identity verification from your profile shortly.'
+                        : 'Account created! Let\'s verify your identity.');
+                    setTimeout(() => { window.location.href = '/donor.html#kyc'; }, 1200);
+                } else {
+                    showToast('Account created! A verification email has been sent.');
+                    setTimeout(() => {
+                        window.location.href = user.role === 'admin' ? '/admin.html' : '/hospital.html';
+                    }, 1500);
                 }
-
-                showToast('Account created! A verification email has been sent. Please verify your email before donating.');
-
-                setTimeout(() => {
-                    if (user.role === 'admin') window.location.href = '/admin.html';
-                    else if (user.role === 'hospital') window.location.href = '/hospital.html';
-                    else window.location.href = '/donor.html';
-                }, 2000);
 
             } catch (error) {
-                // If registration failed after the license file was uploaded, remove the
-                // orphaned file from Storage so it doesn't linger with no user doc pointing to it.
-                if (uploadedLicenseRef) {
-                    deleteObject(uploadedLicenseRef).catch(() => {});
-                }
                 const msg = error.code === 'auth/email-already-in-use' ? 'This email is already registered. Try logging in instead.'
-                    : error.code === 'auth/weak-password' ? 'Password must be at least 6 characters.'
+                    : error.code === 'auth/weak-password' ? 'Password is too weak. Please choose a stronger one.'
                     : error.code === 'auth/invalid-email' ? 'Invalid email address.'
                     : error.code === 'auth/operation-not-allowed' ? 'Email/password sign-up is currently disabled.'
                     : error.message || 'Registration failed. Try again.';
                 errorMsg.textContent = msg;
                 errorMsg.classList.remove('hidden');
-            } finally {
+                if (error.code === 'auth/email-already-in-use') showFieldError(emailError, msg);
+                resetBtn(role === 'donor' ? 'Continue to Verification' : 'Create Account');
+            }
+        });
+    }
+
+    // Handle Forgot Password — Request Link (Stream C4.1, forgot-password.html)
+    const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+    if (forgotPasswordForm) {
+        const identifierInput = document.getElementById('resetIdentifier');
+        const gateMessage = document.getElementById('resetGateMessage');
+        const errorMessage = document.getElementById('resetErrorMessage');
+        const submitBtn = document.getElementById('btnSendResetLink');
+        const requestStep = document.getElementById('requestLinkStep');
+        const sentStep = document.getElementById('linkSentStep');
+
+        // Security Lead's gate: nudges toward trying Sign In first for an identifier that
+        // hasn't been attempted (see loginAttempts.js for the full rationale and caveats —
+        // this is a UX nudge, not the real anti-enumeration protection). Softened
+        // 2026-08-01 to a warning rather than a hard block — same convention as the
+        // failed-login-attempts warning elsewhere in this app (warns early, only ever a
+        // brief cooldown, never a permanent lock) — a permanent disabled button surprised
+        // even the person who asked for the gate.
+        const updateGateState = () => {
+            const val = identifierInput.value.trim();
+            errorMessage.classList.add('hidden');
+            if (!val) {
+                gateMessage.classList.add('hidden');
+                submitBtn.disabled = true;
+                return;
+            }
+            gateMessage.classList.toggle('hidden', hasAttemptedIdentifier(val));
+            submitBtn.disabled = false;
+        };
+        identifierInput?.addEventListener('input', updateGateState);
+        updateGateState();
+
+        forgotPasswordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const identifier = identifierInput.value.trim();
+            if (!identifier) { updateGateState(); return; }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Sending…';
+            try {
+                const email = identifier.includes('@') ? identifier : await resolveSignInEmail(identifier);
+                if (email) {
+                    await sendPasswordReset(email).catch((err) => {
+                        // Never let "no such account" distinguish from success client-side —
+                        // the same generic screen shows either way (anti-enumeration).
+                        if (err?.code !== 'auth/user-not-found') throw err;
+                    });
+                }
+                requestStep?.classList.add('hidden');
+                sentStep?.classList.remove('hidden');
+            } catch (err) {
+                console.error('Password reset request failed:', err);
+                errorMessage.textContent = 'Something went wrong. Please try again in a moment.';
+                errorMessage.classList.remove('hidden');
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = 'Create Account <span class="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>';
+                submitBtn.textContent = 'Send Reset Link';
+            }
+        });
+    }
+
+    // Handle Set New Password (Stream C4.2-C4.4, reset-password.html)
+    const resetCheckingStep = document.getElementById('resetCheckingStep');
+    if (resetCheckingStep) {
+        const resetFormStep = document.getElementById('resetFormStep');
+        const resetSuccessStep = document.getElementById('resetSuccessStep');
+        const resetInvalidStep = document.getElementById('resetInvalidStep');
+        const resetPasswordForm = document.getElementById('resetPasswordForm');
+        // Custom 30-minute token pipeline (functions/src/passwordReset.ts), not Firebase's
+        // oobCode — the reset link carries its own uid+token pair instead.
+        const resetParams = new URLSearchParams(window.location.search);
+        const resetUid = resetParams.get('uid');
+        const resetToken = resetParams.get('token');
+
+        // C4.4: never show the form until the link is confirmed valid.
+        (async () => {
+            if (!resetUid || !resetToken) {
+                resetCheckingStep.classList.add('hidden');
+                resetInvalidStep?.classList.remove('hidden');
+                return;
+            }
+            try {
+                await verifyResetCode(resetUid, resetToken);
+                resetCheckingStep.classList.add('hidden');
+                resetFormStep?.classList.remove('hidden');
+            } catch (err) {
+                console.error('Reset link invalid or expired:', err);
+                resetCheckingStep.classList.add('hidden');
+                resetInvalidStep?.classList.remove('hidden');
+            }
+        })();
+
+        const newPasswordInput = document.getElementById('newPassword');
+        const confirmNewPasswordInput = document.getElementById('confirmNewPassword');
+        const confirmNewPasswordFeedback = document.getElementById('confirmNewPasswordFeedback');
+        const toggleNewPasswordBtn = document.getElementById('btnToggleNewPassword');
+        const submitResetBtn = document.getElementById('btnResetPassword');
+        const resetPasswordError = document.getElementById('resetPasswordError');
+
+        toggleNewPasswordBtn?.addEventListener('click', () => {
+            const showing = newPasswordInput.type === 'text';
+            newPasswordInput.type = showing ? 'password' : 'text';
+            const icon = toggleNewPasswordBtn.querySelector('.material-symbols-outlined');
+            if (icon) icon.textContent = showing ? 'visibility' : 'visibility_off';
+        });
+
+        const updateResetSubmitEnabled = () => {
+            const valid = isPasswordValid(newPasswordInput?.value || '')
+                && Boolean(confirmNewPasswordInput?.value)
+                && confirmNewPasswordInput.value === newPasswordInput?.value;
+            if (submitResetBtn) submitResetBtn.disabled = !valid;
+        };
+
+        newPasswordInput?.addEventListener('input', () => {
+            const criteria = evaluatePasswordCriteria(newPasswordInput.value);
+            const score = passwordStrengthScore(newPasswordInput.value);
+            const segColors = ['bg-outline-variant/30', 'bg-error', 'bg-warning', 'bg-tertiary', 'bg-success'];
+            document.querySelectorAll('#resetPasswordForm .pw-seg').forEach((seg, i) => {
+                seg.className = `pw-seg h-1 rounded-full ${i < score ? segColors[score] : 'bg-outline-variant/30'}`;
+            });
+            document.querySelectorAll('#resetPasswordForm .pw-criterion').forEach((el) => {
+                const met = criteria[el.dataset.criterion];
+                const icon = el.querySelector('.material-symbols-outlined');
+                el.classList.toggle('text-success', met);
+                el.classList.toggle('text-on-surface-variant', !met);
+                if (icon) {
+                    icon.textContent = met ? 'check_circle' : 'radio_button_unchecked';
+                    icon.style.fontVariationSettings = met ? "'FILL' 1" : "'FILL' 0";
+                }
+            });
+            updateResetSubmitEnabled();
+        });
+
+        const validateConfirmNewPasswordOnBlur = () => {
+            if (!confirmNewPasswordInput.value) { confirmNewPasswordFeedback.classList.add('hidden'); return; }
+            const matches = confirmNewPasswordInput.value === newPasswordInput.value;
+            confirmNewPasswordFeedback.textContent = matches ? 'Passwords match ✓' : 'Passwords do not match ✗';
+            confirmNewPasswordFeedback.className = `mt-1.5 text-xs font-semibold ${matches ? 'text-success' : 'text-error'}`;
+            confirmNewPasswordFeedback.classList.remove('hidden');
+        };
+        confirmNewPasswordInput?.addEventListener('blur', validateConfirmNewPasswordOnBlur);
+        confirmNewPasswordInput?.addEventListener('input', updateResetSubmitEnabled);
+
+        resetPasswordForm?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            resetPasswordError?.classList.add('hidden');
+            if (!resetUid || !resetToken || !isPasswordValid(newPasswordInput.value) || newPasswordInput.value !== confirmNewPasswordInput.value) return;
+
+            submitResetBtn.disabled = true;
+            submitResetBtn.textContent = 'Resetting…';
+            try {
+                await confirmReset(resetUid, resetToken, newPasswordInput.value);
+                resetFormStep?.classList.add('hidden');
+                resetSuccessStep?.classList.remove('hidden');
+            } catch (err) {
+                console.error('Password reset failed:', err);
+                if (resetPasswordError) {
+                    resetPasswordError.textContent =
+                        err.code === 'functions/failed-precondition' ? 'This link just expired. Please request a new one.'
+                        : err.code === 'functions/invalid-argument' ? 'Password is too weak. Please choose a stronger one.'
+                        : 'Something went wrong. Please try again.';
+                    resetPasswordError.classList.remove('hidden');
+                }
+                submitResetBtn.disabled = false;
+                submitResetBtn.textContent = 'Reset Password';
             }
         });
     }
@@ -352,12 +743,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         // Professional, token-based, dismissible top banner (dark-mode safe).
                         const banner = document.createElement('div');
                         banner.id = 'emailVerifyBanner';
-                        banner.className = 'flex items-start gap-3 bg-warning-container/60 border border-warning/30 rounded-2xl px-4 py-3.5 shadow-sm';
+                        banner.className = 'flex items-start gap-3 bg-amber-100 border border-amber-300/60 rounded-2xl px-4 py-3.5 shadow-sm';
                         banner.innerHTML = `
-                          <span class="w-9 h-9 rounded-xl bg-warning/15 text-warning flex items-center justify-center shrink-0"><span class="material-symbols-outlined">mark_email_unread</span></span>
+                          <span class="w-9 h-9 rounded-xl bg-amber-200/70 text-amber-800 flex items-center justify-center shrink-0"><span class="material-symbols-outlined">mark_email_unread</span></span>
                           <div class="flex-1 min-w-0">
-                            <p class="text-sm font-bold text-on-surface">Verify your email address</p>
-                            <p class="text-xs text-on-surface-variant mt-0.5">Confirm your inbox so you can receive emergency blood requests near you.</p>
+                            <p class="text-sm font-bold text-amber-900">Verify your email address</p>
+                            <p class="text-xs text-amber-800/80 mt-0.5">Please check your inbox to confirm your registration and unlock full access.</p>
                           </div>
                           <div class="flex items-center gap-2 shrink-0">
                             <button onclick="handleVerifyResend()" class="press-scale text-xs font-bold text-on-primary bg-primary hover:opacity-90 px-3.5 py-2 rounded-xl transition-opacity cursor-pointer">Verify</button>
@@ -403,9 +794,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 })();
             }
-            // After auth check, inject language toggle and onboarding for donor
+            // After auth check, run onboarding for donor. Language toggle for donor.html is
+            // now a header-anchored pill (initDonorLangToggle() in donor-dashboard.js, wired
+            // from initDonorNavigation()) instead of the floating injectLangToggle() pill —
+            // avoids mounting two separate toggles on the same page.
             if (path.includes('donor.html')) {
-                injectLangToggle();
                 if (shouldShowOnboarding()) startOnboarding('donor');
             }
 
@@ -2632,6 +3025,9 @@ async function loadAdminDashboard() {
             }
         }
 
+        // 2b. Load Pending Donor KYC Verifications (system_admin approval queue)
+        await renderPendingKycReviews();
+
         // 3. Load Recent Activity Feed
         renderAdminActivityFeed(await fetchRecentLogs(4));
 
@@ -4054,6 +4450,106 @@ window.handleAdminApprove = async (id, name) => {
         const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
+};
+
+// Donor KYC review queue — requested directly by the Security Lead (2026-08-02): donor
+// accounts must be approved by a system_admin (never a hospital) before they get full
+// dashboard access, and that approval must be based on evidence actually on file. The
+// verifyDonor Cloud Function itself already enforces "both document and selfie present"
+// server-side (functions/src/kyc.ts) — the disabled Approve button here is a UX nicety on
+// top of that, not the real boundary.
+async function renderPendingKycReviews() {
+    const tableBody = document.getElementById('adminPendingKycReviews');
+    if (!tableBody) return;
+    try {
+        const rows = await fetchPendingKycReviews();
+        const badgeEl = document.getElementById('kycPendingCountBadge');
+        if (badgeEl) badgeEl.textContent = rows.length;
+        if (rows.length === 0) {
+            tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500 font-medium">No pending donor KYC submissions.</td></tr>';
+            return;
+        }
+        tableBody.innerHTML = rows.map(row => {
+            const hasDoc = Boolean(row.kycDocRef);
+            const hasDocBack = Boolean(row.kycDocBackRef);
+            const hasSelfie = Boolean(row.livenessSelfieRef);
+            const canApprove = hasDoc && hasSelfie;
+            const submitted = row.submittedAt?.toDate ? row.submittedAt.toDate() : (row.submittedAt ? new Date(row.submittedAt) : null);
+            return `
+            <tr class="hover:bg-slate-50/50 transition-colors">
+                <td class="px-6 py-5">
+                    <div class="font-bold text-slate-800">${esc(row.donorName || row.donorEmail || 'Donor')}</div>
+                    <div class="text-[11px] text-slate-400">${esc(row.donorEmail || '')}</div>
+                </td>
+                <td class="px-6 py-5 text-sm text-slate-600">${esc(row.donorBloodType) || '—'}</td>
+                <td class="px-6 py-5 text-sm text-slate-600">${submitted ? submitted.toLocaleDateString() : '—'}</td>
+                <td class="px-6 py-5">
+                    <div class="flex items-center gap-2">
+                        <button data-view-kyc-doc="${esc(row.kycDocRef || '')}" ${hasDoc ? '' : 'disabled'} class="inline-flex items-center gap-1 text-xs font-bold ${hasDoc ? 'text-tertiary hover:bg-tertiary-container/10 cursor-pointer' : 'text-slate-300 cursor-not-allowed'} px-2 py-1 rounded transition-colors">
+                            <span class="material-symbols-outlined text-sm">description</span> Front
+                        </button>
+                        ${row.docType === 'national_id' ? `
+                        <button data-view-kyc-doc="${esc(row.kycDocBackRef || '')}" ${hasDocBack ? '' : 'disabled'} class="inline-flex items-center gap-1 text-xs font-bold ${hasDocBack ? 'text-tertiary hover:bg-tertiary-container/10 cursor-pointer' : 'text-slate-300 cursor-not-allowed'} px-2 py-1 rounded transition-colors">
+                            <span class="material-symbols-outlined text-sm">description</span> Back
+                        </button>` : ''}
+                        <button data-view-kyc-doc="${esc(row.livenessSelfieRef || '')}" ${hasSelfie ? '' : 'disabled'} class="inline-flex items-center gap-1 text-xs font-bold ${hasSelfie ? 'text-tertiary hover:bg-tertiary-container/10 cursor-pointer' : 'text-slate-300 cursor-not-allowed'} px-2 py-1 rounded transition-colors">
+                            <span class="material-symbols-outlined text-sm">face</span> Selfie
+                        </button>
+                    </div>
+                    ${canApprove ? '' : '<div class="text-[10px] text-amber-600 font-semibold mt-1">Awaiting both document + selfie</div>'}
+                </td>
+                <td class="px-6 py-5 text-right space-x-2">
+                    <button onclick="window.handleAdminRejectDonorKyc('${row.donorUid}')" class="text-xs font-bold px-4 py-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">Reject</button>
+                    <button onclick="window.handleAdminApproveDonorKyc('${row.donorUid}')" ${canApprove ? '' : 'disabled title="Both the identity document and liveness selfie must be submitted first"'} class="text-xs font-bold px-4 py-2 rounded-lg ${canApprove ? 'bg-primary-container text-on-primary-container hover:shadow-md transition-all' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}">Approve</button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        tableBody.querySelectorAll('[data-view-kyc-doc]').forEach(btn => {
+            const path = btn.dataset.viewKycDoc;
+            if (!path) return;
+            btn.addEventListener('click', async () => {
+                btn.disabled = true;
+                try {
+                    const url = await fetchKycDocumentUrl(path);
+                    window.open(url, '_blank', 'noopener');
+                } catch (err) {
+                    console.error('Failed to load KYC document:', err);
+                    alert('Failed to load document. Please try again.');
+                } finally {
+                    btn.disabled = false;
+                }
+            });
+        });
+    } catch (err) {
+        console.error('Failed to load pending KYC reviews:', err);
+        tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-red-500 font-medium">Failed to load pending KYC reviews.</td></tr>';
+    }
+}
+
+window.handleAdminApproveDonorKyc = async (targetUid) => {
+    if (!confirm('Approve this donor? They will get full dashboard access immediately.')) return;
+    try {
+        await httpsCallable(getFunctions(), 'verifyDonor')({ targetUid });
+    } catch (err) {
+        console.error('Failed to approve donor KYC:', err);
+        alert(err?.message || 'Failed to approve donor. Please try again.');
+        return;
+    }
+    renderPendingKycReviews();
+};
+
+window.handleAdminRejectDonorKyc = async (targetUid) => {
+    const reason = prompt('Reason for rejection (shown to the donor):', '');
+    if (reason === null) return; // cancelled
+    try {
+        await httpsCallable(getFunctions(), 'rejectDonorKyc')({ targetUid, reason: reason || undefined });
+    } catch (err) {
+        console.error('Failed to reject donor KYC:', err);
+        alert(err?.message || 'Failed to reject donor. Please try again.');
+        return;
+    }
+    renderPendingKycReviews();
 };
 
 window.handleAdminReject = async (id, name) => {

@@ -13,7 +13,7 @@ export default defineConfig({
         functions: 80,
         branches: 80,
         statements: 80,
-        'src/{grantRole,revokeRole,roles}.ts': {
+        'src/{grantRole,revokeRole,roles,suspendUser,inventory}.ts': {
           lines: 90,
           functions: 90,
           branches: 90,

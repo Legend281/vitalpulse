@@ -4,6 +4,8 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <link rel="icon" type="image/png" href="/favicon.png"/>
 <title>VitalPulse | Donor Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 
@@ -67,7 +69,7 @@
 <header class="sticky top-0 z-50 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/20 px-4 sm:px-6 lg:px-24 py-3">
   <div class="max-w-[1400px] mx-auto flex items-center justify-between gap-4">
     <!-- Brand Logo -->
-    <a href="/donor.html" class="flex items-center gap-2.5 text-on-surface group shrink-0">
+    <a id="donorLogoLink" href="/donor.html" class="flex items-center gap-2.5 text-on-surface group shrink-0">
       <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-rose-500 flex items-center justify-center shadow-md shadow-primary/25 group-hover:scale-105 transition-transform brand-heartbeat">
         <span class="material-symbols-outlined text-white text-xl" style="font-variation-settings: 'FILL' 1;">bloodtype</span>
       </div>
@@ -82,31 +84,40 @@
 
     <!-- Primary Navigation (desktop) — same switch-view engine the mobile bottom nav already
          uses (.donor-mobile-nav / data-view), just given a horizontal home here too. -->
-    <nav class="hidden md:flex items-center gap-1">
+    <nav id="donorPrimaryNav" class="hidden md:flex items-center gap-1">
       <button class="donor-mobile-nav press-scale flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-primary cursor-pointer" data-view="dashboard">
         <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">home</span>
-        <span class="text-[10px] font-bold">Home</span>
+        <span class="text-[10px] font-bold" data-i18n-key="home">Home</span>
       </button>
       <button class="donor-mobile-nav press-scale flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-on-surface-variant cursor-pointer" data-view="requests">
         <span class="material-symbols-outlined text-lg">assignment</span>
-        <span class="text-[10px] font-bold">Requests</span>
+        <span class="text-[10px] font-bold" data-i18n-key="requests">Requests</span>
       </button>
-      <button id="btnNavCenters" class="press-scale flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-on-surface-variant hover:text-on-surface cursor-pointer">
+      <button id="btnNavCenters" class="donor-mobile-nav press-scale flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-on-surface-variant cursor-pointer" data-view="centers">
         <span class="material-symbols-outlined text-lg">location_on</span>
-        <span class="text-[10px] font-bold">Centers</span>
+        <span class="text-[10px] font-bold" data-i18n-key="centers">Centers</span>
       </button>
       <button class="donor-mobile-nav press-scale flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-on-surface-variant cursor-pointer" data-view="badges">
         <span class="material-symbols-outlined text-lg">insights</span>
-        <span class="text-[10px] font-bold">Impact</span>
+        <span class="text-[10px] font-bold" data-i18n-key="impact">Impact</span>
       </button>
       <button class="donor-mobile-nav press-scale flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl text-on-surface-variant cursor-pointer" data-view="profile">
         <span class="material-symbols-outlined text-lg">person</span>
-        <span class="text-[10px] font-bold">Profile</span>
+        <span class="text-[10px] font-bold" data-i18n-key="profile">Profile</span>
       </button>
     </nav>
 
     <!-- Top Right Actions -->
     <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Language toggle (EN/FR) — desktop only, mirrors the mockup's header pill next to
+           dark mode. Shares state with i18n.js's setLang/getLang (localStorage 'vitalpulse_lang',
+           same source hospital.html's floating toggle uses) so switching here or on hospital
+           stays in sync. On mobile it lives inside the nav drawer footer instead. -->
+      <div id="donorLangToggle" class="hidden md:flex items-center gap-0.5 bg-surface-container-low rounded-full p-1 border border-outline-variant/15" role="group" aria-label="Language">
+        <button data-lang="en" class="donor-lang-btn px-2.5 py-1 rounded-full text-[10px] font-black transition-colors cursor-pointer">EN</button>
+        <button data-lang="fr" class="donor-lang-btn px-2.5 py-1 rounded-full text-[10px] font-black transition-colors cursor-pointer">FR</button>
+      </div>
+
       <!-- Theme toggle (light/dark) — desktop only; on mobile it lives inside the nav drawer. -->
       <button data-theme-toggle aria-label="Switch to dark mode" title="Dark mode" class="hidden md:flex press-scale w-10 h-10 rounded-full bg-surface-container-low hover:bg-surface-container text-on-surface-variant items-center justify-center transition-colors cursor-pointer border border-outline-variant/15">
         <span class="material-symbols-outlined text-xl">dark_mode</span>
@@ -124,7 +135,7 @@
       </button>
 
       <!-- Account Menu (desktop only — on mobile the account lives in the nav drawer) -->
-      <div class="relative hidden md:block">
+      <div id="donorAccountMenuWrap" class="relative hidden md:block">
         <button id="btnDonorAccountMenu" class="flex items-center gap-2.5 p-1 pr-2 sm:pr-3 rounded-full bg-surface-container-lowest border border-outline-variant/20 hover:border-primary/40 shadow-xs transition-all cursor-pointer">
           <div class="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-rose-600 text-on-primary font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0 ring-2 ring-primary/20">
             <span id="donorUserInitials">MA</span>
@@ -186,19 +197,19 @@
     <!-- Destinations -->
     <nav class="flex-1 overflow-y-auto p-3 space-y-1 slim-scroll">
       <button class="donor-mobile-nav press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-primary hover:bg-surface-container-low cursor-pointer text-left" data-view="dashboard">
-        <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">home</span> Home
+        <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">home</span> <span data-i18n-key="home">Home</span>
       </button>
       <button class="donor-mobile-nav press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer text-left" data-view="requests">
-        <span class="material-symbols-outlined text-xl">assignment</span> Requests
+        <span class="material-symbols-outlined text-xl">assignment</span> <span data-i18n-key="requests">Requests</span>
       </button>
-      <button id="btnNavCentersMobile" class="press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer text-left">
-        <span class="material-symbols-outlined text-xl">location_on</span> Donation Centers
+      <button id="btnNavCentersMobile" class="donor-mobile-nav press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer text-left" data-view="centers">
+        <span class="material-symbols-outlined text-xl">location_on</span> <span data-i18n-key="donation centers">Donation Centers</span>
       </button>
       <button class="donor-mobile-nav press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer text-left" data-view="badges">
-        <span class="material-symbols-outlined text-xl">insights</span> Impact &amp; Badges
+        <span class="material-symbols-outlined text-xl">insights</span> <span data-i18n-key="impact & badges">Impact &amp; Badges</span>
       </button>
       <button class="donor-mobile-nav press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer text-left" data-view="profile">
-        <span class="material-symbols-outlined text-xl">person</span> Profile
+        <span class="material-symbols-outlined text-xl">person</span> <span data-i18n-key="profile">Profile</span>
       </button>
       <div class="my-2 border-t border-outline-variant/15"></div>
       <button data-action="switch-view" data-view="care-reminders" class="press-scale w-full flex items-center gap-3.5 px-3 py-3 rounded-xl text-sm font-bold text-on-surface-variant hover:bg-surface-container-low cursor-pointer text-left">
@@ -220,6 +231,13 @@
       <button data-theme-toggle aria-label="Switch to dark mode" title="Dark mode" class="press-scale w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-sm font-bold text-on-surface hover:bg-surface-container-low cursor-pointer text-left">
         <span class="material-symbols-outlined text-xl">dark_mode</span> <span data-theme-label>Dark mode</span>
       </button>
+      <div id="donorLangToggleMobile" class="flex items-center gap-3.5 px-3 py-1" role="group" aria-label="Language">
+        <span class="material-symbols-outlined text-xl text-on-surface-variant">language</span>
+        <div class="flex items-center gap-0.5 bg-surface-container-low rounded-full p-1 border border-outline-variant/15">
+          <button data-lang="en" class="donor-lang-btn px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer">EN</button>
+          <button data-lang="fr" class="donor-lang-btn px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer">FR</button>
+        </div>
+      </div>
       <button class="logout-btn press-scale w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-sm font-bold text-error hover:bg-error-container/40 cursor-pointer text-left">
         <span class="material-symbols-outlined text-xl">logout</span> Log Out
       </button>
@@ -239,6 +257,12 @@
 <!-- ============================== -->
 <div id="view-dashboard" class="space-y-8">
 
+  <!-- Stream D — Pending & Verified Dashboard states. One of three mutually-exclusive
+       banners (under-review / KYC-skipped / rejected), or empty+hidden when verified /
+       grandfathered. Populated by renderDonorKycStatusBanner() in donor-dashboard.js,
+       driven by the real-time donors/{uid} listener (D1). -->
+  <div id="donorKycStatusBanner" class="hidden"></div>
+
   <!-- Hero — a clean status header: live eligibility pill, greeting, primary action, and an
        impact/GPS meta line. Layered brand wash + a faint ECG "pulse" watermark (VitalPulse's
        own signature) give it depth without clutter. The old floating impact card and the
@@ -250,160 +274,141 @@
       <path d="M0,20 L120,20 L134,6 L148,34 L160,2 L172,36 L184,20 L400,20" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
 
-    <div class="relative z-10 p-6 md:p-9 lg:p-10">
-      <div class="flex flex-col lg:flex-row lg:items-center gap-7 lg:gap-10">
+    <div class="relative z-10 p-6 md:p-8 lg:p-9">
+      <div class="flex flex-col lg:flex-row lg:items-stretch gap-6 lg:gap-8">
 
         <!-- Greeting + actions -->
-        <div class="flex-1 space-y-5 min-w-0">
-          <span id="donorHeroStatusPill" class="stagger-in inline-flex items-center gap-2 bg-surface-container-lowest border border-outline-variant/25 rounded-full pl-2.5 pr-3.5 py-1.5 shadow-xs" style="--stagger-delay:0ms">
-            <span class="relative flex w-2 h-2"><span class="absolute inline-flex w-full h-full rounded-full bg-on-surface-variant/40 animate-ping"></span><span class="relative inline-flex w-2 h-2 rounded-full bg-on-surface-variant/60"></span></span>
-            <span id="donorHeroStatus" class="text-xs font-bold text-on-surface">Checking eligibility…</span>
+        <div class="flex-1 space-y-3 min-w-0">
+          <h1 class="stagger-in text-3xl sm:text-4xl lg:text-[2.9rem] font-black font-headline text-on-surface tracking-tight leading-[1.05]" style="--stagger-delay:0ms">
+            Welcome back, <span id="donorWelcomeName">Donor</span>.
+          </h1>
+
+          <span id="donorHeroStatusPill" class="stagger-in inline-flex items-center gap-1.5 bg-success-container/60 text-on-success-container rounded-full pl-2.5 pr-3.5 py-1.5" style="--stagger-delay:40ms">
+            <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">check_circle</span>
+            <span id="donorHeroStatus" class="text-xs font-bold">Checking eligibility…</span>
           </span>
 
-          <div class="space-y-3">
-            <h1 class="stagger-in text-3xl sm:text-4xl lg:text-[2.9rem] font-black font-headline text-on-surface tracking-tight leading-[1.05]" style="--stagger-delay:60ms">
-              Welcome back, <span id="donorWelcomeName" class="text-primary">Donor</span>.
-            </h1>
-            <p id="donorHeroMessage" class="stagger-in text-on-surface-variant text-sm md:text-base font-medium max-w-lg leading-relaxed" style="--stagger-delay:110ms">
+          <!-- Text column (left) | Lives-saved + Live GPS stat box (right) — a two-column
+               row inside the hero card, matching "Home Dashboard.png" exactly (the stat box
+               sits beside the paragraph, not below it). -->
+          <div class="stagger-in grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-stretch pt-1" style="--stagger-delay:80ms">
+            <p id="donorHeroMessage" class="text-on-surface-variant text-sm md:text-base font-medium leading-relaxed self-center">
               Your single donation can save lives. Together, we can build a healthier Cameroon.
             </p>
+            <div class="bg-surface-container-low/60 rounded-2xl px-6 py-4 flex flex-col items-center justify-center text-center min-w-[180px]">
+              <p class="text-3xl font-black font-headline text-primary leading-none"><span id="statLivesSavedText">—</span></p>
+              <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mt-1">Lives Saved So Far</p>
+              <button id="btnEnableGpsLocation" onclick="window.enableLiveGpsLocation()" class="press-scale inline-flex items-center gap-1 mt-2 text-primary hover:opacity-80 font-bold text-xs transition-opacity cursor-pointer">
+                <span class="material-symbols-outlined text-sm">location_on</span>
+                <span id="gpsStatusText">Enable Live GPS</span>
+              </button>
+            </div>
           </div>
 
-          <div class="stagger-in flex flex-wrap items-center gap-3" style="--stagger-delay:160ms">
-            <button id="btnScheduleDonationDesktop" onclick="openDonationModal()" class="press-scale inline-flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-extrabold px-6 py-3.5 rounded-2xl shadow-lg shadow-primary/25 transition-opacity text-sm cursor-pointer">
+          <div class="stagger-in flex flex-wrap items-center gap-3 pt-2" style="--stagger-delay:120ms">
+            <button id="btnScheduleDonationDesktop" onclick="openDonationModal()" class="press-scale relative inline-flex items-center gap-2 bg-primary hover:opacity-90 text-on-primary font-extrabold px-6 py-3.5 rounded-2xl shadow-lg shadow-primary/25 transition-opacity text-sm cursor-pointer disabled:cursor-not-allowed">
               <span class="material-symbols-outlined text-lg">event_available</span>
               Schedule a Donation
-              <span class="material-symbols-outlined text-base">arrow_forward</span>
+              <!-- D3 lock overlay — toggled by applyKycLocksToDOM() in donor-dashboard.js -->
+              <span id="scheduleDonationHeroLock" class="hidden absolute inset-0 rounded-2xl bg-surface-container-lowest/90 backdrop-blur-[2px] items-center justify-center gap-1.5 text-on-surface-variant">
+                <span class="material-symbols-outlined text-base">lock</span>
+                <span class="text-xs font-bold">Verify to unlock</span>
+              </span>
             </button>
             <button data-action="switch-view" data-view="requests" class="press-scale inline-flex items-center gap-2 bg-surface-container-lowest hover:bg-surface-container-low text-on-surface font-bold px-5 py-3.5 rounded-2xl transition-colors text-sm border border-outline-variant/25 cursor-pointer">
-              <span class="material-symbols-outlined text-lg">assignment</span>
               View requests
-            </button>
-          </div>
-
-          <div class="stagger-in flex flex-wrap items-center gap-x-5 gap-y-2 text-xs pt-0.5" style="--stagger-delay:200ms">
-            <span class="inline-flex items-center gap-1.5 text-on-surface-variant">
-              <span class="material-symbols-outlined text-base text-primary" style="font-variation-settings:'FILL' 1">favorite</span>
-              <span><span id="statLivesSavedText" class="font-black text-on-surface">—</span> <span class="font-medium">lives saved so far</span></span>
-            </span>
-            <span class="w-px h-4 bg-outline-variant/40 hidden sm:block"></span>
-            <button id="btnEnableGpsLocation" onclick="window.enableLiveGpsLocation()" class="press-scale inline-flex items-center gap-1.5 text-on-surface-variant hover:text-primary font-bold transition-colors cursor-pointer">
-              <span class="material-symbols-outlined text-sm">my_location</span>
-              <span id="gpsStatusText">Enable Live GPS</span>
             </button>
           </div>
         </div>
 
-        <!-- Illustration — clean framed tile with a soft radial glow (the source PNG isn't
-             alpha-transparent, so the frame is intentional rather than a background artifact). -->
-        <div class="stagger-in shrink-0 relative w-44 h-44 sm:w-56 sm:h-56 lg:w-64 lg:h-64 mx-auto lg:mx-0" style="--stagger-delay:100ms">
-          <div class="absolute inset-0 rounded-full bg-gradient-to-br from-primary/20 to-tertiary/15 blur-2xl scale-90 pointer-events-none"></div>
-          <div class="relative w-full h-full rounded-[2rem] bg-white shadow-xl shadow-primary/10 p-2.5 ring-1 ring-black/5">
-            <img src="/assets/blood_hand_3d.png" alt="Hands cupping a blood drop" class="w-full h-full object-cover rounded-[1.6rem]"/>
+        <!-- Active Blood Type card — right rail of the hero, matching "Home Dashboard.png"'s
+             standalone stat panel (Active Blood Type / Total Donations / Lives Saved /
+             Eligibility). Replaces the old decorative illustration tile with real data. -->
+        <div class="stagger-in shrink-0 w-full lg:w-[280px] border-l-4 border-l-primary border-y border-r border-outline-variant/20 bg-surface-container-lowest rounded-3xl p-5 md:p-6 shadow-sm flex flex-col" style="--stagger-delay:100ms">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-bold text-on-surface-variant">Active Blood Type</p>
+            <span class="w-9 h-9 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+              <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">water_drop</span>
+            </span>
+          </div>
+          <p id="donorBloodTypeVal" class="text-5xl font-black font-headline text-on-surface tracking-tight mt-1 leading-none">—</p>
+          <span id="donorBloodTypeLabel" class="hidden"></span>
+
+          <div class="h-px bg-outline-variant/20 my-4"></div>
+
+          <div class="space-y-3.5">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Total Donations</span>
+              <span id="statDonations" class="text-sm font-black text-on-surface">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Lives Saved</span>
+              <span id="statLivesSaved" class="text-sm font-black text-on-surface">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Eligibility</span>
+              <span id="donorEligibilityQuickStat" class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-success-container text-on-success-container">—</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- Primary content: full width, single flow (stats → quick actions → requests/map). This
-       used to be the left half of a fixed 2-column grid, paired against a right-hand rail —
-       whenever one side's content ran shorter than the other (which varies with real data:
-       no active campaign, no badges yet, an empty requests feed…) the shorter side left a
-       slab of dead white space. The status cards below now live in their own full-width
-       responsive grid instead of a fixed-height rail. -->
+  <!-- Primary content: full width, single flow (quick actions → requests/map → status
+       cards). The old separate 4-card identity/history/impact/status row was folded into
+       the hero's "Active Blood Type" panel above ("Home Dashboard.png" shows these as one
+       unit, not a second duplicate row) so the same numbers aren't shown twice on first paint. -->
   <div class="space-y-6">
-
-      <!-- Four equal stat cards: identity, history, impact, and status at a glance. -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
-        <div id="donorBloodTypeCard" class="hover-lift bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
-          <div class="flex items-center justify-between mb-3">
-            <span class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-              <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">water_drop</span>
-            </span>
-          </div>
-          <p class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Blood Type</p>
-          <p class="text-2xl font-black font-headline text-on-surface tracking-tight leading-tight mt-0.5" id="donorBloodTypeVal">—</p>
-          <span class="inline-block mt-2 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-100 text-red-700" id="donorBloodTypeLabel">Common</span>
-        </div>
-
-        <div class="hover-lift bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
-          <span class="w-10 h-10 rounded-full bg-success-container/50 text-success flex items-center justify-center shrink-0 mb-3">
-            <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">favorite</span>
-          </span>
-          <p class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Total Donations</p>
-          <p class="text-2xl font-black font-headline text-on-surface tracking-tight leading-tight mt-0.5" id="statDonations">0</p>
-          <span class="inline-block mt-2 text-[10px] font-bold text-success">Keep it up!</span>
-        </div>
-
-        <div class="hover-lift bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
-          <span class="w-10 h-10 rounded-full bg-warning-container/50 text-warning flex items-center justify-center shrink-0 mb-3">
-            <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">groups</span>
-          </span>
-          <p class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Lives Saved</p>
-          <p class="text-2xl font-black font-headline text-on-surface tracking-tight leading-tight mt-0.5" id="statLivesSaved">0</p>
-          <span class="inline-block mt-2 text-[10px] font-bold text-warning">Amazing!</span>
-        </div>
-
-        <div class="hover-lift bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-5 shadow-sm">
-          <span class="w-10 h-10 rounded-full bg-tertiary-container/50 text-tertiary flex items-center justify-center shrink-0 mb-3">
-            <span class="material-symbols-outlined text-lg">verified_user</span>
-          </span>
-          <p class="text-[11px] font-bold text-on-surface-variant uppercase tracking-wider">Eligibility</p>
-          <p class="text-2xl font-black font-headline text-on-surface tracking-tight leading-tight mt-0.5" id="donorEligibilityQuickStat">—</p>
-          <span class="inline-block mt-2 text-[10px] font-bold text-tertiary" id="donorEligibilityQuickTag">Check status</span>
-        </div>
-      </div>
 
       <!-- Quick Actions -->
       <section class="space-y-3">
         <h2 class="text-base font-black font-headline text-on-surface">What would you like to do?</h2>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <button onclick="openDonationModal()" class="press-scale hover-lift relative bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 text-left shadow-sm cursor-pointer">
-            <span class="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2.5">
-              <span class="material-symbols-outlined text-lg">event_available</span>
+          <button id="btnQuickScheduleDonation" onclick="openDonationModal()" class="press-scale hover-lift relative bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 text-left shadow-sm cursor-pointer disabled:cursor-not-allowed">
+            <span class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-2.5">
+              <span class="material-symbols-outlined text-lg">calendar_month</span>
             </span>
-            <p class="text-xs font-extrabold text-on-surface leading-snug">Schedule Donation</p>
-            <p class="text-[10px] text-on-surface-variant mt-0.5">Pick a date &amp; time</p>
-            <span class="material-symbols-outlined text-sm text-on-surface-variant/40 absolute bottom-3 right-3">chevron_right</span>
+            <p class="text-sm font-extrabold text-on-surface leading-snug">Schedule Donation</p>
+            <p class="text-[11px] text-on-surface-variant mt-0.5">Book your next visit at a center near you.</p>
+            <!-- D3 lock overlay — toggled by applyKycLocksToDOM() in donor-dashboard.js -->
+            <span id="scheduleDonationTileLock" class="hidden absolute inset-0 rounded-2xl bg-surface-container-lowest/90 backdrop-blur-[2px] flex-col items-center justify-center gap-1 text-center px-2">
+              <span class="material-symbols-outlined text-lg text-on-surface-variant">lock</span>
+              <span class="text-[9px] font-bold text-on-surface-variant leading-tight">Verify to unlock</span>
+            </span>
           </button>
 
-          <button id="btnQuickFindCenters" class="press-scale hover-lift relative bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 text-left shadow-sm cursor-pointer">
-            <span class="w-10 h-10 rounded-full bg-success-container/50 text-success flex items-center justify-center mb-2.5">
-              <span class="material-symbols-outlined text-lg">location_on</span>
+          <button id="btnQuickFindCenters" data-action="switch-view" data-view="centers" class="press-scale hover-lift relative bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 text-left shadow-sm cursor-pointer">
+            <span class="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-2.5">
+              <span class="material-symbols-outlined text-lg">map</span>
             </span>
-            <p class="text-xs font-extrabold text-on-surface leading-snug">Find Donation Center</p>
-            <p class="text-[10px] text-on-surface-variant mt-0.5">Locate nearby</p>
-            <span class="material-symbols-outlined text-sm text-on-surface-variant/40 absolute bottom-3 right-3">chevron_right</span>
+            <p class="text-sm font-extrabold text-on-surface leading-snug">Find Center</p>
+            <p class="text-[11px] text-on-surface-variant mt-0.5">Locate nearest donation points and clinics.</p>
           </button>
 
           <button data-action="switch-view" data-view="mythhub" class="press-scale hover-lift relative bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 text-left shadow-sm cursor-pointer">
-            <span class="w-10 h-10 rounded-full bg-tertiary-container/50 text-tertiary flex items-center justify-center mb-2.5">
-              <span class="material-symbols-outlined text-lg">menu_book</span>
+            <span class="w-10 h-10 rounded-full bg-success-container/50 text-success flex items-center justify-center mb-2.5">
+              <span class="material-symbols-outlined text-lg">school</span>
             </span>
-            <p class="text-xs font-extrabold text-on-surface leading-snug">Learn About Donation</p>
-            <p class="text-[10px] text-on-surface-variant mt-0.5">Guide &amp; FAQs</p>
-            <span class="material-symbols-outlined text-sm text-on-surface-variant/40 absolute bottom-3 right-3">chevron_right</span>
+            <p class="text-sm font-extrabold text-on-surface leading-snug">Learn</p>
+            <p class="text-[11px] text-on-surface-variant mt-0.5">Understand the process and benefits.</p>
           </button>
 
           <div id="availabilityToggle" class="press-scale hover-lift relative bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 text-left shadow-sm cursor-pointer">
-            <span class="w-10 h-10 rounded-full bg-secondary-container/40 text-secondary flex items-center justify-center mb-2.5">
-              <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">favorite</span>
-            </span>
-            <p class="text-xs font-extrabold text-on-surface leading-snug">Update Availability</p>
-            <div class="flex items-center gap-2 mt-1.5">
+            <div class="absolute top-4 right-4">
               <div id="availabilityTrack" class="relative inline-block w-9 h-5 transition duration-200 ease-in rounded-full bg-success">
                 <span id="availabilityThumb" class="absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition-transform translate-x-4 shadow-xs"></span>
               </div>
-              <span id="donorStatusLabel" class="text-[10px] font-bold text-on-surface-variant">Available</span>
             </div>
+            <p class="text-sm font-extrabold text-on-surface leading-snug pr-10">Availability</p>
+            <p class="text-[11px] text-on-surface-variant mt-0.5 pr-2">Broadcast your eligibility for urgent requests.</p>
+            <span id="donorStatusLabel" class="hidden">Available</span>
           </div>
         </div>
       </section>
 
       <!-- Last Donation history trigger — folded into a slim row rather than its own big card. -->
-      <button data-open-donation-history class="press-scale w-full flex items-center justify-between bg-surface-container-lowest border border-outline-variant/20 rounded-2xl px-5 py-3.5 shadow-sm text-left cursor-pointer group">
+      <button data-open-donation-history class="press-scale w-full flex items-center justify-between border-l-4 border-l-primary border-y border-r border-outline-variant/20 bg-surface-container-lowest rounded-2xl px-5 py-3.5 shadow-sm text-left cursor-pointer group">
         <span class="flex items-center gap-3">
           <span class="material-symbols-outlined text-lg text-on-surface-variant/60">calendar_today</span>
           <span class="text-xs font-bold text-on-surface-variant">Last Donation</span>
@@ -453,15 +458,23 @@
           <button id="btnViewAllRequestsTop" class="press-scale text-primary font-bold text-xs hover:underline cursor-pointer" data-action="switch-view" data-view="requests">View All</button>
         </div>
 
-        <!-- City quick-filter chips, replacing the old schematic Cameroon outline map -->
-        <div id="cityChipRow" class="flex items-center gap-2.5 overflow-x-auto slim-scroll pb-0.5 -mx-1 px-1"></div>
+        <!-- City quick-filter chips (left) + Blood Requests/Donation Centers map-layer toggle
+             (right) — same row, matching "Home Dashboard.png" exactly (the toggle sits above
+             the map, not inside the right-column panel). -->
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div id="cityChipRow" class="flex items-center gap-2.5 overflow-x-auto slim-scroll pb-0.5 -mx-1 px-1"></div>
+          <div class="flex bg-surface-container-low rounded-xl p-1 gap-1 shrink-0">
+            <button id="tabBtnRequests" class="press-scale px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Blood Requests</button>
+            <button id="tabBtnCenters" class="press-scale px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Donation Centers</button>
+          </div>
+        </div>
 
         <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
           <!-- Shared real map: donor + blood requests + donation centers.
                `isolate` (isolation: isolate) traps Leaflet's internal z-indexes (its panes/
                controls go up to ~1000) inside this box's own stacking context, so they can
                never paint over a modal (which sits at the document root, z-60+). -->
-          <div class="md:col-span-2 relative isolate bg-gradient-to-br from-primary/[0.03] to-transparent border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm">
+          <div class="md:col-span-3 relative isolate bg-gradient-to-br from-primary/[0.03] to-transparent border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm">
             <div id="nearbyMap" class="w-full h-80 md:h-[440px]"></div>
             <div class="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 pointer-events-none z-[1000]">
               <span class="inline-flex items-center gap-1.5 bg-white/95 backdrop-blur-sm text-[10px] font-bold text-slate-700 px-2.5 py-1 rounded-full shadow-sm border border-white/50"><span class="w-2 h-2 rounded-full bg-[#af101a] inline-block ring-1 ring-white/50"></span>You</span>
@@ -470,16 +483,30 @@
             </div>
           </div>
 
-          <!-- Tabs switch which list shows beside the shared map -->
-          <div class="md:col-span-3 space-y-3">
-            <div class="flex bg-surface-container-low rounded-xl p-1 gap-1 w-full">
-              <button id="tabBtnRequests" class="press-scale flex-1 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Blood Requests</button>
-              <button id="tabBtnCenters" class="press-scale flex-1 px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Donation Centers</button>
+          <!-- Right column — persistent "Live Requests"/"Donation Centers" panel, switched by
+               the tabs above the map. "N Near You" count badge mirrors "Home Dashboard.png"'s
+               right-column panel heading exactly. -->
+          <div class="md:col-span-2 space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <h3 id="nearbyPanelTitle" class="text-base font-black font-headline text-on-surface">Live Requests</h3>
+              <span id="nearbyPanelCount" class="shrink-0 text-[10px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-full">0 Near You</span>
             </div>
 
-            <div id="requestsFeed" class="space-y-3">
-              <div class="skeleton h-20"></div>
-              <div class="skeleton h-20"></div>
+            <!-- D3: Live Requests panel — locked while KYC-pending/rejected. Donation
+                 Centers below stays fully usable per D4, so only this wrapper is gated.
+                 The overlay is a SIBLING of #requestsFeed, not a child — renderFilteredFeed()
+                 fully replaces #requestsFeed's innerHTML on every render, which would wipe
+                 out a child overlay. -->
+            <div class="relative">
+              <div id="requestsFeed" class="space-y-3">
+                <div class="skeleton h-20"></div>
+                <div class="skeleton h-20"></div>
+              </div>
+              <div id="requestsFeedLockOverlay" class="hidden absolute inset-0 rounded-2xl bg-surface-container-lowest/85 backdrop-blur-[2px] flex-col items-center justify-center gap-2 text-center px-6 z-10">
+                <span class="material-symbols-outlined text-2xl text-on-surface-variant">lock</span>
+                <p class="text-sm font-bold text-on-surface">Verification required</p>
+                <p class="text-xs text-on-surface-variant max-w-xs">Complete identity verification to respond to blood requests.</p>
+              </div>
             </div>
             <div id="donationCentersList" class="hidden space-y-3">
               <div class="skeleton h-20"></div>
@@ -499,25 +526,56 @@
 
     </div>
 
-    <!-- Status cards — a responsive grid instead of a fixed narrow sidebar, so height
-         distributes across rows/columns instead of stacking in one column that can run much
-         taller or shorter than whatever's beside it. -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Bronze Tier + Upcoming Campaign — a 2-up row matching "Home Dashboard.png"'s
+         side-by-side pairing (previously squeezed into a 4-up grid alongside two cards the
+         mockup doesn't show at this level at all; those move to their own secondary row
+         below so real, working functionality isn't deleted, just de-emphasized). -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-      <!-- Your Status: Eligibility + Tier combined into one card -->
-      <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl shadow-sm overflow-hidden">
-        <div id="donorEligibilityBar" class="p-6 space-y-3">
-          <div class="skeleton h-24"></div>
+      <!-- Bronze/Silver/Gold/Platinum tier card — matches "Home Dashboard.png"'s Bronze Tier
+           card exactly: gold emblem + dynamic "{Tier} Tier" title, amber "You're N donations
+           away…" subtitle (set inside renderTierJourneyStepper's own output, showHeader:false
+           so its internal title doesn't duplicate this one), stepper, perks row.
+           #donorEligibilityBar stays in the DOM (hidden) purely as a JS anchor — the
+           eligibility computation it triggers also drives the hero pill, the hero's
+           Eligibility pill, and the Donation Journey checklist below; the mock doesn't show
+           a separate eligibility bar on this card at all (that data already lives in the
+           hero), so nothing here is visually lost by hiding it. -->
+      <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl shadow-sm p-6">
+        <div class="flex items-center gap-3 mb-1">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-200 flex items-center justify-center shrink-0 shadow-sm shadow-amber-500/30 border border-yellow-200/60">
+            <span class="material-symbols-outlined text-lg text-amber-900" style="font-variation-settings: 'FILL' 1;">military_tech</span>
+          </div>
+          <h3 id="donorTierCardTitle" class="font-black font-headline text-on-surface text-lg tracking-tight">Bronze Tier</h3>
         </div>
-        <div id="donorTierProgress" class="p-6 border-t border-outline-variant/15">
+        <div id="donorEligibilityBar" class="hidden"></div>
+        <div id="donorTierProgress" class="mt-4">
           <div class="skeleton h-24"></div>
         </div>
       </div>
 
-      <!-- Your Donation Journey — a simple checklist of real milestones, computed from actual
-           account/engagement state, not decorative. -->
+      <!-- Upcoming Campaign Card — white/neutral chrome + red eyebrow label, matching "Home
+           Dashboard.png" exactly (not the green promo tint used before). Heading lives
+           outside the dynamic region so it survives re-renders. No stock photo: the mock
+           shows one, but there's no per-campaign image in this schema — inventing one would
+           be fabricated data, not a style choice, so this stays a text-only card. -->
+      <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm space-y-3">
+        <p class="text-[10px] font-black uppercase tracking-widest text-primary">Upcoming Campaign</p>
+        <div id="donorCampaigns">
+          <div class="skeleton h-16"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Secondary status row — Donation Journey checklist + Badges summary. Real, working
+         features that go beyond what "Home Dashboard.png" itself shows at this level (badges
+         reappear as their own full page in "Your Impact.png"); kept here as a smaller,
+         secondary row rather than deleted outright. -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
       <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm">
-        <h3 class="font-extrabold font-headline text-on-surface text-base mb-4">Your Donation Journey</h3>
+        <h3 class="font-extrabold font-headline text-on-surface text-base mb-4">Your Donation Journey Checklist</h3>
         <div id="donorJourneyChecklist" class="space-y-3">
           <div class="skeleton h-8"></div>
           <div class="skeleton h-8"></div>
@@ -526,7 +584,6 @@
         </div>
       </div>
 
-      <!-- Badges -->
       <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm space-y-3">
         <div class="flex items-center gap-3">
           <div class="w-9 h-9 rounded-full bg-secondary text-on-secondary flex items-center justify-center shrink-0">
@@ -539,19 +596,9 @@
         </div>
       </div>
 
-      <!-- Upcoming Campaign Card — heading lives outside the dynamic region so it survives
-           re-renders (it was previously wiped every time real campaign data loaded in). -->
-      <div class="bg-success-container/30 border border-success/20 rounded-2xl p-6 shadow-sm space-y-4">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full bg-success text-on-success flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-lg">campaign</span>
-          </div>
-          <h3 class="font-extrabold font-headline text-on-surface text-base">Upcoming Campaign</h3>
-        </div>
-        <div id="donorCampaigns">
-          <div class="skeleton h-16"></div>
-        </div>
-      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
 
       <!-- Recent Activity -->
       <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-6 shadow-sm space-y-3">
@@ -562,18 +609,29 @@
         </div>
       </div>
 
-      <!-- Did You Know? — an editorial pull-quote instead of another icon-in-a-box card -->
-      <div class="relative bg-tertiary-container/25 border border-tertiary/20 rounded-2xl p-6 shadow-sm overflow-hidden">
-        <span class="absolute top-3 left-4 font-headline text-6xl font-black text-tertiary/15 leading-none select-none" aria-hidden="true">&ldquo;</span>
-        <div class="relative pt-5">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-tertiary mb-2">Did you know?</p>
-          <p class="text-sm text-on-surface leading-relaxed font-bold font-headline">
-            Blood cannot be manufactured — it can only be donated.
+      <!-- Did You Know? — solid dark red card matching "Home Dashboard.png" exactly. -->
+      <div class="relative bg-gradient-to-br from-primary to-[#7a0c14] rounded-2xl p-6 shadow-sm overflow-hidden">
+        <div class="absolute -right-6 -bottom-8 w-28 h-28 rounded-full bg-white/5 pointer-events-none"></div>
+        <div class="relative">
+          <h3 class="text-base font-black font-headline text-white mb-2">Did You Know?</h3>
+          <p class="text-sm text-white/85 leading-relaxed font-medium">
+            One donation of blood can save up to 3 lives. The body replenishes the blood volume in about 24 hours.
           </p>
-          <p class="text-[11px] font-medium text-on-surface-variant mt-2">
-            Your donation makes a difference!
-          </p>
+          <button type="button" onclick="switchDonorView('mythhub')" class="press-scale mt-4 inline-flex items-center bg-white/10 border border-white/25 text-white font-bold text-xs px-4 py-2.5 rounded-xl hover:bg-white/20 transition-colors cursor-pointer">
+            Read more facts
+          </button>
         </div>
+      </div>
+
+      <!-- Connect Support / Live Chat — E1.3. Static content only (mailto/WhatsApp stub, no
+           real chat backend exists yet), matching "Connect Support" on the Home Dashboard mock. -->
+      <div class="relative bg-secondary-container/30 border border-secondary/20 rounded-2xl p-6 shadow-sm overflow-hidden flex flex-col">
+        <p class="text-[10px] font-bold uppercase tracking-widest text-secondary mb-2">Connect Support</p>
+        <h3 class="text-sm font-black font-headline text-on-surface leading-snug">Need assistance with your booking?</h3>
+        <a href="https://wa.me/?text=Hi%2C%20I%20need%20help%20with%20my%20VitalPulse%20donor%20account." target="_blank" rel="noopener" class="press-scale mt-4 inline-flex items-center gap-2 self-start bg-on-surface text-surface font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-sm transition-opacity hover:opacity-90">
+          <span class="material-symbols-outlined text-base">chat</span>
+          Live Chat
+        </a>
       </div>
 
     </div>
@@ -625,6 +683,23 @@
     </div>
   </div>
 
+  <!-- E2.1: 3 stat cards, computed client-side from the already-fetched journeys/requests
+       arrays (_activeJourneys, currentUser) — no new Firestore reads. -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="hover-lift bg-surface-container-lowest border-l-4 border-primary border-y border-r border-outline-variant/20 rounded-2xl p-4 shadow-sm flex items-center gap-3.5">
+      <span class="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">assignment</span></span>
+      <div class="min-w-0"><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Active Requests</p><p id="reqStatActive" class="text-2xl font-black font-headline text-on-surface leading-tight">0</p></div>
+    </div>
+    <div class="hover-lift bg-surface-container-lowest border-l-4 border-error border-y border-r border-outline-variant/20 rounded-2xl p-4 shadow-sm flex items-center gap-3.5">
+      <span class="w-10 h-10 rounded-full bg-error-container/50 text-error flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">priority_high</span></span>
+      <div class="min-w-0"><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Urgent</p><p id="reqStatUrgent" class="text-2xl font-black font-headline text-on-surface leading-tight">0</p></div>
+    </div>
+    <div class="hover-lift bg-surface-container-lowest border-l-4 border-success border-y border-r border-outline-variant/20 rounded-2xl p-4 shadow-sm flex items-center gap-3.5">
+      <span class="w-10 h-10 rounded-full bg-success-container/50 text-success flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">water_drop</span></span>
+      <div class="min-w-0"><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Your Blood Type</p><p id="reqStatBloodType" class="text-2xl font-black font-headline text-on-surface leading-tight">—</p></div>
+    </div>
+  </div>
+
   <!-- Filter Pills Bar -->
   <div class="flex items-center gap-2 overflow-x-auto pb-2 slim-scroll">
     <button onclick="window.filterDonorRequests('all')" id="btnFilterReqAll" class="px-4 py-2 rounded-xl text-xs font-bold transition-all bg-primary text-on-primary shadow-sm cursor-pointer shrink-0">
@@ -641,11 +716,131 @@
     </button>
   </div>
 
+  <!-- E2.2: 4 filter dropdowns, alongside (not replacing) the status pills above. Apply to
+       the same journeys data the pills already filter — Blood Type/Component/Urgency come
+       straight off the underlying request docs (subscribeToDonorJourneys returns the full
+       requests/public_requests doc), Distance reuses matchedDistanceKm set at match time. -->
+  <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-4 shadow-sm">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div>
+        <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">Blood Type</label>
+        <select id="reqFilterBloodType" class="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3 py-2 text-xs font-bold text-on-surface outline-none focus:ring-2 focus:ring-primary/20">
+          <option value="">All Types</option>
+          <option value="A+">A+</option><option value="A-">A-</option>
+          <option value="B+">B+</option><option value="B-">B-</option>
+          <option value="O+">O+</option><option value="O-">O-</option>
+          <option value="AB+">AB+</option><option value="AB-">AB-</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">Component</label>
+        <select id="reqFilterComponent" class="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3 py-2 text-xs font-bold text-on-surface outline-none focus:ring-2 focus:ring-primary/20">
+          <option value="">All Components</option>
+          <option value="Whole Blood">Whole Blood</option>
+          <option value="PRBC">PRBC</option>
+          <option value="Plasma">Plasma</option>
+          <option value="Platelets">Platelets</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">Urgency</label>
+        <select id="reqFilterUrgency" class="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3 py-2 text-xs font-bold text-on-surface outline-none focus:ring-2 focus:ring-primary/20">
+          <option value="">Any Urgency</option>
+          <option value="critical">Critical</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">Distance</label>
+        <select id="reqFilterDistance" class="w-full bg-surface-container-low border border-outline-variant/30 rounded-xl px-3 py-2 text-xs font-bold text-on-surface outline-none focus:ring-2 focus:ring-primary/20">
+          <option value="">All Distances</option>
+          <option value="10">Under 10 km</option>
+          <option value="25">Under 25 km</option>
+          <option value="50">Under 50 km</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
   <div id="donorRequestsList" class="space-y-4">
     <div class="skeleton h-24"></div>
     <div class="skeleton h-24"></div>
     <div class="skeleton h-24"></div>
   </div>
+</div>
+
+<!-- VIEW: CENTERS — E5. Was previously a modal (#allCentersModal) opened from "View all";
+     now a dedicated view so it has room for its own map, matching "Donation Centers.png".
+     Note: the mock also shows "Open Now" / hours / "Slots available" / "Book Slot" /
+     "Get Directions" — none of that data exists in the hospital schema (no hours, no slots/
+     booking backend), so it isn't faked here. The real, working action (tap a center → start
+     a donation there via openDonationModalForHospital) is kept instead. -->
+<div id="view-centers" class="hidden space-y-6">
+  <div class="relative bg-gradient-to-br from-error-container/60 via-error-container/20 to-surface-container-lowest rounded-3xl p-6 md:p-7 border border-primary/12 overflow-hidden">
+    <div class="absolute -top-10 -right-8 w-44 h-44 rounded-full bg-primary/10 blur-3xl pointer-events-none"></div>
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative z-10">
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-primary/12 text-primary flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-3xl">location_on</span>
+        </div>
+        <div>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-primary mb-0.5">Live directory</p>
+          <h1 class="text-2xl font-black font-headline text-on-surface tracking-tight">Donation Centers</h1>
+          <p class="text-xs text-on-surface-variant mt-1 max-w-lg font-medium"><span id="allCentersCount">0</span> verified hospitals — find one near you and start a donation.</p>
+        </div>
+      </div>
+      <button class="press-scale inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-surface-container-lowest hover:bg-surface-container-low text-on-surface font-bold text-xs transition-colors border border-outline-variant/25 cursor-pointer shrink-0" data-action="switch-view" data-view="dashboard">
+        <span class="material-symbols-outlined text-sm">arrow_back</span> Back to Dashboard
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+    <!-- Real map — same tile source/marker convention as the Dashboard's shared map, on its
+         own #centersMap div so the two Leaflet instances never collide. -->
+    <div class="md:col-span-2 relative isolate bg-gradient-to-br from-primary/[0.03] to-transparent border border-outline-variant/20 rounded-2xl overflow-hidden shadow-sm">
+      <div id="centersMap" class="w-full h-72 md:h-[560px]"></div>
+      <div class="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5 pointer-events-none z-[1000]">
+        <span class="inline-flex items-center gap-1.5 bg-white/95 backdrop-blur-sm text-[10px] font-bold text-slate-700 px-2.5 py-1 rounded-full shadow-sm border border-white/50"><span class="w-2 h-2 rounded-full bg-[#af101a] inline-block ring-1 ring-white/50"></span>You</span>
+        <span class="inline-flex items-center gap-1.5 bg-white/95 backdrop-blur-sm text-[10px] font-bold text-slate-700 px-2.5 py-1 rounded-full shadow-sm border border-white/50"><span class="w-2 h-2 rounded-full bg-[#1e8e3e] inline-block ring-1 ring-white/50"></span>Centers</span>
+      </div>
+    </div>
+
+    <div class="md:col-span-3 space-y-3">
+      <div class="relative">
+        <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg pointer-events-none">search</span>
+        <input id="allCentersSearch" type="text" placeholder="Search by hospital name or city..." class="w-full bg-surface-container-lowest border border-outline-variant/30 rounded-2xl pl-10 pr-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"/>
+      </div>
+      <div id="allCentersCityRow" class="flex items-center gap-2 overflow-x-auto slim-scroll pb-0.5 -mx-1 px-1"></div>
+      <div id="allCentersList" class="space-y-2.5 max-h-[480px] overflow-y-auto slim-scroll pr-1">
+        <div class="skeleton h-20"></div>
+        <div class="skeleton h-20"></div>
+        <div class="skeleton h-20"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- E5.6: static 3-step section, matching "Your Path to Saving a Life" -->
+  <section class="bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-6 md:p-8 shadow-sm">
+    <h2 class="text-lg font-black font-headline text-on-surface text-center mb-8">Your Path to Saving a Life</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 sm:gap-4 text-center">
+      <div class="flex flex-col items-center">
+        <span class="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-md shadow-primary/25 mb-3"><span class="material-symbols-outlined text-2xl">map</span></span>
+        <p class="font-black text-sm text-primary">1. Find</p>
+        <p class="text-xs text-on-surface-variant mt-1.5 max-w-[220px]">Locate a certified blood donation center convenient to you.</p>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-md shadow-primary/25 mb-3"><span class="material-symbols-outlined text-2xl">event_available</span></span>
+        <p class="font-black text-sm text-primary">2. Schedule</p>
+        <p class="text-xs text-on-surface-variant mt-1.5 max-w-[220px]">Pick a date and time that fits your schedule and confirm your visit.</p>
+      </div>
+      <div class="flex flex-col items-center">
+        <span class="w-14 h-14 rounded-2xl bg-primary text-on-primary flex items-center justify-center shadow-md shadow-primary/25 mb-3"><span class="material-symbols-outlined text-2xl">volunteer_activism</span></span>
+        <p class="font-black text-sm text-primary">3. Donate</p>
+        <p class="text-xs text-on-surface-variant mt-1.5 max-w-[220px]">Complete a quick health check and save up to three lives.</p>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- VIEW: BADGES -->
@@ -676,6 +871,86 @@
     </div>
   </div>
 
+  <!-- D8 — this whole card/stats/badges block reflects real donation history, which by
+       definition can't exist for an account still awaiting admin approval. Shown/hidden by
+       loadDonorBadges() in donor-dashboard.js based on isDonorVerified(). -->
+  <div id="badgesLockedState" class="hidden bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-10 shadow-sm flex-col items-center text-center gap-3">
+    <span class="w-14 h-14 rounded-full bg-warning-container text-on-warning-container flex items-center justify-center"><span class="material-symbols-outlined text-2xl">lock</span></span>
+    <p class="font-bold text-sm text-on-surface">Rewards &amp; achievement medals are locked</p>
+    <p class="text-xs text-on-surface-variant max-w-sm">Your donation history, tier, and badges will appear here once an admin approves your account.</p>
+  </div>
+
+  <div id="badgesContentWrap" class="space-y-8">
+  <!-- E3.1: 3 stat cards — Lives Saved / Total Donations reuse computeDonorEngagement (same
+       source as the Dashboard); Distance Traveled is a pure client-side haversine sum over
+       completed donations using the existing calculateDistanceKm() helper, no new field. -->
+  <div class="bg-surface-container-lowest border-l-4 border-primary border-y border-r border-outline-variant/20 rounded-3xl shadow-sm overflow-hidden">
+    <div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-outline-variant/15">
+      <div class="p-6 text-center">
+        <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Lives Saved</p>
+        <p id="impactStatLives" class="text-3xl font-black font-headline text-primary tracking-tight mt-1">0</p>
+        <p id="impactStatLivesTag" class="text-[11px] font-bold text-success mt-1">Amazing Potential!</p>
+      </div>
+      <div class="p-6 text-center">
+        <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Total Donations</p>
+        <p id="impactStatDonations" class="text-3xl font-black font-headline text-primary tracking-tight mt-1">0</p>
+        <p class="text-[11px] font-bold text-on-surface-variant mt-1">Keep it up!</p>
+      </div>
+      <div class="p-6 text-center">
+        <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Distance Traveled</p>
+        <p id="impactStatDistance" class="text-3xl font-black font-headline text-primary tracking-tight mt-1">0 <span class="text-base">km</span></p>
+        <p class="text-[11px] font-bold text-on-surface-variant mt-1">Every step counts</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- E3.2/E3.3: shared tier-journey stepper (renderTierJourneyStepper, same renderer as the
+       Dashboard's "Your Status" card) plus perk chips, matching the mock's "Your Donation
+       Journey" card. -->
+  <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-6 shadow-sm">
+    <div id="impactTierJourney">
+      <div class="skeleton h-32"></div>
+    </div>
+  </div>
+
+  <!-- E3.4: Donation History, inline instead of in the #myDonationsModal — reuses the exact
+       same fetchDonationRequestsForDonor() data source loadDonorDonations() already renders
+       into the modal's #myDonationsList; this just renders the same rows in a page container. -->
+  <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-6 shadow-sm space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="text-base font-extrabold font-headline text-on-surface">Donation History</h2>
+      <button data-open-donation-history class="text-primary font-bold text-xs hover:underline cursor-pointer">View All &gt;</button>
+    </div>
+    <div id="impactDonationHistory" class="space-y-2">
+      <div class="skeleton h-14"></div>
+      <div class="skeleton h-14"></div>
+    </div>
+  </div>
+
+  <!-- E3.5: Shareable donor card — WhatsApp share via wa.me deep link + canvas toDataURL()
+       download. No new library; canvas is drawn client-side from data already on the page. -->
+  <div class="relative bg-gradient-to-br from-primary to-[#7a0c14] rounded-3xl p-6 md:p-8 shadow-lg overflow-hidden">
+    <div class="absolute -right-10 -bottom-10 w-56 h-56 rounded-full bg-white/5 pointer-events-none"></div>
+    <div class="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+      <div class="flex items-center gap-4 min-w-0">
+        <div id="shareCardBloodType" class="w-14 h-14 rounded-2xl bg-white/15 border border-white/20 text-white font-black text-lg flex items-center justify-center shrink-0 font-headline">—</div>
+        <div class="min-w-0">
+          <h3 class="text-lg font-black font-headline text-white">I'm a VitalPulse Donor!</h3>
+          <p class="text-xs text-white/80 font-medium mt-0.5">Join me and help save lives in Cameroon.</p>
+          <p class="text-[11px] text-white/70 font-bold mt-2"><span id="shareCardDonations">0</span> donations · <span id="shareCardLives">0</span> lives saved</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="btnShareWhatsapp" class="press-scale inline-flex items-center gap-2 bg-[#25D366] text-white font-extrabold text-xs px-4 py-2.5 rounded-xl shadow-sm hover:opacity-90 transition-opacity cursor-pointer">
+          <span class="material-symbols-outlined text-base">share</span> Share on WhatsApp
+        </button>
+        <button id="btnDownloadShareCard" class="press-scale inline-flex items-center gap-2 bg-white/10 border border-white/25 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl hover:bg-white/20 transition-colors cursor-pointer">
+          <span class="material-symbols-outlined text-base">download</span> Download Card
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Badges Grid Container -->
   <div class="space-y-4">
     <div class="flex items-center justify-between px-1">
@@ -689,10 +964,11 @@
       <div class="skeleton h-44"></div>
     </div>
   </div>
+  </div>
 </div>
 
 <!-- VIEW: PROFILE -->
-<div id="view-profile" class="hidden space-y-6 max-w-4xl mx-auto">
+<div id="view-profile" class="hidden space-y-6 max-w-6xl mx-auto">
   <!-- Unified light hero — matches the other subpages; keeps the initials avatar and the
        blood-source / CNI status badges. -->
   <div class="relative bg-gradient-to-br from-error-container/50 via-error-container/15 to-surface-container-lowest rounded-3xl p-6 md:p-7 border border-primary/12 overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -716,137 +992,526 @@
     </button>
   </div>
 
-  <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 space-y-6">
-    <div class="flex items-center justify-between border-b border-outline-variant/15 pb-4">
-      <div>
-        <h2 class="text-base font-extrabold font-headline text-on-surface">Personal & Identity Information</h2>
-        <p class="text-xs text-on-surface-variant">Update your details to ensure fast emergency matching</p>
+  <!-- E4.1: two-column layout — sidebar (avatar/tier/stats/security checklist) + the existing
+       right-column cards (form, now joined by E4.2's Medical Status and E4.3's relabeled
+       notifications). -->
+  <div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-6 items-start">
+
+    <div class="space-y-6">
+      <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-6 shadow-sm text-center">
+        <div class="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-rose-600 text-on-primary font-black text-2xl flex items-center justify-center mx-auto shadow-md shadow-primary/25 ring-4 ring-primary/10">
+          <span id="donorSidebarInitials">MA</span>
+        </div>
+        <p class="font-black text-base font-headline text-on-surface mt-3 truncate" id="donorSidebarName">Donor</p>
+        <div class="flex items-center justify-center gap-1.5 mt-2 flex-wrap">
+          <span id="donorSidebarBloodType" class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-error text-on-error">—</span>
+          <span id="donorSidebarBloodSourceBadge" class="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full"></span>
+        </div>
+
+        <div class="flex items-center justify-between mt-5 pt-5 border-t border-outline-variant/15 text-left">
+          <div class="min-w-0">
+            <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Current Rank</p>
+            <p id="donorSidebarTier" class="text-sm font-black text-on-surface truncate">Bronze Tier</p>
+          </div>
+          <div class="text-right shrink-0">
+            <p id="donorSidebarPoints" class="text-sm font-black text-primary">0 pts</p>
+            <p id="donorSidebarNextTier" class="text-[10px] font-bold text-on-surface-variant">Max tier</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-x-3 gap-y-4 mt-5 pt-5 border-t border-outline-variant/15 text-left">
+          <div><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Donations</p><p id="donorSidebarDonations" class="text-xl font-black font-headline text-on-surface">0</p></div>
+          <div><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Lives Saved</p><p id="donorSidebarLives" class="text-xl font-black font-headline text-on-surface">0</p></div>
+          <div><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Points</p><p id="donorSidebarPointsTile" class="text-xl font-black font-headline text-on-surface">0</p></div>
+          <div><p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Member Since</p><p id="donorSidebarMemberSince" class="text-xl font-black font-headline text-on-surface">—</p></div>
+        </div>
       </div>
-      <span class="material-symbols-outlined text-primary text-2xl">manage_accounts</span>
+
+      <!-- E4.4: Account Security Checklist — all booleans read from existing account state;
+           2FA has no real control yet (that's E4.6, paused behind the review gate below), so
+           it renders as a static "Pending" row, not an interactive toggle. -->
+      <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-3xl p-6 shadow-sm">
+        <h3 class="font-extrabold font-headline text-on-surface text-sm mb-4">Account Security Checklist</h3>
+        <div id="donorSecurityChecklist" class="space-y-3">
+          <div class="skeleton h-6"></div>
+          <div class="skeleton h-6"></div>
+          <div class="skeleton h-6"></div>
+        </div>
+      </div>
     </div>
 
-    <form id="donorProfileForm" class="space-y-6">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div>
-          <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Full Name</label>
-          <input id="donorProfileName" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="e.g. Mai Brandon"/>
-        </div>
-        <div>
-          <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Email Address</label>
-          <input id="donorProfileEmail" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium text-on-surface-variant outline-none transition-all cursor-not-allowed opacity-80" type="email" readonly/>
-        </div>
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Blood Group</label>
+    <div class="space-y-6">
+      <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 space-y-6">
+        <div class="flex items-center justify-between border-b border-outline-variant/15 pb-4">
+          <div>
+            <h2 class="text-base font-extrabold font-headline text-on-surface">Personal & Identity Information</h2>
+            <p class="text-xs text-on-surface-variant">Update your details to ensure fast emergency matching</p>
           </div>
-          <select id="donorProfileBloodType" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface">
-            <option value="A+">A+</option>
-            <option value="A-">A-</option>
-            <option value="B+">B+</option>
-            <option value="B-">B-</option>
-            <option value="O+">O+</option>
-            <option value="O-">O- (Universal Donor)</option>
-            <option value="AB+">AB+</option>
-            <option value="AB-">AB-</option>
-          </select>
-          <p id="donorBloodTypeMismatchNote" class="hidden mt-2 text-[11px] text-amber-600 font-medium flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm">info</span>
-            Note: Your blood type has been verified by hospital lab testing.
-          </p>
+          <span class="material-symbols-outlined text-primary text-2xl">manage_accounts</span>
         </div>
-        <div>
-          <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">City / Region</label>
-          <input id="donorProfileCity" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="e.g. Yaoundé, Douala, Buea"/>
-        </div>
-        <div>
-          <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Phone Number</label>
-          <input id="donorProfilePhone" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="tel" placeholder="+237 6XX XXX XXX"/>
-        </div>
-        <div>
-          <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">National ID (CNI) Hashed Status</label>
-          <input id="donorProfileNationalId" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="Enter National ID (Hashed with SHA-256 for privacy)"/>
+
+        <form id="donorProfileForm" class="space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Full Name</label>
+              <input id="donorProfileName" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="e.g. Mai Brandon"/>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Email Address</label>
+              <input id="donorProfileEmail" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium text-on-surface-variant outline-none transition-all cursor-not-allowed opacity-80" type="email" readonly/>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Blood Group</label>
+              </div>
+              <select id="donorProfileBloodType" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-bold focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface">
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="O+">O+</option>
+                <option value="O-">O- (Universal Donor)</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+              </select>
+              <p id="donorBloodTypeMismatchNote" class="hidden mt-2 text-[11px] text-amber-600 font-medium flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">info</span>
+                Note: Your blood type has been verified by hospital lab testing.
+              </p>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">City / Region</label>
+              <input id="donorProfileCity" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="e.g. Yaoundé, Douala, Buea"/>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Phone Number</label>
+              <input id="donorProfilePhone" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="tel" placeholder="+237 6XX XXX XXX"/>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">National ID (CNI) Hashed Status</label>
+              <input id="donorProfileNationalId" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="Enter National ID (Hashed with SHA-256 for privacy)"/>
+            </div>
+          </div>
+
+          <!-- Emergency Contacts Section -->
+          <div class="border-t border-outline-variant/15 pt-5 space-y-4">
+            <h3 class="text-sm font-extrabold font-headline text-on-surface flex items-center gap-2">
+              <span class="material-symbols-outlined text-red-600 text-lg">contact_emergency</span>
+              Emergency Next-of-Kin Contact
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Next-of-Kin Name</label>
+                <input id="donorEmergencyContactName" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="Parent / Spouse / Sibling Name"/>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Next-of-Kin Phone</label>
+                <input id="donorEmergencyContactPhone" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="tel" placeholder="+237 6XX XXX XXX"/>
+              </div>
+            </div>
+          </div>
+
+          <div class="pt-2 flex justify-end">
+            <button type="submit" class="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-rose-600 hover:opacity-95 text-on-primary px-8 py-3.5 rounded-2xl font-extrabold text-sm shadow-md shadow-primary/20 transition-all cursor-pointer">
+              <span class="material-symbols-outlined text-lg">save</span>
+              Save Profile Changes
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- E4.2: Medical Status — restyle of data already shown elsewhere (blood type, last
+           donation, eligibility), just surfaced here as its own 3-card row per the mock. -->
+      <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 space-y-4">
+        <h2 class="text-base font-extrabold font-headline text-on-surface">Medical Status</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="bg-error-container/30 border border-error/15 rounded-2xl p-4">
+            <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Blood Type</p>
+            <p id="medStatusBloodType" class="text-xl font-black font-headline text-error mt-1">—</p>
+            <span id="medStatusBloodSource" class="text-[9px] font-bold uppercase tracking-wider mt-1.5 inline-block px-2 py-0.5 rounded-full"></span>
+          </div>
+          <div class="bg-surface-container-low border border-outline-variant/15 rounded-2xl p-4">
+            <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Last Donation</p>
+            <p id="medStatusLastDonation" class="text-xl font-black font-headline text-on-surface mt-1">Never</p>
+            <p id="medStatusLastDonationTag" class="text-[10px] font-bold text-on-surface-variant mt-1.5">No records found</p>
+          </div>
+          <div class="bg-success-container/30 border border-success/15 rounded-2xl p-4">
+            <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Eligibility</p>
+            <p id="medStatusEligibility" class="text-xl font-black mt-1">—</p>
+            <p id="medStatusEligibilityTag" class="text-[10px] font-bold mt-1.5"></p>
+          </div>
         </div>
       </div>
 
-      <!-- Emergency Contacts Section -->
-      <div class="border-t border-outline-variant/15 pt-5 space-y-4">
-        <h3 class="text-sm font-extrabold font-headline text-on-surface flex items-center gap-2">
-          <span class="material-symbols-outlined text-red-600 text-lg">contact_emergency</span>
-          Emergency Next-of-Kin Contact
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Next-of-Kin Name</label>
-            <input id="donorEmergencyContactName" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="text" placeholder="Parent / Spouse / Sibling Name"/>
+      <!-- E4.3: relabeled — Emergency Blood Alerts / Email / SMS, matching the mock's "Alert
+           Preferences" wording. WhatsApp Ping is kept as a 4th row alongside them (not in the
+           mock, but real working functionality already shipped — removing it wasn't asked
+           for and this app has no other channel to fall back to for WhatsApp-preferring
+           donors). Language Preference reuses the exact same .donor-lang-btn wiring as the
+           header pill (E1.2) — one shared state, not a second switch. -->
+      <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 space-y-5">
+        <div>
+          <h2 class="text-base font-extrabold font-headline text-on-surface">Availability & Notifications</h2>
+          <p class="text-xs text-on-surface-variant">Configure how you want to be alerted when a nearby hospital needs your blood type</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-3">
+            <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Alert Preferences</p>
+            <label class="flex items-center justify-between py-1.5">
+              <span class="text-xs font-bold text-on-surface">Emergency Blood Alerts</span>
+              <div class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                <input id="donorNotifEmergency" type="checkbox" class="sr-only peer" checked/>
+                <div class="w-11 h-6 bg-outline-variant/60 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 shadow-xs"></div>
+              </div>
+            </label>
+            <label class="flex items-center justify-between py-1.5">
+              <span class="text-xs font-bold text-on-surface">Email Notifications</span>
+              <div class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                <input id="donorNotifEmail" type="checkbox" class="sr-only peer"/>
+                <div class="w-11 h-6 bg-outline-variant/60 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 shadow-xs"></div>
+              </div>
+            </label>
+            <label class="flex items-center justify-between py-1.5">
+              <span class="text-xs font-bold text-on-surface">SMS Notifications</span>
+              <div class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                <input id="donorNotifSms" type="checkbox" class="sr-only peer" checked/>
+                <div class="w-11 h-6 bg-outline-variant/60 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 shadow-xs"></div>
+              </div>
+            </label>
+            <label class="flex items-center justify-between py-1.5">
+              <span class="text-xs font-bold text-on-surface">WhatsApp Ping</span>
+              <div class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                <input id="donorNotifWhatsapp" type="checkbox" class="sr-only peer"/>
+                <div class="w-11 h-6 bg-outline-variant/60 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 shadow-xs"></div>
+              </div>
+            </label>
           </div>
-          <div>
-            <label class="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1.5">Next-of-Kin Phone</label>
-            <input id="donorEmergencyContactPhone" class="w-full bg-surface-container-low border border-outline-variant/40 rounded-2xl px-4 py-3.5 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface" type="tel" placeholder="+237 6XX XXX XXX"/>
+          <div class="space-y-3">
+            <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Language Preference</p>
+            <div class="inline-flex items-center gap-0.5 bg-surface-container-low rounded-full p-1 border border-outline-variant/15" role="group" aria-label="Language">
+              <button data-lang="en" class="donor-lang-btn px-3 py-1.5 rounded-full text-xs font-black transition-colors cursor-pointer">EN</button>
+              <button data-lang="fr" class="donor-lang-btn px-3 py-1.5 rounded-full text-xs font-black transition-colors cursor-pointer">FR</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="pt-2 flex justify-end">
-        <button type="submit" class="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-rose-600 hover:opacity-95 text-on-primary px-8 py-3.5 rounded-2xl font-extrabold text-sm shadow-md shadow-primary/20 transition-all cursor-pointer">
-          <span class="material-symbols-outlined text-lg">save</span>
-          Save Profile Changes
+      <!-- Security Settings — E4.6 (2FA shell) and E4.7 (current session) added below the
+           existing Password row, behind the E4.5 review gate. -->
+      <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 space-y-5">
+        <h2 class="text-base font-extrabold font-headline text-on-surface">Security Settings</h2>
+
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-outline-variant/15">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">lock</span></div>
+            <div>
+              <p class="font-extrabold text-sm text-on-surface">Password</p>
+              <p class="text-xs text-on-surface-variant mt-0.5">Send a secure password reset link to your registered email</p>
+            </div>
+          </div>
+          <button type="button" id="btnDonorChangePassword" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/30 text-primary font-bold text-xs hover:bg-primary/10 transition-colors cursor-pointer shrink-0">
+            <span class="material-symbols-outlined text-base">lock_reset</span>
+            Reset Password
+          </button>
+        </div>
+
+        <!-- E4.6: 2FA toggle shell — rendered permanently disabled. No Firestore field exists
+             for this yet; real 2FA is a separate Cloud Function / Phase-3 IAM workstream. -->
+        <div class="flex items-center justify-between pb-5 border-b border-outline-variant/15">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">shield</span></div>
+            <div>
+              <p class="font-extrabold text-sm text-on-surface flex items-center gap-1.5">Two-Factor Authentication <span class="text-[9px] font-bold uppercase tracking-wider bg-surface-container-high text-on-surface-variant px-2 py-0.5 rounded-full">Coming soon</span></p>
+              <p class="text-xs text-on-surface-variant mt-0.5">Adds an extra layer of security to your account</p>
+            </div>
+          </div>
+          <div class="relative inline-flex items-center shrink-0 ml-2" title="Two-factor authentication is not available yet">
+            <input type="checkbox" class="sr-only peer" disabled/>
+            <div class="w-11 h-6 bg-outline-variant/40 rounded-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:shadow-xs cursor-not-allowed opacity-60"></div>
+          </div>
+        </div>
+
+        <!-- E4.7: current session only — real Firebase Auth session data (browser/OS parsed
+             from navigator.userAgent, city from the donor's own profile). No fake rows and no
+             multi-session tracking (that needs a server-side session registry that doesn't
+             exist yet) — "Coming soon" instead of inventing devices that aren't real. -->
+        <div>
+          <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-3">Active Sessions</p>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-10 h-10 rounded-xl bg-success-container/50 text-success flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">computer</span></div>
+              <div class="min-w-0">
+                <p class="font-extrabold text-sm text-on-surface truncate" id="donorCurrentSessionLabel">This device</p>
+                <p class="text-[11px] text-success font-bold mt-0.5">Current Session</p>
+              </div>
+            </div>
+            <button type="button" class="logout-btn press-scale text-xs font-bold text-error hover:underline cursor-pointer shrink-0">Sign Out</button>
+          </div>
+          <p class="text-[11px] text-on-surface-variant/70 mt-3">Multi-session tracking across other devices is coming soon.</p>
+        </div>
+      </div>
+
+      <!-- E4.8: Danger Zone — UI shell only. The button never deletes anything; it opens a
+           notice explaining real account deletion needs a Security Lead-approved Cloud
+           Function (Policy 12), which doesn't exist yet. -->
+      <div class="bg-error-container/20 border border-error/20 rounded-3xl p-6 md:p-8 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-extrabold font-headline text-error flex items-center gap-2"><span class="material-symbols-outlined text-lg">warning</span>Danger Zone</h2>
+          <p class="text-xs text-on-surface-variant mt-0.5">Once you delete your account, there is no going back. Please be certain.</p>
+        </div>
+        <button type="button" id="btnDonorDeleteAccount" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-error/30 text-error font-bold text-xs hover:bg-error/10 transition-colors cursor-pointer shrink-0">
+          Delete Account
         </button>
       </div>
-    </form>
-  </div>
-
-  <!-- Notification Preferences -->
-  <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 space-y-4">
-    <div>
-      <h2 class="text-base font-extrabold font-headline text-on-surface">Emergency Notification Channels</h2>
-      <p class="text-xs text-on-surface-variant">Configure how you want to be alerted when a nearby hospital needs your blood type</p>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <label class="flex items-center justify-between p-4.5 bg-surface-container-low rounded-2xl border border-outline-variant/20 cursor-pointer hover:bg-surface-container transition-all">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-purple-500/15 text-purple-600 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-xl">sms</span>
-          </div>
-          <div>
-            <p class="font-extrabold text-sm text-on-surface">SMS Direct Alert</p>
-            <p class="text-[11px] text-on-surface-variant font-medium mt-0.5">Receive text messages for emergency matches</p>
-          </div>
-        </div>
-        <div class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-          <input id="donorNotifSms" type="checkbox" class="sr-only peer" checked/>
-          <div class="w-11 h-6 bg-outline-variant/60 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 shadow-xs"></div>
-        </div>
-      </label>
-
-      <label class="flex items-center justify-between p-4.5 bg-surface-container-low rounded-2xl border border-outline-variant/20 cursor-pointer hover:bg-surface-container transition-all">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-xl">chat</span>
-          </div>
-          <div>
-            <p class="font-extrabold text-sm text-on-surface">WhatsApp Ping</p>
-            <p class="text-[11px] text-on-surface-variant font-medium mt-0.5">Receive WhatsApp alerts for instant response</p>
-          </div>
-        </div>
-        <div class="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-          <input id="donorNotifWhatsapp" type="checkbox" class="sr-only peer"/>
-          <div class="w-11 h-6 bg-outline-variant/60 rounded-full peer peer-checked:bg-primary after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5 shadow-xs"></div>
-        </div>
-      </label>
     </div>
   </div>
+</div>
 
-  <!-- Security -->
-  <div class="bg-surface-container-lowest p-6 md:p-8 rounded-3xl shadow-sm border border-outline-variant/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-    <div>
-      <h2 class="text-base font-extrabold font-headline text-on-surface">Account Security</h2>
-      <p class="text-xs text-on-surface-variant mt-0.5">Send a secure password reset link to your registered email</p>
+<!-- VIEW: KYC (Identity Verification) — Stream C3, donor UI/VitalPulse_Plan_Tracker.md.
+     Rendered inside the full donor-portal shell per "Identity Verification (KYC).png"
+     (shows the top nav with Profile active), not as a standalone signup.html step. -->
+<div id="view-kyc" class="hidden max-w-3xl mx-auto space-y-6">
+
+  <div id="kycUploadStep" class="space-y-6">
+    <div class="bg-primary/[0.04] border border-primary/10 rounded-2xl p-5 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="w-8 h-8 rounded-full bg-success text-white flex items-center justify-center"><span class="material-symbols-outlined text-lg">check</span></span>
+        <span class="w-10 h-px bg-outline-variant/40"></span>
+        <span class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">2</span>
+        <span class="w-10 h-px bg-outline-variant/40"></span>
+        <span class="w-8 h-8 rounded-full bg-surface-container-high text-on-surface-variant flex items-center justify-center font-bold text-sm">3</span>
+      </div>
+      <span class="text-xs font-bold text-on-surface-variant">Step 2 of 3: Identity Document</span>
     </div>
-    <button type="button" id="btnDonorChangePassword" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-outline-variant/30 text-primary font-bold text-xs hover:bg-primary/10 transition-colors cursor-pointer">
-      <span class="material-symbols-outlined text-base">lock_reset</span>
-      Reset Password
+
+    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3">
+      <span class="material-symbols-outlined text-blue-600 text-xl shrink-0">lock</span>
+      <div>
+        <p class="text-sm font-bold text-blue-900">Your data is protected</p>
+        <p class="text-xs text-blue-800 mt-0.5 leading-relaxed">Your documents are encrypted and stored securely. We only use them for identity verification purposes in compliance with Cameroon healthcare regulations. Documents are permanently deleted after verification is complete.</p>
+      </div>
+    </div>
+
+    <div>
+      <h1 class="text-2xl font-black font-headline text-on-surface tracking-tight">Verify your identity</h1>
+      <p class="text-sm text-on-surface-variant mt-1">Please choose a valid government-issued document to verify your account.</p>
+    </div>
+
+    <div>
+      <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5" for="kycNationalId">National ID Number / CNI <span class="text-primary">*</span></label>
+      <input id="kycNationalId" type="text"
+             class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface"
+             placeholder="e.g. 102938475"/>
+      <p id="kycNationalIdError" class="hidden text-[10px] text-error font-bold mt-1"></p>
+    </div>
+
+    <div id="kycDocTypeGrid" class="grid grid-cols-2 gap-4">
+      <button type="button" data-doctype="national_id" data-icon="badge" data-label="National ID" class="kyc-doctype-card relative flex flex-col items-center justify-center gap-2 p-6 rounded-2xl border-2 border-outline-variant/25 hover:border-primary/40 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-2xl text-on-surface-variant">badge</span>
+        <span class="font-bold text-sm text-on-surface">National ID</span>
+        <span class="kyc-doctype-check hidden absolute top-3 right-3 w-5 h-5 rounded-full bg-primary text-white items-center justify-center"><span class="material-symbols-outlined text-xs">check</span></span>
+      </button>
+      <button type="button" data-doctype="drivers_licence" data-icon="directions_car" data-label="Driver's License" class="kyc-doctype-card relative flex flex-col items-center justify-center gap-2 p-6 rounded-2xl border-2 border-outline-variant/25 hover:border-primary/40 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-2xl text-on-surface-variant">directions_car</span>
+        <span class="font-bold text-sm text-on-surface">Driver's License</span>
+        <span class="kyc-doctype-check hidden absolute top-3 right-3 w-5 h-5 rounded-full bg-primary text-white items-center justify-center"><span class="material-symbols-outlined text-xs">check</span></span>
+      </button>
+      <button type="button" data-doctype="passport" data-icon="flight" data-label="Passport" class="kyc-doctype-card relative flex flex-col items-center justify-center gap-2 p-6 rounded-2xl border-2 border-outline-variant/25 hover:border-primary/40 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-2xl text-on-surface-variant">flight</span>
+        <span class="font-bold text-sm text-on-surface">Passport</span>
+        <span class="kyc-doctype-check hidden absolute top-3 right-3 w-5 h-5 rounded-full bg-primary text-white items-center justify-center"><span class="material-symbols-outlined text-xs">check</span></span>
+      </button>
+      <button type="button" data-doctype="other" data-icon="more_horiz" data-label="Other" class="kyc-doctype-card relative flex flex-col items-center justify-center gap-2 p-6 rounded-2xl border-2 border-outline-variant/25 hover:border-primary/40 transition-all cursor-pointer">
+        <span class="material-symbols-outlined text-2xl text-on-surface-variant">more_horiz</span>
+        <span class="font-bold text-sm text-on-surface">Other</span>
+        <span class="kyc-doctype-check hidden absolute top-3 right-3 w-5 h-5 rounded-full bg-primary text-white items-center justify-center"><span class="material-symbols-outlined text-xs">check</span></span>
+      </button>
+    </div>
+
+    <div>
+      <p id="kycPreviewLabel" class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Document Preview</p>
+
+      <!-- C3.4: a distinct illustrated shape per document type (mockup: "NATIONAL ID CARD
+           PREVIEW" shows a stylized card silhouette above the drop zone). Only the
+           National ID shape was actually drawn in the mockup; Driver's Licence/Passport/
+           Other weren't shown for any state, so those three are this session's own
+           geometric design (same flat/rounded style as the rest of this app's icons),
+           not a guess at an undocumented mockup. Toggled by doc-type selection below. -->
+      <div id="kycDocPreviewShape" class="hidden justify-center mb-3" aria-hidden="true">
+        <svg data-doctype="national_id" class="kyc-doc-shape" width="120" height="80" viewBox="0 0 120 80" fill="none">
+          <rect x="1.5" y="1.5" width="117" height="77" rx="10" fill="var(--color-primary)" fill-opacity=".05" stroke="var(--color-primary)" stroke-opacity=".22" stroke-width="1.5"/>
+          <rect x="14" y="16" width="28" height="34" rx="5" fill="var(--color-primary)" fill-opacity=".16"/>
+          <rect x="50" y="18" width="54" height="6" rx="3" fill="var(--color-primary)" fill-opacity=".2"/>
+          <rect x="50" y="32" width="44" height="6" rx="3" fill="var(--color-primary)" fill-opacity=".14"/>
+          <rect x="50" y="46" width="34" height="6" rx="3" fill="var(--color-primary)" fill-opacity=".14"/>
+          <circle cx="102" cy="17" r="6" fill="var(--color-primary)" fill-opacity=".18"/>
+        </svg>
+        <svg data-doctype="drivers_licence" class="kyc-doc-shape hidden" width="120" height="80" viewBox="0 0 120 80" fill="none">
+          <rect x="1.5" y="1.5" width="117" height="77" rx="10" fill="var(--color-primary)" fill-opacity=".05" stroke="var(--color-primary)" stroke-opacity=".22" stroke-width="1.5"/>
+          <rect x="78" y="16" width="28" height="34" rx="5" fill="var(--color-primary)" fill-opacity=".16"/>
+          <rect x="14" y="18" width="30" height="6" rx="3" fill="var(--color-primary)" fill-opacity=".2"/>
+          <rect x="14" y="32" width="24" height="6" rx="3" fill="var(--color-primary)" fill-opacity=".14"/>
+          <rect x="14" y="58" width="92" height="6" rx="3" fill="var(--color-primary)" fill-opacity=".12"/>
+          <circle cx="18" cy="17" r="6" fill="var(--color-primary)" fill-opacity=".18"/>
+        </svg>
+        <svg data-doctype="passport" class="kyc-doc-shape hidden" width="76" height="88" viewBox="0 0 76 88" fill="none">
+          <rect x="1.5" y="1.5" width="73" height="85" rx="8" fill="var(--color-primary)" fill-opacity=".05" stroke="var(--color-primary)" stroke-opacity=".22" stroke-width="1.5"/>
+          <line x1="38" y1="1.5" x2="38" y2="86.5" stroke="var(--color-primary)" stroke-opacity=".16" stroke-width="1"/>
+          <circle cx="38" cy="32" r="13" fill="none" stroke="var(--color-primary)" stroke-opacity=".28" stroke-width="1.5"/>
+          <path d="M38 22 L41 30 L49 30 L42.5 35 L45 43 L38 38 L31 43 L33.5 35 L27 30 L35 30 Z" fill="var(--color-primary)" fill-opacity=".18"/>
+          <rect x="18" y="54" width="40" height="5" rx="2.5" fill="var(--color-primary)" fill-opacity=".16"/>
+          <rect x="24" y="65" width="28" height="5" rx="2.5" fill="var(--color-primary)" fill-opacity=".12"/>
+        </svg>
+        <svg data-doctype="other" class="kyc-doc-shape hidden" width="76" height="88" viewBox="0 0 76 88" fill="none">
+          <path d="M6 1.5H50L70 21.5V82C70 84.21 68.21 86 66 86H6C3.79 86 2 84.21 2 82V5.5C2 3.29 3.79 1.5 6 1.5Z" fill="var(--color-primary)" fill-opacity=".05" stroke="var(--color-primary)" stroke-opacity=".22" stroke-width="1.5"/>
+          <path d="M50 1.5V21.5H70" fill="none" stroke="var(--color-primary)" stroke-opacity=".28" stroke-width="1.5"/>
+          <rect x="14" y="36" width="44" height="5" rx="2.5" fill="var(--color-primary)" fill-opacity=".18"/>
+          <rect x="14" y="48" width="44" height="5" rx="2.5" fill="var(--color-primary)" fill-opacity=".14"/>
+          <rect x="14" y="60" width="30" height="5" rx="2.5" fill="var(--color-primary)" fill-opacity=".12"/>
+        </svg>
+      </div>
+
+      <input id="kycFileInput" type="file" accept="image/jpeg,image/png,application/pdf" class="hidden"/>
+      <label for="kycFileInput" id="kycDropZone" class="block w-full cursor-pointer border-2 border-dashed border-outline-variant/30 bg-surface-container-low/40 rounded-2xl px-4 py-10 text-center transition-all hover:border-primary hover:bg-primary/5">
+        <span class="material-symbols-outlined text-3xl text-on-surface-variant/60">cloud_upload</span>
+        <p id="kycDropZoneLabel" class="text-sm font-bold text-on-surface mt-2">Drag and drop document here</p>
+        <span class="inline-block mt-3 bg-surface-container-lowest border border-outline-variant/30 rounded-xl px-4 py-2 text-xs font-bold text-on-surface">Browse files</span>
+        <p class="text-[10px] text-on-surface-variant mt-3">JPG, PNG, or PDF — max 5 MB</p>
+      </label>
+      <p id="kycFileError" class="hidden mt-2 text-xs text-error font-semibold"></p>
+
+      <div id="kycFilePreview" class="hidden mt-3 bg-success-container/30 border border-success/25 rounded-2xl p-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="w-9 h-9 rounded-lg bg-success/15 text-success flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">image</span></span>
+          <div class="min-w-0">
+            <p id="kycFileName" class="text-sm font-bold text-on-surface truncate"></p>
+            <p id="kycFileMeta" class="text-xs text-on-surface-variant"></p>
+          </div>
+        </div>
+        <button type="button" id="btnKycRemoveFile" class="shrink-0 inline-flex items-center gap-1 text-xs font-bold text-success hover:text-error cursor-pointer">
+          <span class="material-symbols-outlined text-sm">check_circle</span> Remove
+        </button>
+      </div>
+
+      <!-- National ID requires both sides — a single-sided card doesn't carry enough info to
+           verify against, and admins reviewing the queue need both faces on file. Hidden for
+           every other doc type (a passport/license is one page). -->
+      <div id="kycBackUploadWrap" class="hidden mt-6">
+        <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-2">Back of National ID</p>
+        <input id="kycFileInputBack" type="file" accept="image/jpeg,image/png,application/pdf" class="hidden"/>
+        <label for="kycFileInputBack" id="kycDropZoneBack" class="block w-full cursor-pointer border-2 border-dashed border-outline-variant/30 bg-surface-container-low/40 rounded-2xl px-4 py-10 text-center transition-all hover:border-primary hover:bg-primary/5">
+          <span class="material-symbols-outlined text-3xl text-on-surface-variant/60">cloud_upload</span>
+          <p class="text-sm font-bold text-on-surface mt-2">Drag and drop the back of your ID here</p>
+          <span class="inline-block mt-3 bg-surface-container-lowest border border-outline-variant/30 rounded-xl px-4 py-2 text-xs font-bold text-on-surface">Browse files</span>
+          <p class="text-[10px] text-on-surface-variant mt-3">JPG, PNG, or PDF — max 5 MB</p>
+        </label>
+        <p id="kycFileErrorBack" class="hidden mt-2 text-xs text-error font-semibold"></p>
+
+        <div id="kycFilePreviewBack" class="hidden mt-3 bg-success-container/30 border border-success/25 rounded-2xl p-4 flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="w-9 h-9 rounded-lg bg-success/15 text-success flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-lg">image</span></span>
+            <div class="min-w-0">
+              <p id="kycFileNameBack" class="text-sm font-bold text-on-surface truncate"></p>
+              <p id="kycFileMetaBack" class="text-xs text-on-surface-variant"></p>
+            </div>
+          </div>
+          <button type="button" id="btnKycRemoveFileBack" class="shrink-0 inline-flex items-center gap-1 text-xs font-bold text-success hover:text-error cursor-pointer">
+            <span class="material-symbols-outlined text-sm">check_circle</span> Remove
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <button id="btnKycSubmit" type="button" disabled
+            class="w-full bg-primary hover:opacity-90 text-white font-bold py-3.5 rounded-xl shadow-md shadow-primary/20 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+      Submit for Verification
     </button>
+    <p id="kycErrorMessage" class="hidden text-error text-sm text-center font-medium"></p>
+  </div>
+
+  <!-- Liveness check — requested directly by the Security Lead (2026-08-02): a second,
+       independent piece of KYC evidence, always captured live via the device camera
+       (getUserMedia + <canvas>), never a file picker. system_admin's verifyDonor cannot
+       approve a donor without this on file (functions/src/kyc.ts's reviewDonorKycHandler).
+       Verification is mandatory (2026-08-02 follow-up) — there is no "later"/skip affordance
+       anywhere in this flow. -->
+  <div id="kycLivenessStep" class="hidden space-y-6">
+    <div class="bg-primary/[0.04] border border-primary/10 rounded-2xl p-5 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="w-8 h-8 rounded-full bg-success text-white flex items-center justify-center"><span class="material-symbols-outlined text-lg">check</span></span>
+        <span class="w-10 h-px bg-outline-variant/40"></span>
+        <span class="w-8 h-8 rounded-full bg-success text-white flex items-center justify-center"><span class="material-symbols-outlined text-lg">check</span></span>
+        <span class="w-10 h-px bg-outline-variant/40"></span>
+        <span class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">3</span>
+      </div>
+      <span class="text-xs font-bold text-on-surface-variant">Step 3 of 3: Liveness Check</span>
+    </div>
+
+    <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-start gap-3">
+      <span class="material-symbols-outlined text-blue-600 text-xl shrink-0">face</span>
+      <div>
+        <p class="text-sm font-bold text-blue-900">One last step — prove it's really you</p>
+        <p class="text-xs text-blue-800 mt-0.5 leading-relaxed">We need a live photo taken right now with your camera, not a photo from your gallery, so our team can confirm the document you uploaded matches the person holding it.</p>
+      </div>
+    </div>
+
+    <div>
+      <h1 class="text-2xl font-black font-headline text-on-surface tracking-tight">Take a liveness selfie</h1>
+      <p class="text-sm text-on-surface-variant mt-1">Center your face in the frame, in good lighting, then capture.</p>
+    </div>
+
+    <!-- Live camera preview. #kycLivenessVideo only ever gets its srcObject from a live
+         getUserMedia() MediaStream (donor-dashboard.js) — there is no <input type="file">
+         anywhere in this step, by design. -->
+    <div class="relative w-full max-w-sm mx-auto aspect-[3/4] bg-surface-container-high rounded-3xl overflow-hidden border-2 border-outline-variant/20">
+      <video id="kycLivenessVideo" class="hidden w-full h-full object-cover" autoplay playsinline muted></video>
+      <canvas id="kycLivenessCanvas" class="hidden"></canvas>
+      <img id="kycLivenessPreviewImg" class="hidden w-full h-full object-cover" alt="Captured liveness selfie"/>
+      <div id="kycLivenessPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-on-surface-variant p-6 text-center">
+        <span class="material-symbols-outlined text-4xl">photo_camera</span>
+        <p class="text-sm font-bold">Camera preview will appear here</p>
+      </div>
+      <div id="kycLivenessGuide" class="hidden absolute inset-0 items-center justify-center pointer-events-none">
+        <div class="w-[62%] aspect-[3/4] rounded-[50%] border-4 border-white/70" style="box-shadow: 0 0 0 2000px rgba(0,0,0,0.25);"></div>
+      </div>
+    </div>
+
+    <p id="kycLivenessError" class="hidden text-xs text-error font-semibold text-center max-w-sm mx-auto"></p>
+
+    <div id="kycLivenessControlsStart" class="flex justify-center">
+      <button id="btnKycStartCamera" type="button" class="press-scale inline-flex items-center gap-2 bg-primary hover:opacity-90 text-white font-bold px-6 py-3.5 rounded-xl shadow-md shadow-primary/20 transition-opacity cursor-pointer">
+        <span class="material-symbols-outlined text-lg">videocam</span> Turn On Camera
+      </button>
+    </div>
+
+    <div id="kycLivenessControlsCapture" class="hidden justify-center">
+      <button id="btnKycCaptureSelfie" type="button" class="press-scale inline-flex items-center gap-2 bg-primary hover:opacity-90 text-white font-bold px-6 py-3.5 rounded-xl shadow-md shadow-primary/20 transition-opacity cursor-pointer">
+        <span class="material-symbols-outlined text-lg">camera</span> Capture Photo
+      </button>
+    </div>
+
+    <div id="kycLivenessControlsConfirm" class="hidden items-center justify-center gap-3">
+      <button id="btnKycRetakeSelfie" type="button" class="press-scale inline-flex items-center gap-2 bg-surface-container-lowest border border-outline-variant/30 text-on-surface font-bold px-5 py-3 rounded-xl cursor-pointer">
+        <span class="material-symbols-outlined text-lg">refresh</span> Retake
+      </button>
+      <button id="btnKycSubmitSelfie" type="button" class="press-scale inline-flex items-center gap-2 bg-primary hover:opacity-90 text-white font-bold px-6 py-3 rounded-xl shadow-md shadow-primary/20 transition-opacity cursor-pointer">
+        <span class="material-symbols-outlined text-lg">check</span> Confirm &amp; Submit
+      </button>
+    </div>
+  </div>
+
+  <!-- Success state (mockup: "KYC Submitted Success.png") -->
+  <div id="kycSuccessStep" class="hidden text-center bg-surface-container-lowest border border-outline-variant/15 rounded-3xl shadow-sm p-10 max-w-md mx-auto">
+    <div class="w-20 h-20 rounded-full bg-success/15 flex items-center justify-center mx-auto mb-5">
+      <span class="material-symbols-outlined text-4xl text-success">check_circle</span>
+    </div>
+    <h2 class="text-2xl font-black font-headline text-on-surface">Documents submitted!</h2>
+    <p class="text-sm text-on-surface-variant mt-3 leading-relaxed">We've received your identity documents. Our team will verify your account within 24-48 hours. You'll receive a notification as soon as you're eligible to save lives.</p>
+    <button id="btnKycGoToDashboard" type="button" class="w-full mt-6 bg-primary hover:opacity-90 text-white font-bold py-3.5 rounded-xl shadow-md shadow-primary/20 transition-opacity cursor-pointer flex items-center justify-center gap-2">
+      Go to My Dashboard <span class="material-symbols-outlined text-lg">arrow_forward</span>
+    </button>
+    <p class="text-xs text-on-surface-variant mt-4">While waiting, you can explore the app with limited access.</p>
   </div>
 </div>
 
@@ -1094,36 +1759,6 @@
         <input type="hidden" id="donationLocation" value="" />
         <input type="hidden" id="donationBloodType" value="" />
         <input type="hidden" id="donationUnits" value="1" />
-    </div>
-</div>
-
-<!-- ALL DONATION CENTERS — searchable + city-filterable directory of every registered
-     hospital, opened from the "View all" on the dashboard's Nearby Donation Centers. -->
-<div id="allCentersModal" class="hidden fixed inset-0 z-[80] items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/70 backdrop-blur-md cursor-pointer" onclick="window.closeAllCentersModal()"></div>
-    <div class="relative animate-in bg-surface-container-lowest w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden max-h-[88vh] flex flex-col border border-outline-variant/30">
-        <div class="relative bg-gradient-to-br from-error-container/40 via-error-container/10 to-surface-container-lowest px-6 pt-6 pb-5 border-b border-outline-variant/15 shrink-0">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-2xl bg-primary/12 text-primary flex items-center justify-center">
-                        <span class="material-symbols-outlined text-xl">location_on</span>
-                    </div>
-                    <div>
-                        <h2 class="font-headline text-lg font-black tracking-tight text-on-surface">Donation Centers</h2>
-                        <p class="text-xs text-on-surface-variant mt-0.5"><span id="allCentersCount">0</span> verified hospitals — tap one to donate there</p>
-                    </div>
-                </div>
-                <button onclick="window.closeAllCentersModal()" class="press-scale w-9 h-9 rounded-full bg-surface-container-low hover:bg-surface-container text-on-surface-variant flex items-center justify-center cursor-pointer">
-                    <span class="material-symbols-outlined text-xl">close</span>
-                </button>
-            </div>
-            <div class="relative mt-4">
-                <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg pointer-events-none">search</span>
-                <input id="allCentersSearch" type="text" placeholder="Search by hospital name or city..." class="w-full bg-surface-container-low border border-outline-variant/30 rounded-2xl pl-10 pr-4 py-3 text-sm text-on-surface placeholder:text-on-surface-variant outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"/>
-            </div>
-            <div id="allCentersCityRow" class="flex items-center gap-2 overflow-x-auto slim-scroll mt-3 pb-0.5"></div>
-        </div>
-        <div id="allCentersList" class="overflow-y-auto flex-1 p-4 space-y-2.5 slim-scroll"></div>
     </div>
 </div>
 

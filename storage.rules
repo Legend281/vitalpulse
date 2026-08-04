@@ -1,0 +1,38 @@
+rules_version = '2';
+
+// VitalPulse — Firebase Storage Security Rules
+// FIRST real Storage rules file in this project (see vitalpulse_app/docs/PHASE0_AUDIT.md
+// §10 addendum, finding 4) — until now, Storage access had no rules file checked into
+// this repo at all. Scope here is intentionally narrow: only the new kyc/{uid}/ path this
+// Stream introduces (Auth & Onboarding Stream B3, donor UI/VitalPulse_Plan_Tracker.md).
+// The pre-existing hospital_licenses/ upload path (vitalpulse_app/src/main.js, direct
+// client uploadBytes() with no rules governing it at all) is a live precedent of exactly
+// the pattern this file avoids for KYC docs — flagged, not silently hardened here, since
+// widening scope to cover it wasn't part of this Stream.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.get('suspended', false) != true;
+    }
+    function isSystemAdmin() {
+      return signedIn() && request.auth.token.get('role', null) == 'system_admin';
+    }
+
+    // ---------- KYC identity documents ----------
+    // Written ONLY by submitKYC (functions/src/kyc.ts) via the Admin SDK, which bypasses
+    // Storage rules entirely — no client, including the owning donor, ever writes here
+    // directly (C3.6: "never direct client Storage write"). Reads are system_admin-only,
+    // for the KYC review queue. No public access, ever.
+    match /kyc/{uid}/{fileName} {
+      allow read: if isSystemAdmin();
+      allow write: if false;
+    }
+
+    // ---------- Deny by default ----------
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

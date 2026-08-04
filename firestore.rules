@@ -76,6 +76,21 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
     }
 
+    // B7 (Auth & Onboarding Stream B, donor UI/VitalPulse_Plan_Tracker.md) — "only verified
+    // donors can accept requests." GRANDFATHER CLAUSE, FLAGGED FOR YOUR CONFIRMATION rather
+    // than decided unilaterally: gating strictly on kycStatus=='verified' would instantly
+    // lock out every donor who exists today, since donors/{uid} (new, KYC-only collection,
+    // Stream A4) has no record for any pre-existing account — this function has never run
+    // for them and nothing here is proposing to backfill it. So: a donor with NO
+    // donors/{uid} doc at all is treated as grandfathered/exempt (pre-dates this feature);
+    // only a donor who HAS gone through the new flow and was explicitly rejected or is
+    // still pending is blocked. Whether pre-existing donors should eventually be required
+    // to complete KYC too is a product/rollout decision for you, not something encoded here.
+    function isKycEligible(uid) {
+      let donorPath = /databases/$(database)/documents/donors/$(uid);
+      return !exists(donorPath) || get(donorPath).data.kycStatus == 'verified';
+    }
+
     // ---------- Users (donor / hospital accounts; role is a custom claim, not this doc) ----------
     match /users/{uid} {
       // Broad signed-in read: the app's matching/notification/directory flows all rely
@@ -121,6 +136,25 @@ service cloud.firestore {
       allow delete: if false; // account deletion path is a future Cloud Function (Policy 12)
     }
 
+    // ---------- Donor KYC records (Auth & Onboarding Stream B) ----------
+    // NEW, KYC-ONLY collection, approved 2026-08-01 (donor UI/VitalPulse_Plan_Tracker.md
+    // Stream A4) — does NOT replace or duplicate users/{uid}; donor profile data (blood
+    // type, points/tier, badges, notification prefs) stays there exactly as before.
+    // kycStatus is set ONLY by functions/src/kyc.ts (onDonorSignUp / submitKYC /
+    // verifyDonor / rejectDonorKyc, all via the Admin SDK, which bypasses these rules
+    // entirely) — never client-writable, mirroring how role/hospitalId/suspended work.
+    match /donors/{uid} {
+      allow get: if (isDonor() && request.auth.uid == uid) || isSystemAdmin();
+      allow list: if isSystemAdmin(); // admin review queue only — no donor enumeration
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------
+    match /adminQueue/{id} {
+      allow get, list: if isSystemAdmin();
+      allow write: if false; // Cloud Functions only
+    }
+
     // ---------- Blood requests (hospital-created; donor-matched) ----------
     match /requests/{requestId} {
       allow get, list: if isDonor() || isSystemAdmin() || isNbtpViewer()
@@ -138,8 +172,9 @@ service cloud.firestore {
 
       // Donor accepts an Open request (self-assignment only). Client write shape:
       // db.js assignDonorToRequest (runTransaction) — status + matchedDonor + matchedAt
-      // + checkInToken + donorScreeningPassed.
-      allow update: if isDonor()
+      // + checkInToken + donorScreeningPassed. B7: gated on isKycEligible (grandfathered
+      // for pre-existing donors — see the function's own comment above).
+      allow update: if isDonor() && isKycEligible(request.auth.uid)
                     && resource.data.status == 'Open'
                     && request.resource.data.status == 'Donor Assigned'
                     && request.resource.data.matchedDonor == request.auth.uid
@@ -188,25 +223,17 @@ service cloud.firestore {
       allow get, list: if isSystemAdmin() || isNbtpViewer()
                        || (isHospitalRole() && sameHospital(resource.data.hospitalId));
 
-      // Create/update use the same setDoc(merge) path in db.js. lab_tech excluded —
-      // Master Plan 1.2: "lab_tech cannot ... edit stock directly." Create must stamp the
-      // caller's own hospitalId (client stamps it via getCurrentUser().uid). Updates scope
-      // against the EXISTING doc's hospitalId so partial updates (setInventoryThreshold's
-      // minimumThreshold-only updateDoc) don't trip a missing-field check — unitsAvailable
-      // is validated only when it's actually present in the write.
-      allow create: if isSystemAdmin()
-                    || (canManageStock()
-                        && request.resource.data.hospitalId == myHospitalId()
-                        && request.resource.data.unitsAvailable is int
-                        && request.resource.data.unitsAvailable >= 0);
-
-      allow update: if isSystemAdmin()
-                    || (canManageStock() && sameHospital(resource.data.hospitalId)
-                        && (!('unitsAvailable' in request.resource.data)
-                            || (request.resource.data.unitsAvailable is int
-                                && request.resource.data.unitsAvailable >= 0)));
-
-      allow delete: if false;
+      // RESOLVED 2026-08-01 (Phase 3, issueBloodToPatient): every inventory
+      // mutation now goes through functions/src/inventory.ts
+      // (addInventoryStock/deductInventoryStock/resolveLabTest/
+      // setInventoryThreshold/issueBloodToPatient) — the Admin SDK bypasses
+      // Firestore rules by design, so those Functions are unaffected by this
+      // lockdown. This was deliberately left open for canManageStock() while
+      // issueBloodToPatient — the last direct-client write path (it needed to
+      // fabricate `batches[].testStatus: 'Cleared'` client-side) — was still
+      // unmigrated; now that it's a Cloud Function too, direct client writes
+      // serve no remaining purpose and are closed for good.
+      allow write: if false;
     }
 
     // ---------- Donation requests (donor-initiated; reviewed by any hospital/admin — no per-hospital targeting exists in this workflow) ----------
@@ -295,9 +322,12 @@ service cloud.firestore {
     match /issuance_log/{id} {
       allow get, list: if isSystemAdmin()
                        || (isHospitalRole() && sameHospital(resource.data.hospitalId));
-      allow create: if isSystemAdmin()
-                    || (canManageStock() && request.resource.data.hospitalId == myHospitalId());
-      allow update, delete: if false; // append-only safety/traceability record
+      // RESOLVED 2026-08-01 (Phase 3): issueBloodToPatient is now a Cloud
+      // Function (functions/src/inventory.ts) — it's the only writer of this
+      // Restricted-PHI collection, via the Admin SDK, which bypasses these
+      // rules entirely. No caller, including system_admin, has a direct
+      // client write path here any more.
+      allow write: if false;
     }
 
     // ---------- SMS/WhatsApp deep-link log (no real gateway integrated yet; just logged links) ----------
@@ -339,8 +369,9 @@ service cloud.firestore {
       allow update: if isSystemAdmin()
                     // Donor accept: public requests broadcast in 'Broadcasting', not 'Open'.
                     // Client shape (db.js acceptPublicRequest): status + matchedDonor +
-                    // matchedAt + checkInToken + donorScreeningPassed.
-                    || (isDonor() && resource.data.status == 'Broadcasting'
+                    // matchedAt + checkInToken + donorScreeningPassed. B7: same
+                    // isKycEligible gate as requests/{requestId} above.
+                    || (isDonor() && isKycEligible(request.auth.uid) && resource.data.status == 'Broadcasting'
                         && request.resource.data.status == 'Donor Assigned'
                         && request.resource.data.matchedDonor == request.auth.uid
                         && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken', 'donorScreeningPassed']))
@@ -469,6 +500,14 @@ service cloud.firestore {
     match /auditLogs/{id} {
       allow get, list: if isSystemAdmin();
       allow write: if false;
+    }
+
+    // ---------- Password reset tokens (functions/src/passwordReset.ts) — token hashes only,
+    // read/written exclusively by the Admin SDK (which bypasses these rules). No client path
+    // at all, not even system_admin read: unlike KYC evidence there is no legitimate reason
+    // for anyone to read another account's outstanding reset-token hash. ----------
+    match /passwordResetTokens/{uid} {
+      allow read, write: if false;
     }
 
     // ---------- DENY BY DEFAULT ----------

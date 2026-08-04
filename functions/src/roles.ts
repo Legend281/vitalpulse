@@ -28,6 +28,9 @@ export interface CallerClaims {
   suspended?: boolean;
   /** Set by deactivateHospital; reactivateHospital only clears suspensions carrying this marker. */
   hospitalSuspendedAt?: string;
+  /** Donor-only. Mirrors donors/{uid}.kycStatus so rules/UI can gate on the token
+   *  claim without an extra read. Set only by kyc.ts's Cloud Functions. */
+  kycStatus?: 'pending' | 'verified' | 'rejected';
 }
 
 /**

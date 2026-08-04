@@ -8,7 +8,8 @@
     "typecheck": "npm --prefix functions run typecheck && npm --prefix scripts run typecheck",
     "build": "npm --prefix vitalpulse_app run build",
     "test:unit": "npm --prefix functions run test && npm --prefix vitalpulse_app run test",
-    "test:rules": "firebase emulators:exec --project vitalpulse-fa458 --only firestore \"vitest run --config vitest.rules.config.js\""
+    "test:rules": "firebase emulators:exec --project vitalpulse-fa458 --only firestore,storage \"vitest run --config vitest.rules.config.js\"",
+    "test:e2e": "firebase emulators:exec --project vitalpulse-fa458 --only auth,firestore,functions,storage \"vitest run --config vitest.e2e.config.js\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -16,6 +17,7 @@
     "eslint": "^10.8.0",
     "eslint-plugin-security": "^4.0.1",
     "firebase": "^11.1.0",
+    "firebase-admin": "^14.2.0",
     "firebase-tools": "^13.29.1",
     "globals": "^17.7.0",
     "typescript-eslint": "^8.65.0",

@@ -4,15 +4,15 @@
 <head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Login | VitalPulse Cameroon</title>
-<meta name="description" content="Log in to VitalPulse to manage blood requests, donations, and hospital inventory."/>
+<title>Sign In | VitalPulse Cameroon</title>
+<meta name="description" content="Sign in to your VitalPulse account."/>
 <meta name="robots" content="noindex"/>
 <link rel="icon" type="image/png" href="/favicon.png"/>
 <link rel="apple-touch-icon" href="/favicon.png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-
-
 
 <style>
   #global-loader {
@@ -34,128 +34,122 @@
     animation: spin 1s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Decorative background — one shared Sign In screen serves donors, hospitals and admins,
+     so unlike signup.html's #authBgDecor (which crossfades red<->blue with the role
+     toggle) this is a single static blend of both brand colors: nothing here should read
+     as "this page is for donors" or "for hospitals." Same technique (fixed, negative
+     z-index, --color-primary/--color-tertiary tokens) as signup.html for visual
+     consistency between the two auth screens. */
+  #authBgDecor { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  #authBgDecor .abg-blob { position: absolute; border-radius: 9999px; filter: blur(70px); }
+  #authBgDecor .abg-blob-1 { width: 420px; height: 420px; top: -140px; left: -120px; background: var(--color-primary); opacity: .14; }
+  #authBgDecor .abg-blob-2 { width: 360px; height: 360px; bottom: -120px; right: -90px; background: var(--color-tertiary); opacity: .12; }
+  #authBgDecor .abg-blob-3 { width: 300px; height: 300px; top: 42%; right: 12%; background: var(--color-secondary-fixed-dim); opacity: .12; }
+  #authBgDecor .abg-icon { position: absolute; opacity: .06; }
+  #authBgDecor .abg-icon-a { top: 8%; left: 5%; font-size: 140px; color: var(--color-primary); transform: rotate(-14deg); }
+  #authBgDecor .abg-icon-b { bottom: 10%; left: 8%; font-size: 88px; color: var(--color-tertiary); transform: rotate(9deg); }
+  #authBgDecor .abg-icon-c { top: 11%; right: 6%; font-size: 116px; color: var(--color-tertiary); transform: rotate(11deg); }
+  #authBgDecor .abg-icon-d { bottom: 13%; right: 9%; font-size: 92px; color: var(--color-primary); transform: rotate(-8deg); }
+  @media (max-width: 640px) { #authBgDecor .abg-icon { display: none; } }
 </style>
 </head>
-<body class="bg-surface text-on-surface min-h-screen flex flex-col">
+<body class="bg-surface font-body text-on-surface antialiased min-h-screen flex flex-col">
+<div id="authBgDecor" aria-hidden="true">
+  <div class="abg-blob abg-blob-1"></div>
+  <div class="abg-blob abg-blob-2"></div>
+  <div class="abg-blob abg-blob-3"></div>
+  <span class="abg-icon abg-icon-a material-symbols-outlined" style="font-variation-settings:'FILL' 1">water_drop</span>
+  <span class="abg-icon abg-icon-b material-symbols-outlined">local_hospital</span>
+  <span class="abg-icon abg-icon-c material-symbols-outlined" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
+  <span class="abg-icon abg-icon-d material-symbols-outlined">favorite</span>
+</div>
 <div id="global-loader"><div class="loader-spinner"></div></div>
 
-<!-- Top Navigation Suppression: As per rules, navigation shell is suppressed for login flow to prioritize focus -->
-<main class="flex-grow flex flex-col md:flex-row min-h-screen">
-<!-- Left Side: Editorial Content & Visual -->
-<section class="hidden md:flex md:w-1/2 lg:w-3/5 bg-surface-container relative overflow-hidden items-center justify-center p-12 lg:p-24">
-<div class="absolute inset-0 z-0">
-<img class="w-full h-full object-cover opacity-15 grayscale" alt="Modern medical facility with clean minimalist lines and soft daylight creating a professional and calm atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkRiE0MfYIydC9rLM5HCq2Q4Q56wU-gwwuYgdrgSR99epsFIWQ159HYIyoLz1QqhXM-7Ca6Rbuysr46T2sVDWXQfVti7XPdTJCdhAGmoLBy-7ifJD-9hkU2BA5HJKelpZ1-wxuLAmkJ2WI6lRihtr5YckNQYG9ZFLiSARWUCm37Ix14pvMDwCuOrtl7B476VAwB2JDrv3N_XEwe35n1ZkFFczeCHjzUfPpwKGvdWIOTuwmsJvyezDaEagv3-ygsfl5IExe9zMBnpQ"/>
-</div>
-<!-- Abstract Shapes for Visual Interest -->
-<div class="absolute top-[-10%] right-[-10%] w-96 h-96 rounded-full bg-secondary-container/10 blur-3xl"></div>
-<div class="absolute bottom-[-5%] left-[-5%] w-64 h-64 rounded-full bg-primary/5 blur-2xl"></div>
-<div class="relative z-10 max-w-xl">
-<div class="flex items-center gap-3 mb-8">
-<img src="/favicon.png" alt="VitalPulse" class="w-12 h-12 rounded-xl shadow-lg object-contain"/>
-<span class="text-2xl font-extrabold tracking-tighter font-headline"><span class="text-primary">Vital</span><span class="text-on-surface">Pulse</span></span>
-</div>
-<h1 class="text-5xl lg:text-7xl font-extrabold font-headline leading-[1.1] mb-6 tracking-tight text-on-surface">
-                    Your contribution, <br/>
-<span class="text-primary">their survival.</span>
-</h1>
-<p class="text-lg lg:text-xl text-on-surface-variant font-body leading-relaxed mb-12 max-w-md">
-                    Coordinating blood donation across Cameroon with surgical precision and editorial elegance. Log in to manage your vital impact.
-                </p>
-<div class="flex items-center gap-3 flex-wrap">
-<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold"><span class="material-symbols-outlined text-sm">verified</span>Hospital-Verified Network</span>
-<span class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold"><span class="material-symbols-outlined text-sm">bolt</span>Real-Time Matching</span>
-</div>
-</div>
-</section>
-<!-- Right Side: Login Form -->
-<section class="w-full md:w-1/2 lg:w-2/5 flex items-center justify-center p-6 lg:p-16 bg-surface">
-<div class="w-full max-w-md">
-<!-- Mobile Logo Branding -->
-<div class="md:hidden flex items-center gap-2 mb-12">
-<img src="/favicon.png" alt="VitalPulse" class="w-8 h-8 rounded-lg object-contain"/>
-<span class="text-xl font-bold font-headline tracking-tighter"><span class="text-primary">Vital</span><span class="text-on-surface">Pulse</span></span>
-</div>
-<div class="mb-10">
-<h2 class="text-3xl font-bold font-headline text-on-surface mb-2">Welcome Back</h2>
-<p class="text-on-surface-variant font-body">Please enter your credentials to access the system.</p>
-</div>
-<form id="loginForm" class="space-y-8">
-<!-- Email/Phone Field -->
-<div class="relative group">
-<label class="block text-xs font-bold font-label uppercase tracking-wider text-on-surface-variant mb-1 ml-1 opacity-70" for="email">Email</label>
-<div class="flex items-center">
-<span class="material-symbols-outlined text-on-surface-variant/40 mr-3 text-xl">alternate_email</span>
-<input class="block w-full py-3 px-0 bg-transparent border-0 border-b border-outline-variant focus:ring-0 focus:border-primary transition-all font-body text-on-surface placeholder:text-on-surface-variant/30" id="email" name="email" placeholder="name@vitalpulse.cm" type="email" required/>
-</div>
-</div>
-<!-- Password Field -->
-<div class="relative group">
-<div class="flex justify-between items-end mb-1 ml-1">
-<label class="block text-xs font-bold font-label uppercase tracking-wider text-on-surface-variant opacity-70" for="password">Password</label>
-<a id="forgotPasswordLink" class="text-xs font-bold font-label text-primary hover:text-primary-container transition-colors cursor-pointer" href="javascript:void(0)">Forgot Password?</a>
-</div>
-<div class="flex items-center">
-<span class="material-symbols-outlined text-on-surface-variant/40 mr-3 text-xl">lock</span>
-<input class="block w-full py-3 px-0 bg-transparent border-0 border-b border-outline-variant focus:ring-0 focus:border-primary transition-all font-body text-on-surface placeholder:text-on-surface-variant/30" id="password" name="password" placeholder="••••••••" type="password" required/>
-</div>
-</div>
-<!-- Remember Me Toggle -->
-<div class="flex items-center space-x-3">
-<div class="relative inline-flex items-center cursor-pointer">
-<input class="sr-only peer" type="checkbox" value=""/>
-<div class="w-10 h-5 bg-surface-container-highest rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
-</div>
-<span class="text-sm font-medium text-on-surface-variant font-body">Remember me for 30 days</span>
-</div>
-<!-- Action Button -->
-<div class="pt-4">
-<p id="errorMessage" class="text-error text-sm text-center hidden"></p>
-<button class="w-full primary-gradient text-on-primary font-headline font-bold py-4 px-6 rounded-xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2" type="submit">
-                            Sign In
-                            <span class="material-symbols-outlined text-lg">login</span>
-</button>
-</div>
-</form>
-<!-- Social Login Alternative (Subtle) -->
-<div class="mt-12 text-center">
-<div class="relative mb-8">
-<div class="absolute inset-0 flex items-center">
-<div class="w-full border-t border-outline-variant/30"></div>
-</div>
-<div class="relative flex justify-center text-xs font-bold font-label uppercase tracking-widest text-on-surface-variant bg-surface px-4">
-                            Or continue with
-                        </div>
-</div>
-<div class="grid grid-cols-2 gap-4">
-<button class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-colors font-body font-semibold text-sm">
-<img alt="Google" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBOO63Tn9OGrrGh6eskcY8V2MdYycYlNMOCe72m0JEJF-eqfczH_3AYoyAoqAnffec4Ssf_aq9X8bIxQd8Xzfo09NIuc6dD4A1EdYvjUyz3mHr-uMWqRSDmwQMc4quC0_Tun5uI2MRCPUOblDvfqNNd_aMe_yyO-2nN6x_CJL7jlNNnMyF8BWSxCrOx99B_JKaVdc21QOlPI8NKlAN8-vfhCJAPaU2HOxfWIHGE67cY84CTHkbTqn7SVx7m6tGvE3XNmMFGs_F9RPc"/>
-                            Google
-                        </button>
-<button class="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-outline-variant/30 hover:bg-surface-container-low transition-colors font-body font-semibold text-sm">
-<img alt="Microsoft" class="w-5 h-5" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFacFqBwaZX633SAdf_LhfYHHM0xthZyJOWNb9inv4rEo5tT0wnFwhO1VTpk-QgupzBoXjC6lwljPqT9mN9NacPIAaR23i4TL87RZ0YyVYt8z2CgDO3XElnTJMOSfBfUNF5_uoxWpLKT36MmRBN1-ODvYwxXUOcI3gM8oZ0brNFk0oyc60Y_Ihuo7wBU7ARhVZXm_DqwUCs1HMYi3m7KJm7W0PqTVLAALrpAk_dgR2OA_R6lo4lHHGf0wD9Do2YJ1J5RHZr4-bcZQ"/>
-                            Outlook
-                        </button>
-</div>
-</div>
-<!-- Footer Sign Up Link -->
-<p class="mt-12 text-center text-on-surface-variant font-body text-sm">
-                    New to VitalPulse? 
-                    <a class="text-primary font-bold hover:underline underline-offset-4 ml-1" href="signup.html">Create an account</a>
-</p>
-</div>
-</section>
-</main>
-<!-- Contextual Footer (Minimal) -->
-<footer class="p-6 bg-surface text-center md:hidden border-t border-outline-variant/10">
-<p class="text-[10px] font-bold font-label uppercase tracking-widest text-on-surface-variant opacity-40">
-            © 2024 VitalPulse Cameroon • Emergency Blood Coordination
-        </p>
-</footer>
-<div id="successToast" class="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-[70] opacity-0 translate-y-20 transition-all duration-500 ease-out">
-  <div class="bg-on-surface text-surface px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3">
-    <span class="material-symbols-outlined text-tertiary" data-icon="check_circle">check_circle</span>
-    <span id="toastMessage" class="text-sm font-bold">Saved!</span>
+<main class="flex-1 flex items-center justify-center px-4 py-12">
+  <div class="w-full max-w-[420px] bg-surface-container-lowest border border-outline-variant/15 rounded-3xl shadow-sm p-8 sm:p-10">
+
+    <!-- Brand -->
+    <div class="flex flex-col items-center text-center mb-7">
+      <div class="w-14 h-14 rounded-full bg-primary flex items-center justify-center shadow-md shadow-primary/25 mb-3">
+        <span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings:'FILL' 1">water_drop</span>
+      </div>
+      <span class="font-extrabold text-xl font-headline tracking-tight"><span class="text-primary">Vital</span><span class="text-on-surface">Pulse</span></span>
+      <span class="text-[10px] font-bold text-on-surface-variant tracking-widest uppercase mt-0.5">Cameroon</span>
+    </div>
+
+    <!-- Error banner -->
+    <div id="loginErrorBanner" class="hidden mb-5 bg-error-container/60 border border-error/25 rounded-2xl p-4 flex items-start gap-2.5">
+      <span class="material-symbols-outlined text-error text-lg shrink-0 mt-0.5">error</span>
+      <p id="loginErrorText" class="text-sm text-error font-medium leading-snug">Incorrect email/phone or password. Please try again.</p>
+    </div>
+
+    <div class="text-center mb-6">
+      <h1 class="text-2xl font-extrabold font-headline text-on-surface">Welcome back</h1>
+      <p class="text-sm text-on-surface-variant mt-1">Sign in to continue saving lives across Cameroon.</p>
+    </div>
+
+    <form id="loginForm" class="space-y-5" novalidate>
+      <div>
+        <label for="loginIdentifier" class="block text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5">Phone or Email</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-xl">person</span>
+          <input id="loginIdentifier" name="identifier" type="text" autocomplete="username" required
+                 class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-xl pl-11 pr-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface"
+                 placeholder="e.g. +237 600 000 000"/>
+        </div>
+      </div>
+
+      <div>
+        <label for="loginPassword" class="block text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5">Password</label>
+        <div class="relative">
+          <span class="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/50 text-xl">lock</span>
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required
+                 class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-xl pl-11 pr-11 py-3 text-sm font-medium focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all text-on-surface"
+                 placeholder="••••••••"/>
+          <button type="button" id="btnToggleLoginPassword" aria-label="Show password" class="absolute right-3.5 top-1/2 -translate-y-1/2 text-on-surface-variant/60 hover:text-on-surface cursor-pointer">
+            <span class="material-symbols-outlined text-xl">visibility</span>
+          </button>
+        </div>
+        <p id="loginAttemptsWarning" class="hidden mt-2 text-xs text-error font-semibold">5 failed attempts will require verification</p>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+          <input id="loginRememberMe" type="checkbox" class="rounded border-outline-variant text-primary focus:ring-primary/40 cursor-pointer"/>
+          <span class="text-sm text-on-surface-variant font-medium">Remember me</span>
+        </label>
+        <a href="/forgot-password.html" class="text-sm font-bold text-primary hover:underline">Forgot Password?</a>
+      </div>
+
+      <button id="btnLoginSubmit" type="submit" disabled
+              class="w-full bg-primary hover:opacity-90 text-white font-bold py-3.5 rounded-xl shadow-md shadow-primary/20 transition-opacity cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">
+        Sign In
+      </button>
+    </form>
+
+    <div class="relative my-7">
+      <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-outline-variant/25"></div></div>
+      <div class="relative flex justify-center text-xs font-bold text-on-surface-variant bg-surface-container-lowest px-3 mx-auto w-fit">OR</div>
+    </div>
+
+    <p class="text-center text-sm text-on-surface-variant">
+      Don't have an account? <a href="/signup.html" class="text-primary font-bold hover:underline">Create account</a>
+    </p>
   </div>
-</div>
+</main>
+
+<footer class="border-t border-outline-variant/15 py-6 px-4">
+  <div class="max-w-[1000px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-on-surface-variant">
+    <p><span class="font-bold text-primary">VitalPulse</span> · Together for a healthier Cameroon | VitalPulse</p>
+    <div class="flex items-center gap-4 flex-wrap justify-center">
+      <a href="/privacy.html" class="hover:text-primary font-medium">Privacy Policy</a>
+      <a href="/terms.html" class="hover:text-primary font-medium">Terms of Service</a>
+      <a href="/about.html" class="hover:text-primary font-medium">Help Center</a>
+      <a href="/about.html" class="hover:text-primary font-medium">Contact Us</a>
+    </div>
+  </div>
+</footer>
+
 <script type="module" src="/src/main.js"></script>
 </body></html>
