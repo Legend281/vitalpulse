@@ -26,6 +26,9 @@ export interface CallerClaims {
   role?: Role;
   hospitalId?: string;
   suspended?: boolean;
+  /** Donor-only. Mirrors donors/{uid}.kycStatus so rules/UI can gate on the token
+   *  claim without an extra read. Set only by kyc.ts's Cloud Functions. */
+  kycStatus?: 'pending' | 'verified' | 'rejected';
 }
 
 /**

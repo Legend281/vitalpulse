@@ -8,16 +8,18 @@ import {
   deductInventoryStockSchema,
   resolveLabTestSchema,
   setInventoryThresholdSchema,
+  issueBloodToPatientSchema,
 } from './schemas';
 
 /**
  * Inventory — Security Master Plan 1.5 "updateInventory" + Phase 3. The ONLY
  * path by which the `inventory` collection's stock counts and lab-test
- * lifecycle (`batches[].testStatus`) are mutated by the app. Replaces
- * db.js's client-side updateInventoryStock/deductInventoryStock/
- * resolveLabTest/setInventoryThreshold, which ran unauthenticated business
- * logic (including the "is this blood safe to issue" gate) entirely in the
- * browser.
+ * lifecycle (`batches[].testStatus`) are mutated by the app, and — as of
+ * issueBloodToPatient — the ONLY path by which `issuance_log` (Restricted-PHI)
+ * is written. Replaces db.js's client-side updateInventoryStock/
+ * deductInventoryStock/resolveLabTest/setInventoryThreshold/
+ * issueBloodToPatient, which ran unauthenticated business logic (including
+ * the "is this blood safe to issue" crossmatch gate) entirely in the browser.
  *
  * Roles that may add/remove/threshold stock: hospital_staff, hospital_admin,
  * system_admin — mirrors firestore.rules' canManageStock() (lab_tech is
@@ -373,10 +375,129 @@ async function setInventoryThresholdHandler(request: CallableRequest) {
   return { bloodType: input.bloodType, minimumThreshold: input.threshold };
 }
 
+/**
+ * issueBloodToPatient — the last direct-client write path into `inventory`,
+ * deferred from the original updateInventory pass (2026-08-01). Unlike
+ * add/deduct/threshold, this deducts ONLY from batches whose testStatus is
+ * already 'Cleared' — untested or rejected units must never leave the
+ * building (Master Plan 1.3 ABAC rule 3). It's also the only inventory
+ * operation that produces a Restricted-PHI record (`issuance_log`: patient
+ * name, diagnosis, ward, attending doctor), so it's held to a stricter bar
+ * than a stock adjustment.
+ */
+async function issueBloodToPatientHandler(request: CallableRequest) {
+  const caller = requireCaller(request, STOCK_MANAGER_ROLES);
+  const parsed = issueBloodToPatientSchema.safeParse(request.data);
+  if (!parsed.success) {
+    throw new HttpsError('invalid-argument', 'Invalid issueBloodToPatient payload.', parsed.error.flatten());
+  }
+  const input = parsed.data;
+  const { hospitalId, hospitalName } = await resolveTargetHospital(caller, input);
+  const docRef = db.collection('inventory').doc(invDocId(hospitalName, input.bloodType));
+
+  const { aggregates, deductedBatches } = await db.runTransaction(async (tx: Transaction) => {
+    const snap = await tx.get(docRef);
+    if (!snap.exists) {
+      throw new HttpsError('not-found', `No inventory found for ${input.bloodType} at ${hospitalName}.`);
+    }
+    const data = snap.data()!;
+    const batches: BatchLike[] = (data.batches || []).map((b: BatchLike) => ({ ...b }));
+
+    const clearedAvailable = batches
+      .filter((b) => (b.testStatus || 'Cleared') === 'Cleared')
+      .reduce((sum, b) => sum + b.units, 0);
+    if (input.units > clearedAvailable) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Only ${clearedAvailable} tested and cleared unit(s) of ${input.bloodType} are available to issue.`,
+      );
+    }
+
+    let toDeduct = input.units;
+    const deductedBatches: BatchLike[] = [];
+    const remainingBatches = batches.filter((b) => {
+      if (toDeduct <= 0) return true;
+      if ((b.testStatus || 'Cleared') !== 'Cleared') return true;
+      if (b.units <= toDeduct) {
+        toDeduct -= b.units;
+        deductedBatches.push(b);
+        return false;
+      }
+      deductedBatches.push({ ...b, units: toDeduct });
+      b.units -= toDeduct;
+      toDeduct = 0;
+      return true;
+    });
+
+    const newAggregates = computeAggregates(remainingBatches);
+    tx.set(
+      docRef,
+      {
+        ...data,
+        batches: remainingBatches,
+        hospitalId,
+        unitsAvailable: newAggregates.unitsAvailable,
+        unitsPendingTest: newAggregates.unitsPendingTest,
+        unitsRejected: newAggregates.unitsRejected,
+        componentTotals: newAggregates.componentTotals,
+        lastUpdated: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+
+    return { aggregates: newAggregates, deductedBatches };
+  });
+
+  const issuanceRef = await db.collection('issuance_log').add({
+    bloodType: input.bloodType,
+    units: input.units,
+    patientName: input.patientName,
+    patientId: input.patientId || '',
+    patientBloodType: input.patientBloodType || input.bloodType,
+    ward: input.ward || '',
+    requestingDoctor: input.requestingDoctor || '',
+    diagnosis: input.diagnosis || '',
+    crossmatchConfirmed: true,
+    crossmatchResult: 'Compatible',
+    crossmatchTechnician: input.crossmatchTechnician || 'Staff Tech',
+    hospital: hospitalName,
+    hospitalId,
+    issuedAt: new Date().toISOString(),
+  });
+
+  // Per Policy 5, audit events log actor/action/target/timestamp REFERENCES
+  // only, never PHI values — the patient's name/diagnosis/ward live solely
+  // in issuance_log, pointed to here by ID, not duplicated into the log.
+  await writeAudit({
+    actorUid: request.auth!.uid,
+    action: 'issueBloodToPatient',
+    targetUid: hospitalId ?? undefined,
+    details: {
+      actorRole: caller.role ?? null,
+      hospitalName,
+      bloodType: input.bloodType,
+      units: input.units,
+      issuanceLogId: issuanceRef.id,
+    },
+  });
+
+  return {
+    bloodType: input.bloodType,
+    unitsAvailable: aggregates.unitsAvailable,
+    issuanceLogId: issuanceRef.id,
+    deductedBatches: deductedBatches.map((b) => ({
+      id: b.id,
+      units: b.units,
+      sourceDonationId: (b.sourceDonationId as string | null | undefined) ?? null,
+    })),
+  };
+}
+
 export const addInventoryStock = onCall(addInventoryStockHandler);
 export const deductInventoryStock = onCall(deductInventoryStockHandler);
 export const resolveLabTest = onCall(resolveLabTestHandler);
 export const setInventoryThreshold = onCall(setInventoryThresholdHandler);
+export const issueBloodToPatient = onCall(issueBloodToPatientHandler);
 
 // Exported for unit tests only.
 export {
@@ -384,6 +505,7 @@ export {
   deductInventoryStockHandler,
   resolveLabTestHandler,
   setInventoryThresholdHandler,
+  issueBloodToPatientHandler,
   computeAggregates,
   invDocId,
 };

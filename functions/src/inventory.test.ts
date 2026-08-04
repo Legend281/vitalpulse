@@ -9,12 +9,14 @@ const mocks = vi.hoisted(() => {
   const txSet = vi.fn();
   const txUpdate = vi.fn();
   const runTransaction = vi.fn(async (cb: (tx: unknown) => unknown) => cb({ get: txGet, set: txSet, update: txUpdate }));
+  const issuanceAdd = vi.fn(async () => ({ id: 'ISSUE1' }));
   const collection = vi.fn((name: string) => {
     if (name === 'users') return { doc: usersDoc };
     if (name === 'inventory') return { doc: inventoryDoc };
+    if (name === 'issuance_log') return { add: issuanceAdd };
     throw new Error(`unexpected collection: ${name}`);
   });
-  return { usersDocGet, usersDoc, inventoryDoc, txGet, txSet, txUpdate, runTransaction, collection };
+  return { usersDocGet, usersDoc, inventoryDoc, txGet, txSet, txUpdate, runTransaction, issuanceAdd, collection };
 });
 
 vi.mock('./firebaseAdmin', () => ({
@@ -27,6 +29,7 @@ import {
   deductInventoryStockHandler,
   resolveLabTestHandler,
   setInventoryThresholdHandler,
+  issueBloodToPatientHandler,
 } from './inventory';
 import { writeAudit } from './audit';
 
@@ -519,6 +522,196 @@ describe('setInventoryThresholdHandler', () => {
     expect(result).toEqual({ bloodType: 'O+', minimumThreshold: 3 });
     expect(writeAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'setInventoryThreshold', targetUid: undefined }),
+    );
+  });
+});
+
+describe('issueBloodToPatientHandler', () => {
+  const validPayload = (overrides: Record<string, unknown> = {}) => ({
+    bloodType: 'O+',
+    units: 2,
+    patientName: 'Jane Doe',
+    crossmatchConfirmed: true,
+    crossmatchResult: 'Compatible',
+    ...overrides,
+  });
+
+  it('HOSTILE: rejects unauthenticated callers', async () => {
+    await expect(issueBloodToPatientHandler(req(undefined, validPayload()))).rejects.toMatchObject({
+      code: 'unauthenticated',
+    });
+  });
+
+  it('HOSTILE: rejects a payload that doesn\'t confirm the crossmatch (medical safety gate, Master Plan 1.3)', async () => {
+    await expect(
+      issueBloodToPatientHandler(
+        req(
+          { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+          validPayload({ crossmatchConfirmed: false }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  it('HOSTILE: rejects a crossmatchResult other than the exact literal "Compatible" — the gate cannot be relabeled around', async () => {
+    await expect(
+      issueBloodToPatientHandler(
+        req(
+          { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+          validPayload({ crossmatchResult: 'Incompatible' }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  it('HOSTILE: rejects a payload missing patientName', async () => {
+    const { patientName: _patientName, ...rest } = validPayload();
+    await expect(
+      issueBloodToPatientHandler(req({ uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } }, rest)),
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  it('HOSTILE: lab_tech cannot issue blood (separation of duties: clearance vs. issuance)', async () => {
+    await expect(
+      issueBloodToPatientHandler(
+        req({ uid: 'l1', token: { role: 'lab_tech', hospitalId: 'H1' } }, validPayload()),
+      ),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('HOSTILE: donor cannot issue blood', async () => {
+    await expect(
+      issueBloodToPatientHandler(req({ uid: 'd1', token: { role: 'donor' } }, validPayload())),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
+  it('HOSTILE: a client-supplied hospitalId is ignored for hospital-scoped roles (own claim wins)', async () => {
+    mocks.txGet.mockResolvedValue(invSnap({ batches: [{ id: 'b1', units: 5, testStatus: 'Cleared' }] }));
+    await issueBloodToPatientHandler(
+      req(
+        { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+        validPayload({ units: 1, hospitalId: 'SOMEONE-ELSES-HOSPITAL' }),
+      ),
+    );
+    expect(mocks.usersDoc).toHaveBeenCalledWith('H1');
+    expect(mocks.usersDoc).not.toHaveBeenCalledWith('SOMEONE-ELSES-HOSPITAL');
+  });
+
+  it('HOSTILE: rejects issuing from a hospital with no inventory doc yet', async () => {
+    mocks.txGet.mockResolvedValue(invSnap(undefined));
+    await expect(
+      issueBloodToPatientHandler(
+        req({ uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } }, validPayload()),
+      ),
+    ).rejects.toMatchObject({ code: 'not-found' });
+  });
+
+  it('HOSTILE: rejects issuing more than is testStatus "Cleared" — Waiting/Rejected batches never count, and nothing is written', async () => {
+    mocks.txGet.mockResolvedValue(
+      invSnap({
+        batches: [
+          { id: 'b1', units: 5, testStatus: 'Waiting for Lab Test', componentType: 'Whole Blood' },
+          { id: 'b2', units: 1, testStatus: 'Cleared', componentType: 'Whole Blood' },
+        ],
+      }),
+    );
+    await expect(
+      issueBloodToPatientHandler(
+        req({ uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } }, validPayload({ units: 2 })),
+      ),
+    ).rejects.toMatchObject({ code: 'failed-precondition' });
+    expect(mocks.txSet).not.toHaveBeenCalled();
+    expect(mocks.issuanceAdd).not.toHaveBeenCalled();
+    expect(writeAudit).not.toHaveBeenCalled();
+  });
+
+  it('deducts Cleared batches oldest-first, leaves non-Cleared batches untouched, writes issuance_log and an audit event with no PHI', async () => {
+    mocks.txGet.mockResolvedValue(
+      invSnap({
+        batches: [
+          { id: 'b1', units: 2, testStatus: 'Cleared', componentType: 'Whole Blood', sourceDonationId: 'D1' },
+          { id: 'b2', units: 1, testStatus: 'Waiting for Lab Test', componentType: 'Whole Blood' },
+          { id: 'b3', units: 5, testStatus: 'Cleared', componentType: 'Whole Blood', sourceDonationId: 'D2' },
+        ],
+      }),
+    );
+
+    const result = await issueBloodToPatientHandler(
+      req(
+        { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+        validPayload({ units: 3, patientId: 'P1', diagnosis: 'Trauma', ward: 'ICU' }),
+      ),
+    );
+
+    // Cleared total was 2 + 5 = 7; issuing 3 leaves 4 Cleared. b1 (oldest) is
+    // fully consumed first, then 1 of b3's 5 units; b2 (not Cleared) is untouched.
+    expect(result).toMatchObject({
+      bloodType: 'O+',
+      unitsAvailable: 4,
+      issuanceLogId: 'ISSUE1',
+      deductedBatches: [
+        { id: 'b1', units: 2, sourceDonationId: 'D1' },
+        { id: 'b3', units: 1, sourceDonationId: 'D2' },
+      ],
+    });
+
+    expect(mocks.inventoryDoc).toHaveBeenCalledWith('General_Hospital_O+');
+    expect(mocks.txSet).toHaveBeenCalledWith(
+      { __docId: 'General_Hospital_O+' },
+      expect.objectContaining({
+        unitsAvailable: 4,
+        unitsPendingTest: 1,
+        batches: [
+          { id: 'b2', units: 1, testStatus: 'Waiting for Lab Test', componentType: 'Whole Blood' },
+          { id: 'b3', units: 4, testStatus: 'Cleared', componentType: 'Whole Blood', sourceDonationId: 'D2' },
+        ],
+      }),
+      { merge: true },
+    );
+
+    expect(mocks.issuanceAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bloodType: 'O+',
+        units: 3,
+        patientName: 'Jane Doe',
+        patientId: 'P1',
+        diagnosis: 'Trauma',
+        ward: 'ICU',
+        crossmatchConfirmed: true,
+        crossmatchResult: 'Compatible',
+        hospital: 'General Hospital',
+        hospitalId: 'H1',
+      }),
+    );
+
+    expect(writeAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUid: 'h1',
+        action: 'issueBloodToPatient',
+        targetUid: 'H1',
+        details: expect.objectContaining({ issuanceLogId: 'ISSUE1', bloodType: 'O+', units: 3 }),
+      }),
+    );
+    // Policy 5: audit events log references, never PHI values — patientName/
+    // diagnosis must never appear in the audit trail itself.
+    const auditPayload = JSON.stringify((writeAudit as unknown as { mock: { calls: unknown[][] } }).mock.calls[0][0]);
+    expect(auditPayload).not.toContain('Jane Doe');
+    expect(auditPayload).not.toContain('Trauma');
+  });
+
+  it('system_admin issues blood on behalf of a shadow (unregistered) hospital by name only', async () => {
+    mocks.txGet.mockResolvedValue(invSnap({ batches: [{ id: 'b1', units: 5, testStatus: 'Cleared' }] }));
+    const result = await issueBloodToPatientHandler(
+      req(
+        { uid: 'a1', token: { role: 'system_admin' } },
+        validPayload({ units: 2, hospitalName: 'Unregistered Clinic' }),
+      ),
+    );
+    expect(result.unitsAvailable).toBe(3);
+    expect(mocks.usersDoc).not.toHaveBeenCalled();
+    expect(mocks.inventoryDoc).toHaveBeenCalledWith('Unregistered_Clinic_O+');
+    expect(mocks.issuanceAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ hospital: 'Unregistered Clinic', hospitalId: null }),
     );
   });
 });
