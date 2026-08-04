@@ -21,6 +21,7 @@ let env;
 const claims = {
   donorA:   { role: 'donor' },
   donorB:   { role: 'donor' },
+  donorC:   { role: 'donor' },
   staffH1:  { role: 'hospital_staff', hospitalId: 'H1' },
   staffH2:  { role: 'hospital_staff', hospitalId: 'H2' },
   labH1:    { role: 'lab_tech', hospitalId: 'H1' },
@@ -52,6 +53,14 @@ beforeEach(async () => {
 
     await setDoc(doc(db, 'requests/R1'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Open', isEmergency: true, requestedAt: 'now' });
     await setDoc(doc(db, 'requests/R2'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor Assigned', matchedDonor: 'donorA', matchedAt: 'now', requestedAt: 'now', isEmergency: true });
+
+    await setDoc(doc(db, 'public_requests/PR1'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Broadcasting' });
+
+    // B7 (Auth & Onboarding Stream B) fixtures: donorA has NO donors/ doc, representing
+    // every pre-existing donor today (grandfathered — see firestore.rules' isKycEligible
+    // comment). donorB has an unverified (pending) KYC record; donorC is fully verified.
+    await setDoc(doc(db, 'donors/donorB'), { kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycSubmittedAt: null, kycRejectionReason: null });
+    await setDoc(doc(db, 'donors/donorC'), { kycStatus: 'verified', kycDocType: 'national_id', kycDocRef: 'kyc/donorC/national_id_1.jpg', kycSubmittedAt: 'now', kycRejectionReason: null });
 
     await setDoc(doc(db, 'inventory/H1_O-'), { bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 10 });
     await setDoc(doc(db, 'inventory/H2_A+'), { bloodType: 'A+', hospital: 'Hospital Two', hospitalId: 'H2', unitsAvailable: 3 });
@@ -191,50 +200,143 @@ describe('requests', () => {
 
   it('HOSTILE: client cannot delete a request', async () =>
     assertFails(deleteDoc(doc(ctx('sysAdmin'), 'requests/R1'))));
+
+  // B7: a grandfathered donor (no donors/{uid} record) can still accept — already covered
+  // by "donor accepts an Open request as themselves" above (donorA has no donors/ doc seeded).
+
+  it('B7 HOSTILE: a donor with a pending (unverified) KYC record cannot accept an Open request', async () =>
+    assertFails(updateDoc(doc(ctx('donorB'), 'requests/R1'), {
+      status: 'Donor Assigned', matchedDonor: 'donorB', matchedAt: 'now',
+    })));
+
+  it('B7: a donor with a verified KYC record can accept an Open request', async () =>
+    assertSucceeds(updateDoc(doc(ctx('donorC'), 'requests/R1'), {
+      status: 'Donor Assigned', matchedDonor: 'donorC', matchedAt: 'now',
+    })));
+});
+
+describe('public_requests — B7 KYC gate mirrors requests/', () => {
+  it('donor reads a Broadcasting public request', async () =>
+    assertSucceeds(getDoc(doc(ctx('donorA'), 'public_requests/PR1'))));
+
+  it('a grandfathered donor (no donors/ doc) can accept a Broadcasting public request', async () =>
+    assertSucceeds(updateDoc(doc(ctx('donorA'), 'public_requests/PR1'), {
+      status: 'Donor Assigned', matchedDonor: 'donorA', matchedAt: 'now',
+    })));
+
+  it('B7 HOSTILE: a donor with a pending (unverified) KYC record cannot accept a Broadcasting public request', async () =>
+    assertFails(updateDoc(doc(ctx('donorB'), 'public_requests/PR1'), {
+      status: 'Donor Assigned', matchedDonor: 'donorB', matchedAt: 'now',
+    })));
+
+  it('B7: a donor with a verified KYC record can accept a Broadcasting public request', async () =>
+    assertSucceeds(updateDoc(doc(ctx('donorC'), 'public_requests/PR1'), {
+      status: 'Donor Assigned', matchedDonor: 'donorC', matchedAt: 'now',
+    })));
+});
+
+describe('donors/{uid} — KYC records (Auth & Onboarding Stream B, NEW KYC-only collection)', () => {
+  it('a donor reads their own KYC record', async () =>
+    assertSucceeds(getDoc(doc(ctx('donorB'), 'donors/donorB'))));
+
+  it('HOSTILE: a donor cannot read another donor\'s KYC record', async () =>
+    assertFails(getDoc(doc(ctx('donorB'), 'donors/donorC'))));
+
+  it('system_admin reads any donor\'s KYC record (review queue)', async () =>
+    assertSucceeds(getDoc(doc(ctx('sysAdmin'), 'donors/donorB'))));
+
+  it('HOSTILE: hospital_staff cannot read a donor\'s KYC record', async () =>
+    assertFails(getDoc(doc(ctx('staffH1'), 'donors/donorB'))));
+
+  it('system_admin lists all donors\' KYC records (review queue)', async () =>
+    assertSucceeds(getDocs(collection(ctx('sysAdmin'), 'donors'))));
+
+  it('HOSTILE: a donor cannot list donors\' KYC records', async () =>
+    assertFails(getDocs(collection(ctx('donorB'), 'donors'))));
+
+  it('HOSTILE: no client, not even the owning donor, can write kycStatus directly', async () =>
+    assertFails(updateDoc(doc(ctx('donorB'), 'donors/donorB'), { kycStatus: 'verified' })));
+
+  it('HOSTILE: system_admin cannot write kycStatus directly either — Cloud Functions only', async () =>
+    assertFails(updateDoc(doc(ctx('sysAdmin'), 'donors/donorB'), { kycStatus: 'verified' })));
+
+  it('HOSTILE: a donor cannot self-create their own donors/{uid} doc, bypassing onDonorSignUp', async () =>
+    assertFails(setDoc(doc(ctx('donorA'), 'donors/donorA'), { kycStatus: 'verified' })));
+});
+
+describe('adminQueue/{id} — KYC review worklist (Cloud Function only)', () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), 'adminQueue/kyc_donorB'), { type: 'kyc_review', donorUid: 'donorB', status: 'pending' });
+    });
+  });
+
+  it('system_admin reads the review queue', async () =>
+    assertSucceeds(getDoc(doc(ctx('sysAdmin'), 'adminQueue/kyc_donorB'))));
+
+  it('HOSTILE: a donor cannot read the admin review queue, even their own entry', async () =>
+    assertFails(getDoc(doc(ctx('donorB'), 'adminQueue/kyc_donorB'))));
+
+  it('HOSTILE: hospital_admin cannot read the admin review queue', async () =>
+    assertFails(getDoc(doc(ctx('hAdminH1'), 'adminQueue/kyc_donorB'))));
+
+  it('HOSTILE: no client, including system_admin, can write to the review queue directly', async () =>
+    assertFails(updateDoc(doc(ctx('sysAdmin'), 'adminQueue/kyc_donorB'), { status: 'verified' })));
 });
 
 describe('inventory', () => {
-  it('hospital_staff reads/writes their own hospital\'s inventory', async () =>
-    assertSucceeds(setDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), {
-      bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 12,
-    }, { merge: true })));
+  it('hospital_staff reads their own hospital\'s inventory', async () =>
+    assertSucceeds(getDoc(doc(ctx('staffH1'), 'inventory/H1_O-'))));
 
-  it('HOSTILE: hospital_staff of H2 cannot write H1\'s inventory', async () =>
-    assertFails(setDoc(doc(ctx('staffH2'), 'inventory/H1_O-'), {
-      bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 999,
-    }, { merge: true })));
-
-  it('HOSTILE: cannot write negative stock', async () =>
-    assertFails(setDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), {
-      bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: -5,
-    }, { merge: true })));
-
-  it('system_admin can write inventory for any hospital (e.g. admin stock-add flow)', async () =>
-    assertSucceeds(setDoc(doc(ctx('sysAdmin'), 'inventory/H2_A+'), {
-      bloodType: 'A+', hospital: 'Hospital Two', hospitalId: 'H2', unitsAvailable: 3,
-    }, { merge: true })));
+  it('HOSTILE: staff of H2 cannot read H1\'s inventory', async () =>
+    assertFails(getDoc(doc(ctx('staffH2'), 'inventory/H1_O-'))));
 
   it('HOSTILE: donor cannot read hospital inventory', async () =>
     assertFails(getDoc(doc(ctx('donorA'), 'inventory/H1_O-'))));
 
-  it('HOSTILE: lab_tech cannot edit stock directly (Master Plan 1.2 separation of duties)', async () =>
+  it('lab_tech CAN still read their own hospital\'s inventory', async () =>
+    assertSucceeds(getDoc(doc(ctx('labH1'), 'inventory/H1_O-'))));
+
+  it('nbtp_viewer can read inventory (national aggregate view)', async () =>
+    assertSucceeds(getDoc(doc(ctx('nbtp'), 'inventory/H1_O-'))));
+});
+
+describe('inventory writes are server-only (Phase 3): all mutations go through addInventoryStock/deductInventoryStock/resolveLabTest/setInventoryThreshold/issueBloodToPatient', () => {
+  // RESOLVED 2026-08-01 by issueBloodToPatient's migration (functions/src/
+  // inventory.ts) — it was the last direct-client write path into this
+  // collection (it needed to fabricate `batches[].testStatus: 'Cleared'`
+  // client-side to issue blood, since a document-level rule can't distinguish
+  // a legit deduction from a hostile one at the field level). These tests now
+  // pin the PERMANENT guarantee: no caller, including system_admin, has any
+  // direct client write path to `inventory` — the Cloud Functions' Admin SDK
+  // bypasses these rules by design, so this lockdown doesn't affect them.
+  it('HOSTILE: hospital_staff cannot write their own hospital\'s inventory directly any more', async () =>
+    assertFails(setDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), {
+      bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 12,
+    }, { merge: true })));
+
+  it('HOSTILE: hospital_staff cannot partial-update the minimum threshold directly any more', async () =>
+    assertFails(updateDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), { minimumThreshold: 3 })));
+
+  it('HOSTILE: lab_tech cannot edit stock directly (separation of duties, doubly enforced)', async () =>
     assertFails(setDoc(doc(ctx('labH1'), 'inventory/H1_O-'), {
       bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 50,
     }, { merge: true })));
 
-  it('lab_tech CAN still read their own hospital\'s inventory', async () =>
-    assertSucceeds(getDoc(doc(ctx('labH1'), 'inventory/H1_O-'))));
+  it('HOSTILE: system_admin cannot write inventory directly any more either', async () =>
+    assertFails(setDoc(doc(ctx('sysAdmin'), 'inventory/H2_A+'), {
+      bloodType: 'A+', hospital: 'Hospital Two', hospitalId: 'H2', unitsAvailable: 3,
+    }, { merge: true })));
 
-  it('hospital_staff adjusts the minimum threshold via a partial update (setInventoryThreshold shape)', async () =>
-    assertSucceeds(updateDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), { minimumThreshold: 3 })));
-
-  it('HOSTILE: hospital_staff cannot create inventory without stamping their own hospitalId', async () =>
+  it('HOSTILE: no caller can create a brand-new inventory doc directly', async () =>
     assertFails(setDoc(doc(ctx('staffH1'), 'inventory/H1_O+'), {
-      bloodType: 'O+', hospital: 'Hospital One', unitsAvailable: 5,
+      bloodType: 'O+', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 5,
     })));
 
-  it('HOSTILE: hospital_staff cannot partial-update another hospital\'s inventory doc', async () =>
-    assertFails(updateDoc(doc(ctx('staffH1'), 'inventory/H2_A+'), { unitsAvailable: 1 })));
+  it('HOSTILE: hospital_staff cannot write negative stock directly (or any value — writes are closed)', async () =>
+    assertFails(setDoc(doc(ctx('staffH1'), 'inventory/H1_O-'), {
+      bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: -5,
+    }, { merge: true })));
 });
 
 describe('donation_requests', () => {
@@ -331,6 +433,21 @@ describe('issuance_log — Restricted-PHI', () => {
 
   it('HOSTILE: lab_tech cannot issue blood directly (Master Plan 1.2 separation of duties)', async () =>
     assertFails(addDoc(collection(ctx('labH1'), 'issuance_log'), {
+      hospitalId: 'H1', hospital: 'Hospital One', bloodType: 'O-', units: 1, patientName: 'X',
+    })));
+
+  // RESOLVED 2026-08-01: issueBloodToPatient is now a Cloud Function
+  // (functions/src/inventory.ts) and the ONLY writer of this collection, via
+  // the Admin SDK (bypasses these rules). Pinning the PERMANENT guarantee:
+  // no caller, including hospital_staff (who used to write here directly)
+  // and system_admin, has a client write path any more.
+  it('HOSTILE: hospital_staff cannot write issuance_log directly any more', async () =>
+    assertFails(addDoc(collection(ctx('staffH1'), 'issuance_log'), {
+      hospitalId: 'H1', hospital: 'Hospital One', bloodType: 'O-', units: 1, patientName: 'X',
+    })));
+
+  it('HOSTILE: system_admin cannot write issuance_log directly either', async () =>
+    assertFails(addDoc(collection(ctx('sysAdmin'), 'issuance_log'), {
       hospitalId: 'H1', hospital: 'Hospital One', bloodType: 'O-', units: 1, patientName: 'X',
     })));
 });

@@ -76,18 +76,26 @@ describe('S3 — donor response stampede: exactly-once accept', () => {
 });
 
 describe('S5 — inventory consistency under concurrent mutations', () => {
-  // This intentionally does NOT import db.js — its Firestore instance is bound to
-  // the real project (firebase.js), not this emulator. It mirrors deductInventoryStock's
-  // current shipped pattern (db.js, runTransaction: read unitsAvailable, compute
-  // newUnits, update the absolute new value) so the test exercises the real,
-  // shipped transactional logic against the emulator.
-  async function deductOneUnitLikeDbJs(firestoreCtx, docPath) {
-    const ref = doc(firestoreCtx, docPath);
-    await runTransaction(firestoreCtx, async (tx) => {
-      const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error('inventory missing');
-      const current = snap.data().unitsAvailable;
-      tx.update(ref, { unitsAvailable: Math.max(0, current - 1) });
+  // UPDATED 2026-08-01 (Phase 3, issueBloodToPatient migration): this used to run
+  // the deduct as a rules-constrained hospital_staff client transaction, mirroring
+  // db.js's OLD direct-to-Firestore deductInventoryStock. That client function no
+  // longer exists — deductInventoryStock (and every other inventory mutation,
+  // including the last holdout, issueBloodToPatient) is now a Cloud Function, and
+  // `inventory` writes are `allow write: if false` for every direct client caller,
+  // including hospital_staff. The Cloud Functions' Admin SDK bypasses these rules
+  // by design, so this test now runs the transaction through
+  // withSecurityRulesDisabled to model that — it's still exercising genuine
+  // Firestore transaction serialization (the actual property S5 cares about),
+  // which behaves identically for the Admin SDK and the client SDK.
+  async function deductOneUnitLikeInventoryFn(docPath) {
+    await env.withSecurityRulesDisabled(async (c) => {
+      const ref = doc(c.firestore(), docPath);
+      await runTransaction(c.firestore(), async (tx) => {
+        const snap = await tx.get(ref);
+        if (!snap.exists()) throw new Error('inventory missing');
+        const current = snap.data().unitsAvailable;
+        tx.update(ref, { unitsAvailable: Math.max(0, current - 1) });
+      });
     });
   }
 
@@ -102,15 +110,20 @@ describe('S5 — inventory consistency under concurrent mutations', () => {
       });
     });
 
-    const staffFirestore = env.authenticatedContext('staffH1', { role: 'hospital_staff', hospitalId: 'H1' }).firestore();
-
-    // Every deduct now runs as a Firestore transaction (same as db.js's
-    // deductInventoryStock), so Firestore serializes them: each one sees the
-    // committed value written by the previous one, and no update is lost.
+    // Every deduct runs as a Firestore transaction (same as
+    // functions/src/inventory.ts's deductInventoryStockHandler), so Firestore
+    // serializes them: each one sees the committed value written by the
+    // previous one, and no update is lost.
     await Promise.all(
-      Array.from({ length: concurrentDeducts }, () => deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_O-'))
+      Array.from({ length: concurrentDeducts }, () => deductOneUnitLikeInventoryFn('inventory/H1_O-'))
     );
 
+    // Read back through a normal authenticated (rules-constrained) context, not a
+    // second withSecurityRulesDisabled call — that doesn't reliably see the prior
+    // write (see the historical note on this exact gotcha in firestore.rules.test.js).
+    // hospital_staff still has a read path to their own hospital's inventory; only
+    // writes were locked down.
+    const staffFirestore = env.authenticatedContext('staffH1', { role: 'hospital_staff', hospitalId: 'H1' }).firestore();
     const final = (await getDoc(doc(staffFirestore, 'inventory/H1_O-'))).data();
 
     // Correct (transactional) behavior: exactly startingUnits - concurrentDeducts
@@ -129,24 +142,26 @@ describe('S5 — inventory consistency under concurrent mutations', () => {
       });
     });
 
-    const staffFirestore = env.authenticatedContext('staffH1', { role: 'hospital_staff', hospitalId: 'H1' }).firestore();
-    const addTwoUnits = async (firestoreCtx, docPath) => {
-      const ref = doc(firestoreCtx, docPath);
-      await runTransaction(firestoreCtx, async (tx) => {
-        const snap = await tx.get(ref);
-        const current = snap.data().unitsAvailable;
-        tx.update(ref, { unitsAvailable: current + 2 });
+    const addTwoUnits = async (docPath) => {
+      await env.withSecurityRulesDisabled(async (c) => {
+        const ref = doc(c.firestore(), docPath);
+        await runTransaction(c.firestore(), async (tx) => {
+          const snap = await tx.get(ref);
+          const current = snap.data().unitsAvailable;
+          tx.update(ref, { unitsAvailable: current + 2 });
+        });
       });
     };
 
     await Promise.all([
-      deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_A+'),
-      deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_A+'),
-      deductOneUnitLikeDbJs(staffFirestore, 'inventory/H1_A+'),
-      addTwoUnits(staffFirestore, 'inventory/H1_A+'),
-      addTwoUnits(staffFirestore, 'inventory/H1_A+'),
+      deductOneUnitLikeInventoryFn('inventory/H1_A+'),
+      deductOneUnitLikeInventoryFn('inventory/H1_A+'),
+      deductOneUnitLikeInventoryFn('inventory/H1_A+'),
+      addTwoUnits('inventory/H1_A+'),
+      addTwoUnits('inventory/H1_A+'),
     ]);
 
+    const staffFirestore = env.authenticatedContext('staffH1', { role: 'hospital_staff', hospitalId: 'H1' }).firestore();
     const final = (await getDoc(doc(staffFirestore, 'inventory/H1_A+'))).data();
     expect(final.unitsAvailable).toBe(startingUnits - 3 + 4);
   });
