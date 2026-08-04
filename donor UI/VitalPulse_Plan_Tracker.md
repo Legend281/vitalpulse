@@ -375,7 +375,29 @@ Security Lead's report from testing the live KYC upload flow: a stray SHA-256 cl
 - Real multi-session tracking and per-session revocation
 - Real account deletion Cloud Function (needs Security Lead sign-off + cascading cleanup design)
 - Any change to `hospital.html`, `admin.html`, or shared routing beyond the EN/FR toggle — **superseded 2026-08-02 for the "Pending Donor KYC Verifications" admin queue only (Stream G), by direct Security Lead instruction. Everything else in `hospital.html`/`admin.html` is still out of scope.**
-- Any new Firestore collection outside the approved `kycStatus`/`kycDoc*` fields on `donors/{uid}` — **extended 2026-08-02 to also cover `livenessSelfieRef`/`livenessSubmittedAt` (Stream G, Decision 2), and 2026-08-03 to also cover `kycDocBackRef` (Stream I, Decision 2), both by direct Security Lead instruction.**
+- Any new Firestore collection outside the approved `kycStatus`/`kycDoc*` fields on `donors/{uid}` — **extended 2026-08-02 to also cover `livenessSelfieRef`/`livenessSubmittedAt` (Stream G, Decision 2), and 2026-08-03 to also cover `kycDocBackRef` (Stream I, Decision 2), both by direct Security Lead instruction. `passwordResetTokens/{uid}` (Stream J) is a separate, deny-all, non-donor collection and doesn't fall under this guardrail at all.**
+
+---
+
+## STREAM J — CUSTOM PASSWORD-RESET EMAIL PIPELINE, 2026-08-04
+
+Security Lead's report: password-reset emails weren't reliably arriving, and the requirement is a real 30-minute expiry with sender name "Vital Pulse Team." Investigation: this app used Firebase Auth's built-in `sendPasswordResetEmail`/`confirmPasswordReset` (client SDK) exclusively — no custom email code existed anywhere. That flow's oobCode links have a fixed ~1hr expiry with no public API to shorten it, and sender identity is only configurable via Firebase Console templates, not fully brandable. Confirmed via AskUserQuestion with the Security Lead: build a custom pipeline (not stay on Firebase's built-in flow), scoped to password reset only (signup email verification keeps using Firebase's built-in `sendEmailVerification` — untouched), sending via **Resend**, from the shared `onboarding@resend.dev` test address (no owned domain to verify yet) with display name "Vital Pulse Team".
+
+1. **`functions/src/passwordReset.ts` (new)** — `requestPasswordReset` (public/unauthenticated, same class as `resolveSignInIdentifier`/`checkPasswordBreach` — called before any Auth session exists): looks up the account via Admin SDK, generates a `crypto.randomBytes(32)` token, stores only its SHA-256 hash + a 30-minute `expiresAtMs` in a new `passwordResetTokens/{uid}` doc (overwriting any prior outstanding token), emails the raw token via Resend's REST API (native `fetch`, no new npm dependency). `checkPasswordResetToken` (read-only) and `confirmPasswordReset` (consumes the token, updates the password via Admin SDK, revokes all refresh tokens, audits) share one `validateResetToken()` — constant-time hash comparison (`crypto.timingSafeEqual`), single-use, hard 30-minute TTL enforced server-side regardless of what Firebase's own oobCode would have allowed.
+2. **Anti-enumeration preserved**: `requestPasswordReset` always returns `{success:true}` — unknown email, disabled account, 60s per-account resend cooldown, and even a Resend API failure all fail the same way from the caller's perspective. Matches the existing `resolveSignInIdentifier` contract and `forgot-password.html`'s own UI copy ("If an account exists for that... we've sent a link").
+3. **New Firestore collection `passwordResetTokens/{uid}`** — deny-all for every caller including system_admin (Cloud Functions/Admin SDK only; no legitimate reason for anyone to read another account's reset-token hash, unlike KYC evidence). Covered by 3 new tests in `firestore.rules.test.js`.
+4. **Client rewiring**: `auth.js`'s `sendPasswordReset`/`verifyResetCode`/`confirmReset` now call the three Cloud Functions above via `httpsCallable` instead of `firebase/auth`'s built-ins. `reset-password.html`'s link now carries `?uid=&token=` instead of Firebase's `?oobCode=`; the "never show the form until the link is confirmed valid" UX (C4.4) is preserved via the new read-only `checkPasswordResetToken` pre-check. Copy on both pages updated to state the real 30-minute/single-use window instead of vague "limited time" language.
+5. **Secret handling**: `RESEND_API_KEY` is a `firebase-functions/params` `defineSecret`, bound only to `requestPasswordReset` — stored in Google Secret Manager via `firebase functions:secrets:set RESEND_API_KEY`, never in code/config/git, and never seen by me (I don't have it and didn't ask for it in chat). `APP_BASE_URL` is a plain `defineString` (not secret) defaulting to `https://vitalpulse-fa458.web.app`; override via `functions/.env`'s `APP_BASE_URL=` if/when a real domain is verified in Resend and fronts the app instead.
+6. **Not yet live**: this needs the same `firebase deploy --only functions` that's already blocked on I10's IAM permission gap, **plus** the Security Lead running `firebase functions:secrets:set RESEND_API_KEY` (interactively, from their own terminal) before that deploy — `requestPasswordReset` will fail at runtime without it.
+
+| # | Task | Owner | Status | Notes |
+|---|---|---|---|---|
+| J1 | `passwordReset.ts`: requestPasswordReset / checkPasswordResetToken / confirmPasswordReset | Dev | ✅ | 30-min TTL, single-use, constant-time hash compare, refresh-token revocation on success. |
+| J2 | `passwordResetTokens/{uid}` Firestore rule (deny-all) + rules tests | Dev | ✅ | 3 new tests in `firestore.rules.test.js`, all passing against the emulator. |
+| J3 | `passwordReset.test.ts` — 21 unit tests (anti-enumeration, cooldown, TTL, tamper/replay/expiry rejection, audit) | Dev | ✅ | All passing. |
+| J4 | Rewire `auth.js`/`main.js`/`forgot-password.html`/`reset-password.html` off Firebase's built-in oobCode flow | Dev | ✅ | `?uid=&token=` link, `checkPasswordResetToken` pre-check preserves the C4.4 UX. |
+| J5 | Regression pass | Dev | ✅ | lint 0 errors, typecheck clean, build clean, 199 functions + 89 client + 125 rules tests all passing. |
+| J6 | Set `RESEND_API_KEY` secret + deploy | Security Lead | ⛔ **blocked on you** | `firebase functions:secrets:set RESEND_API_KEY` (never share the key itself in chat), then `firebase deploy --only functions` — same deploy blocked by I10's IAM gap. |
 
 ---
 
@@ -392,4 +414,5 @@ Security Lead's report from testing the live KYC upload flow: a stray SHA-256 cl
 | G — Donor Account Approval & Liveness | 7 | 7 | 0 — complete |
 | H — Dashboard Data Gated Behind Admin Approval | 4 | 4 | 0 — complete |
 | I — KYC Upload Hardening + Map/Copy Fixes | 10 | 9 | 1 (I10 — deploy blocked on IAM permission, needs you) |
-| **TOTAL** | **108** | **103** | **5** |
+| J — Custom Password-Reset Email Pipeline | 6 | 5 | 1 (J6 — needs your RESEND_API_KEY secret + the same blocked deploy) |
+| **TOTAL** | **114** | **108** | **6** |
