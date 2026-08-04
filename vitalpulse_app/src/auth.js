@@ -4,13 +4,10 @@ import {
     signOut,
     onAuthStateChanged,
     updateProfile,
-    sendPasswordResetEmail,
     sendEmailVerification,
     setPersistence,
     browserLocalPersistence,
-    browserSessionPersistence,
-    verifyPasswordResetCode,
-    confirmPasswordReset
+    browserSessionPersistence
 } from "firebase/auth";
 import { doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -220,20 +217,28 @@ export async function isEmailVerified() {
 // ============================================
 // PASSWORD RESET
 // ============================================
+// Custom Cloud Function pipeline (functions/src/passwordReset.ts), not Firebase Auth's
+// built-in sendPasswordResetEmail/confirmPasswordReset — Security Lead instruction
+// (2026-08-04): the link needs a real, enforced 30-minute expiry and a custom "Vital Pulse
+// Team" sender identity, neither of which Firebase's built-in oobCode flow supports.
+
+const requestPasswordResetFn = httpsCallable(getFunctions(), 'requestPasswordReset');
+const checkPasswordResetTokenFn = httpsCallable(getFunctions(), 'checkPasswordResetToken');
+const confirmPasswordResetFn = httpsCallable(getFunctions(), 'confirmPasswordReset');
 
 export async function sendPasswordReset(email) {
-    await sendPasswordResetEmail(auth, email);
+    await requestPasswordResetFn({ email });
 }
 
-// Set New Password (Stream C4.2): the `oobCode` comes from the link Firebase emailed —
-// verify it's still valid BEFORE ever showing the form (C4.4, expired/invalid-link
+// Set New Password (Stream C4.2): the `uid`+`token` come from the link Vital Pulse Team
+// emailed — verify it's still valid BEFORE ever showing the form (C4.4, expired/invalid-link
 // state), then use it once to actually change the password.
-export async function verifyResetCode(oobCode) {
-    return verifyPasswordResetCode(auth, oobCode);
+export async function verifyResetCode(uid, token) {
+    await checkPasswordResetTokenFn({ uid, token });
 }
 
-export async function confirmReset(oobCode, newPassword) {
-    await confirmPasswordReset(auth, oobCode, newPassword);
+export async function confirmReset(uid, token, newPassword) {
+    await confirmPasswordResetFn({ uid, token, newPassword });
 }
 
 // Sign In (C1.4, "Remember me"): must be called BEFORE loginUser() — Firebase Auth

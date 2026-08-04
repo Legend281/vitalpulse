@@ -383,6 +383,17 @@ describe('auditLogs — Cloud Function only', () => {
     assertSucceeds(getDoc(doc(ctx('sysAdmin'), 'auditLogs/A1'))));
 });
 
+describe('passwordResetTokens — Cloud Function only, no client path at all', () => {
+  it('HOSTILE: even system_admin cannot read a reset-token doc', async () =>
+    assertFails(getDoc(doc(ctx('sysAdmin'), 'passwordResetTokens/donorA'))));
+
+  it('HOSTILE: a donor cannot read their own reset-token doc', async () =>
+    assertFails(getDoc(doc(ctx('donorA'), 'passwordResetTokens/donorA'))));
+
+  it('HOSTILE: nobody can write a reset-token doc client-side', async () =>
+    assertFails(setDoc(doc(ctx('sysAdmin'), 'passwordResetTokens/donorA'), { tokenHash: 'x', used: false })));
+});
+
 describe('donor_notifications', () => {
   it('donor reads their own notification', async () =>
     assertSucceeds(getDoc(doc(ctx('donorA'), 'donor_notifications/N1'))));

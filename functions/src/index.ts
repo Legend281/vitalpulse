@@ -11,3 +11,4 @@ export {
 export { onDonorSignUp, submitKYC, submitLivenessSelfie, verifyDonor, rejectDonorKyc } from './kyc';
 export { checkPasswordBreach } from './checkPasswordBreach';
 export { resolveSignInIdentifier } from './resolveSignInIdentifier';
+export { requestPasswordReset, checkPasswordResetToken, confirmPasswordReset } from './passwordReset';

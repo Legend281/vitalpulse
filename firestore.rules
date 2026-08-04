@@ -502,6 +502,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ---------- Password reset tokens (functions/src/passwordReset.ts) — token hashes only,
+    // read/written exclusively by the Admin SDK (which bypasses these rules). No client path
+    // at all, not even system_admin read: unlike KYC evidence there is no legitimate reason
+    // for anyone to read another account's outstanding reset-token hash. ----------
+    match /passwordResetTokens/{uid} {
+      allow read, write: if false;
+    }
+
     // ---------- DENY BY DEFAULT ----------
     match /{document=**} {
       allow read, write: if false;

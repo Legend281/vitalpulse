@@ -578,17 +578,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const resetSuccessStep = document.getElementById('resetSuccessStep');
         const resetInvalidStep = document.getElementById('resetInvalidStep');
         const resetPasswordForm = document.getElementById('resetPasswordForm');
-        const oobCode = new URLSearchParams(window.location.search).get('oobCode');
+        // Custom 30-minute token pipeline (functions/src/passwordReset.ts), not Firebase's
+        // oobCode — the reset link carries its own uid+token pair instead.
+        const resetParams = new URLSearchParams(window.location.search);
+        const resetUid = resetParams.get('uid');
+        const resetToken = resetParams.get('token');
 
         // C4.4: never show the form until the link is confirmed valid.
         (async () => {
-            if (!oobCode) {
+            if (!resetUid || !resetToken) {
                 resetCheckingStep.classList.add('hidden');
                 resetInvalidStep?.classList.remove('hidden');
                 return;
             }
             try {
-                await verifyResetCode(oobCode);
+                await verifyResetCode(resetUid, resetToken);
                 resetCheckingStep.classList.add('hidden');
                 resetFormStep?.classList.remove('hidden');
             } catch (err) {
@@ -652,21 +656,20 @@ document.addEventListener('DOMContentLoaded', () => {
         resetPasswordForm?.addEventListener('submit', async (e) => {
             e.preventDefault();
             resetPasswordError?.classList.add('hidden');
-            const code = new URLSearchParams(window.location.search).get('oobCode');
-            if (!code || !isPasswordValid(newPasswordInput.value) || newPasswordInput.value !== confirmNewPasswordInput.value) return;
+            if (!resetUid || !resetToken || !isPasswordValid(newPasswordInput.value) || newPasswordInput.value !== confirmNewPasswordInput.value) return;
 
             submitResetBtn.disabled = true;
             submitResetBtn.textContent = 'Resetting…';
             try {
-                await confirmReset(code, newPasswordInput.value);
+                await confirmReset(resetUid, resetToken, newPasswordInput.value);
                 resetFormStep?.classList.add('hidden');
                 resetSuccessStep?.classList.remove('hidden');
             } catch (err) {
                 console.error('Password reset failed:', err);
                 if (resetPasswordError) {
                     resetPasswordError.textContent =
-                        err.code === 'auth/expired-action-code' || err.code === 'auth/invalid-action-code' ? 'This link just expired. Please request a new one.'
-                        : err.code === 'auth/weak-password' ? 'Password is too weak. Please choose a stronger one.'
+                        err.code === 'functions/failed-precondition' ? 'This link just expired. Please request a new one.'
+                        : err.code === 'functions/invalid-argument' ? 'Password is too weak. Please choose a stronger one.'
                         : 'Something went wrong. Please try again.';
                     resetPasswordError.classList.remove('hidden');
                 }

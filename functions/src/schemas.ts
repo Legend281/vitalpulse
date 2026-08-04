@@ -213,3 +213,40 @@ export const resolveSignInIdentifierSchema = z
   .strict();
 
 export type ResolveSignInIdentifierInput = z.infer<typeof resolveSignInIdentifierSchema>;
+
+// Custom password-reset pipeline (replaces Firebase Auth's built-in sendPasswordResetEmail —
+// see functions/src/passwordReset.ts's header comment for why: a real, enforced 30-minute
+// expiry and a custom sender identity, neither of which the built-in oobCode flow supports).
+export const requestPasswordResetSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(320),
+  })
+  .strict();
+
+export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
+
+const resetTokenField = z.string().regex(/^[0-9a-f]{64}$/, 'token must be a 64-character hex string');
+
+// Read-only pre-check so reset-password.html can tell a dead link apart from a live one
+// BEFORE the donor fills out a new password (matches the UX the old Firebase
+// verifyPasswordResetCode + confirmPasswordReset two-step already had) — shares its
+// validation logic with confirmPasswordResetSchema below via passwordReset.ts's
+// validateResetToken(), not duplicated here.
+export const checkPasswordResetTokenSchema = z
+  .object({
+    uid: idString,
+    token: resetTokenField,
+  })
+  .strict();
+
+export type CheckPasswordResetTokenInput = z.infer<typeof checkPasswordResetTokenSchema>;
+
+export const confirmPasswordResetSchema = z
+  .object({
+    uid: idString,
+    token: resetTokenField,
+    newPassword: z.string().min(8).max(128),
+  })
+  .strict();
+
+export type ConfirmPasswordResetInput = z.infer<typeof confirmPasswordResetSchema>;
