@@ -329,6 +329,43 @@ Urgent Request
 </div>
 </div>
 </section>
+<!-- Pending Donor KYC Verifications — donor accounts must be approved by a system_admin
+     (never a hospital) before they get full dashboard access; this queue is the actual
+     approval surface for that. Each row needs BOTH the identity document and the liveness
+     selfie reviewed before it can be approved (verifyDonor rejects server-side otherwise —
+     functions/src/kyc.ts). Requested directly by the Security Lead (2026-08-02): until now
+     nothing in this admin UI surfaced pending donor KYC submissions at all, even though the
+     review Cloud Functions already existed. -->
+<section class="space-y-5">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-1.5 h-1.5 rounded-full bg-amber-400"></div>
+<h2 class="text-lg font-bold text-slate-800 tracking-tight">Pending Donor KYC Verifications</h2>
+<span id="kycPendingCountBadge" class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">--</span>
+</div>
+</div>
+<div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="bg-slate-50 border-b border-slate-100">
+<th class="px-5 py-3.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">Donor</th>
+<th class="px-5 py-3.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">Blood Type</th>
+<th class="px-5 py-3.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">Submitted</th>
+<th class="px-5 py-3.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">Evidence</th>
+<th class="px-5 py-3.5 text-[9px] font-bold uppercase tracking-widest text-slate-400 text-right">Actions</th>
+</tr>
+</thead>
+<tbody id="adminPendingKycReviews" class="divide-y divide-slate-50">
+<tr><td colspan="5" class="px-5 py-10 text-center text-slate-400">
+<span class="material-symbols-outlined text-3xl mb-2 block text-slate-300">checklist</span>
+<span class="text-sm font-medium">No pending donor KYC submissions</span>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
 <!-- Global Campaign Management -->
 <section>
 <div class="flex items-center gap-3 mb-7">

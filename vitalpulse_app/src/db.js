@@ -15,7 +15,8 @@ startAfter,
 onSnapshot,
 runTransaction
 } from "firebase/firestore";
-import { db } from './firebase';
+import { db, storage } from './firebase';
+import { ref as storageRef, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getCurrentUser } from './auth';
 
@@ -940,6 +941,43 @@ export async function fetchPendingHospitals() {
     return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).filter(h => !h.rejected);
 }
 
+// Donor KYC review queue — system_admin only (firestore.rules gates adminQueue reads to
+// isSystemAdmin()). Requested directly by the Security Lead (2026-08-02): until now nothing
+// in the admin UI surfaced pending donor KYC submissions at all, despite the backend review
+// Cloud Functions (verifyDonor/rejectDonorKyc, functions/src/kyc.ts) already existing.
+export async function fetchPendingKycReviews() {
+    const q = query(
+        collection(db, 'adminQueue'),
+        where('type', '==', 'kyc_review'),
+        where('status', '==', 'pending')
+    );
+    const snapshot = await getDocs(q);
+    const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Join with users/{uid} for donor-facing display (name/email/bloodType) — adminQueue
+    // itself only ever stored the KYC-specific fields (Stream B's original design).
+    await Promise.all(rows.map(async (row) => {
+        try {
+            const userSnap = await getDoc(doc(db, 'users', row.donorUid));
+            if (userSnap.exists()) {
+                const u = userSnap.data();
+                row.donorName = u.name || null;
+                row.donorEmail = u.email || null;
+                row.donorBloodType = u.bloodType || null;
+            }
+        } catch { /* keep the row without donor details rather than failing the whole queue */ }
+    }));
+    const toMillis = (v) => v?.toDate?.().getTime() ?? (v ? new Date(v).getTime() : 0);
+    return rows.sort((a, b) => toMillis(b.submittedAt) - toMillis(a.submittedAt));
+}
+
+// Resolves a short-lived signed download URL for a KYC document/selfie stored under
+// kyc/{uid}/ — storage.rules restricts read to system_admin, so this only ever succeeds for
+// an authenticated admin caller; every other caller is denied at the Storage layer itself.
+export async function fetchKycDocumentUrl(storagePath) {
+    if (!storagePath) return null;
+    return getDownloadURL(storageRef(storage, storagePath));
+}
+
 export async function fetchAllHospitals() {
     // Safety cap, not a real pagination boundary — well beyond current realistic scale, but
     // keeps one admin page load from ever pulling an unbounded number of documents.
@@ -1344,6 +1382,7 @@ const addStockFn = httpsCallable(getFunctions(), 'addInventoryStock');
 const deductStockFn = httpsCallable(getFunctions(), 'deductInventoryStock');
 const resolveLabTestFn = httpsCallable(getFunctions(), 'resolveLabTest');
 const setThresholdFn = httpsCallable(getFunctions(), 'setInventoryThreshold');
+const issueBloodFn = httpsCallable(getFunctions(), 'issueBloodToPatient');
 
 export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'add', hospitalName, options = {}) {
     if (!hospitalName) throw new Error('hospitalName is required for inventory operations');
@@ -2220,83 +2259,39 @@ export async function fetchIncomingDonors(hospitalName) {
 // BLOOD ISSUANCE & USAGE TRACKING
 // ============================================
 
+// Server-only (Phase 3): the deduction (Cleared batches only), the crossmatch
+// safety gate, and the issuance_log (Restricted-PHI) write all happen inside
+// functions/src/inventory.ts's issueBloodToPatient callable now — this client
+// function no longer touches `inventory` or `issuance_log` directly. It still
+// owns the non-privileged follow-up (activity log, donor "life saved"
+// notification, linking back to the source donation_requests doc), using the
+// deductedBatches the callable returns instead of re-deriving them locally.
 export async function issueBloodToPatient(bloodType, units, patientData) {
     const hospitalName = patientData.hospital;
     if (!hospitalName) throw new Error('patientData.hospital is required');
 
-    // Mandatory Medical Gate: Serological Crossmatch Confirmation
+    // Fail fast with a readable message; the callable's zod schema (z.literal)
+    // is what actually enforces this gate server-side and cannot be bypassed
+    // by calling the function directly with a different payload.
     if (patientData.crossmatchConfirmed !== true || patientData.crossmatchResult !== 'Compatible') {
         throw new Error(`CRITICAL MEDICAL SAFETY GATE: Cannot issue blood unit. Serological Crossmatch (Major & Minor) for patient "${patientData.patientName || 'Unknown'}" must be confirmed COMPATIBLE prior to release.`);
     }
 
-    const docId = invDocId(hospitalName, bloodType);
-    const inventoryRef = doc(db, 'inventory', docId);
-
-    // Wrap inventory read + deduction + write in a transaction to prevent double-issuance
-    // from concurrent requests for the same blood type.
-    const { batches, deductedBatches, data, aggregates } = await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(inventoryRef);
-        const data = snapshot.exists() ? snapshot.data() : {};
-
-        let batches = data.batches || [];
-        let toDeduct = parseInt(units, 10);
-
-        const clearedAvailable = batches
-            .filter(b => (b.testStatus || 'Cleared') === 'Cleared')
-            .reduce((sum, b) => sum + b.units, 0);
-        if (toDeduct > clearedAvailable) {
-            throw new Error(`Only ${clearedAvailable} tested and cleared unit(s) of ${bloodType} are available to issue.`);
-        }
-
-        const deductedBatches = [];
-        batches = batches.map(b => ({ ...b })).filter(b => {
-            if (toDeduct <= 0) return true;
-            if ((b.testStatus || 'Cleared') !== 'Cleared') return true;
-            if (b.units <= toDeduct) {
-                toDeduct -= b.units;
-                deductedBatches.push(b);
-                return false;
-            }
-            b.units -= toDeduct;
-            deductedBatches.push({ ...b, units: toDeduct });
-            toDeduct = 0;
-            return true;
-        });
-
-        const aggregates = computeInventoryAggregates(batches);
-
-        transaction.set(inventoryRef, {
-            bloodType,
-            hospital: hospitalName,
-            hospitalId: getCurrentUser()?.uid || data.hospitalId || null,
-            unitsAvailable: aggregates.unitsAvailable,
-            unitsPendingTest: aggregates.unitsPendingTest,
-            unitsRejected: aggregates.unitsRejected,
-            unitsReserved: snapshot.exists() ? (data.unitsReserved || 0) : 0,
-            minimumThreshold: data.minimumThreshold || 5,
-            lastUpdated: new Date().toISOString(),
-            batches,
-            componentTotals: aggregates.componentTotals
-        }, { merge: true });
-
-        return { batches, deductedBatches, data, aggregates };
-    });
-
-    await addDoc(collection(db, 'issuance_log'), {
+    const payload = {
         bloodType,
         units: parseInt(units, 10),
         patientName: patientData.patientName,
-        patientId: patientData.patientId || '',
-        patientBloodType: patientData.patientBloodType || bloodType,
-        ward: patientData.ward || '',
-        requestingDoctor: patientData.requestingDoctor || '',
-        diagnosis: patientData.diagnosis || '',
-        crossmatchConfirmed: true,
-        crossmatchResult: 'Compatible',
-        crossmatchTechnician: patientData.crossmatchTechnician || 'Staff Tech',
-        hospital: hospitalName,
-        issuedAt: new Date().toISOString()
-    });
+        crossmatchConfirmed: patientData.crossmatchConfirmed,
+        crossmatchResult: patientData.crossmatchResult,
+    };
+    if (patientData.patientId) payload.patientId = patientData.patientId;
+    if (patientData.patientBloodType) payload.patientBloodType = patientData.patientBloodType;
+    if (patientData.ward) payload.ward = patientData.ward;
+    if (patientData.requestingDoctor) payload.requestingDoctor = patientData.requestingDoctor;
+    if (patientData.diagnosis) payload.diagnosis = patientData.diagnosis;
+    if (patientData.crossmatchTechnician) payload.crossmatchTechnician = patientData.crossmatchTechnician;
+
+    const { data } = await issueBloodFn(payload);
 
     await logAuditTrail(
         'UNIT_ISSUED',
@@ -2312,8 +2307,8 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
 
     // Notify donors whose blood units were issued to save a patient's life!
     // Also check if this issuance dropped stock below threshold
-    await _checkLowStockAndNotify(hospitalName, bloodType, aggregates.unitsAvailable);
-    for (const dB of deductedBatches) {
+    await _checkLowStockAndNotify(hospitalName, bloodType, data.unitsAvailable);
+    for (const dB of data.deductedBatches) {
         if (dB.sourceDonationId) {
             try {
                 const donReqRef = doc(db, 'donation_requests', dB.sourceDonationId);
@@ -2336,7 +2331,7 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
         }
     }
 
-    return { bloodType, unitsAvailable: aggregates.unitsAvailable };
+    return { bloodType, unitsAvailable: data.unitsAvailable };
 }
 
 // Check if a blood type is low stock after issuance and notify the hospital

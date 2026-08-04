@@ -1,5 +1,6 @@
-import { getCurrentUser, sendPasswordReset, hashNationalId } from './auth';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { getCurrentUser, sendPasswordReset, hashNationalId, isEmailVerified, sendEmailVerificationLink } from './auth';
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './firebase';
 import {
   fetchMatchedRequestsForDonor,
@@ -39,6 +40,7 @@ import {
   subscribeToDonorJourneys,
 } from './db';
 import { captureUserLocation } from './location';
+import { t, getLang, setLang } from './i18n';
 import L from 'leaflet';
 
 // XSS-safety helper for interpolating user-controlled strings (hospital names, cities, etc.)
@@ -62,6 +64,310 @@ let _donorNotifCache = null; // { notifications, unreadCount } — pre-fetched e
 // schedule/accept actions instantly without an extra Firestore read on each click. The
 // hospital check-in + server-side guard are the authoritative backstops.
 let _donorEligibilityCache = null;
+
+// ============================================
+// STREAM D — PENDING & VERIFIED DASHBOARD STATES
+// ============================================
+// D1: donors/{uid}.kycStatus drives every conditional render below via a single real-time
+// onSnapshot listener (not a poll, not a per-component read). Accounts with no donors/{uid}
+// doc at all (pre-dating this feature) are grandfathered — same rule firestore.rules'
+// isKycEligible() already uses — and are always treated as verified, never locked.
+let _donorKycStatus = null;        // null (grandfathered) | 'pending' | 'verified' | 'rejected'
+let _donorKycDocRef = null;        // set once real documents are submitted (vs. skipped)
+let _donorKycRejectionReason = null;
+let _donorKycUnsub = null;
+let _donorKycStatusKnown = false;  // false until the first snapshot has actually arrived
+let _donorJourneySteps = null;     // cached so the KYC listener can re-render the journey
+                                    // checklist's lock state without refetching engagement
+let _donorEngagementCache = null;  // cached so the KYC listener can re-render gamification
+                                    // stats (D8) reactively too, without refetching engagement
+
+function isDonorVerified() {
+  return !_donorKycStatusKnown || _donorKycStatus === null || _donorKycStatus === 'verified';
+}
+function isDonorKycRejected() {
+  return _donorKycStatusKnown && _donorKycStatus === 'rejected';
+}
+function isDonorKycSkipped() {
+  // kycStatus is 'pending' but nothing was ever actually submitted — "I'll complete this later".
+  return _donorKycStatusKnown && _donorKycStatus === 'pending' && !_donorKycDocRef;
+}
+function isDonorKycUnderReview() {
+  return _donorKycStatusKnown && _donorKycStatus === 'pending' && Boolean(_donorKycDocRef);
+}
+
+function initDonorStatusListener() {
+  const currentUser = getCurrentUser();
+  if (!currentUser?.uid || _donorKycUnsub) return;
+  _donorKycUnsub = onSnapshot(doc(db, 'donors', currentUser.uid), (snap) => {
+    const prevStatus = _donorKycStatusKnown ? _donorKycStatus : undefined; // undefined = first load
+    if (snap.exists()) {
+      const data = snap.data();
+      _donorKycStatus = data.kycStatus || 'pending';
+      _donorKycDocRef = data.kycDocRef || null;
+      _donorKycRejectionReason = data.kycRejectionReason || null;
+    } else {
+      _donorKycStatus = null;
+      _donorKycDocRef = null;
+      _donorKycRejectionReason = null;
+    }
+    _donorKycStatusKnown = true;
+
+    // D6: celebrate the transition itself, not just the state — only when it actually
+    // flips to verified after being pending/rejected. Never on the very first snapshot
+    // (that would toast every already-verified donor on every page load).
+    if (prevStatus !== undefined && prevStatus !== 'verified' && isDonorVerified()) {
+      showToast('🎉 Your account is verified! Full access unlocked.');
+    }
+
+    renderDonorKycStatusBanner();
+    applyKycLocksToDOM();
+    if (_donorEngagementCache) renderDonorEngagementStats(_donorEngagementCache);
+    if (_donorJourneySteps) renderDonorJourneyChecklist(_donorJourneySteps);
+    if (document.getElementById('requestsFeed')) renderFilteredFeed();
+  }, (err) => {
+    console.error('Donor status listener failed:', err);
+  });
+}
+
+// Not currently called (the listener lives for the donor's whole portal session, same as
+// the notification poller) — kept for symmetry with teardownDonorJourneys and in case a
+// future logout/view-teardown path needs it.
+function teardownDonorStatusListener() {
+  if (_donorKycUnsub) { _donorKycUnsub(); _donorKycUnsub = null; }
+}
+
+// D2 / D5 / D7 — one status banner, three mutually exclusive states (plus "hidden" for
+// verified/grandfathered). Lives at the top of the dashboard view, the donor's main landing
+// screen — not literally injected into every sub-view's markup, which would mean touching
+// the shared shell used by every view/nav destination. Flagged as a scope simplification of
+// "persistent," not a silent gap: donors reliably see it every time they land on Home.
+function renderDonorKycStatusBanner() {
+  const container = document.getElementById('donorKycStatusBanner');
+  if (!container) return;
+
+  let html = '';
+  if (isDonorKycRejected()) {
+    html = `
+      <div class="bg-error-container/40 border border-error/25 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <span class="w-10 h-10 rounded-full bg-error text-on-error flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-xl">error</span></span>
+          <div>
+            <p class="font-bold text-sm text-on-surface">Your verification was unsuccessful.</p>
+            <p class="text-xs text-on-surface-variant mt-0.5">${_donorKycRejectionReason ? esc(_donorKycRejectionReason) : 'Please resubmit your documents.'}</p>
+          </div>
+        </div>
+        <button class="js-donor-kyc-cta press-scale shrink-0 bg-error text-on-error font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm hover:opacity-90 transition-opacity cursor-pointer">Resubmit Documents</button>
+      </div>`;
+  } else if (isDonorKycSkipped()) {
+    html = `
+      <div class="bg-error-container/25 border border-error/20 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <span class="w-10 h-10 rounded-full bg-error/15 text-error flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-xl">warning</span></span>
+          <div>
+            <p class="font-bold text-sm text-on-surface">⚠ Complete your verification to unlock all features.</p>
+            <p class="text-xs text-on-surface-variant mt-0.5">Scheduling donations and accepting requests are locked until you verify your identity.</p>
+          </div>
+        </div>
+        <button class="js-donor-kyc-cta press-scale shrink-0 bg-error text-on-error font-bold text-xs px-5 py-2.5 rounded-xl shadow-sm hover:opacity-90 transition-opacity cursor-pointer">Complete Verification</button>
+      </div>`;
+  } else if (isDonorKycUnderReview()) {
+    html = `
+      <div class="bg-warning-container/40 border border-warning/25 rounded-2xl p-5 flex items-center gap-3">
+        <span class="w-10 h-10 rounded-full bg-warning text-on-warning flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-xl">hourglass_top</span></span>
+        <div>
+          <p class="font-bold text-sm text-on-surface">⏳ Your account is under review.</p>
+          <p class="text-xs text-on-surface-variant mt-0.5">We'll notify you within 24–48 hours. Some features are locked until then.</p>
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = html;
+  container.classList.toggle('hidden', !html);
+  container.querySelector('.js-donor-kyc-cta')?.addEventListener('click', () => switchDonorView('kyc'));
+}
+
+// D3 — the actual lock/blur application. Idempotent and cheap (pure class toggles), so it's
+// safe to call redundantly from both the status listener and the dashboard's own hydration,
+// whichever settles second wins with the correct state either way.
+function applyKycLocksToDOM() {
+  const locked = !isDonorVerified();
+  const setOverlay = (id, visible) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('hidden', !visible);
+    el.classList.toggle('flex', visible);
+  };
+
+  // Schedule Donation — hero CTA + quick-action tile both trigger the same modal, so both
+  // must lock together, or the hero button would be a silent bypass of the tile's lock.
+  const heroBtn = document.getElementById('btnScheduleDonationDesktop');
+  if (heroBtn) heroBtn.disabled = locked;
+  setOverlay('scheduleDonationHeroLock', locked);
+
+  const tileBtn = document.getElementById('btnQuickScheduleDonation');
+  if (tileBtn) tileBtn.disabled = locked;
+  setOverlay('scheduleDonationTileLock', locked);
+
+  // Live Requests panel (the browsable feed) — Donation Centers stays fully usable (D4),
+  // so only requestsFeed itself is covered, not the whole "Near You" section.
+  document.getElementById('requestsFeed')?.classList.toggle('pointer-events-none', locked);
+  setOverlay('requestsFeedLockOverlay', locked);
+
+  // Emergency "Respond Now" — a second entry point into accepting a request, not covered
+  // by the requestsFeed overlay above, so it needs its own lock.
+  const respondBtn = document.getElementById('emergencyRespondBtn');
+  if (respondBtn) {
+    respondBtn.disabled = locked;
+    respondBtn.title = locked ? 'Complete identity verification to respond to requests.' : '';
+  }
+}
+
+// D8 — gamification/engagement numbers (Lives Saved, Total Donations, Bronze Tier progress,
+// badges) reflect real completed-donation history, which by definition can't exist yet for an
+// account still awaiting admin approval. Rendering real figures (or a hardcoded placeholder
+// number) for a not-yet-verified donor is misleading, so this is gated the same way the
+// Donation Journey checklist (below) already gates steps 3-4. Cached engagement lets the KYC
+// status listener re-render this reactively the moment an admin approves/rejects, without
+// refetching from Firestore.
+function renderDonorEngagementStats(engagement) {
+  if (!engagement) return;
+  _donorEngagementCache = engagement;
+  const locked = !isDonorVerified();
+  const livesCount = engagement.totalUnits * 3; // no fallback — 0 donations means 0 lives saved
+
+  const statDonations = document.getElementById('statDonations');
+  if (statDonations) statDonations.textContent = locked ? '—' : engagement.donationCount;
+
+  const statLivesSavedText = document.getElementById('statLivesSavedText');
+  if (statLivesSavedText) statLivesSavedText.textContent = locked ? '—' : livesCount;
+
+  const statLivesSaved = document.getElementById('statLivesSaved');
+  if (statLivesSaved) statLivesSaved.textContent = locked ? '—' : livesCount;
+
+  const statPoints = document.getElementById('statPoints');
+  if (statPoints) statPoints.textContent = engagement.points;
+
+  const statRank = document.getElementById('statRank');
+  if (statRank) statRank.textContent = engagement.tier;
+
+  const lastDonation = engagement.donations
+    .filter(d => d.status === 'completed')
+    .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
+  const last = lastDonation[0];
+  const lastDonationText = document.getElementById('statLastDonation');
+  if (lastDonationText) {
+    const lastDate = last?.completedAt || last?.preferredDate;
+    lastDonationText.textContent = locked ? '—' : (lastDate
+      ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : 'Never');
+  }
+
+  // Bronze Tier card — a locked placeholder replaces the real journey stepper while pending;
+  // showing tier/points progress implies an already-active account, which this isn't yet.
+  const tierCardTitle = document.getElementById('donorTierCardTitle');
+  if (tierCardTitle) tierCardTitle.textContent = locked ? 'Locked' : `${engagement.tier} Tier`;
+  const tierEl = document.getElementById('donorTierProgress');
+  if (tierEl) {
+    tierEl.innerHTML = locked
+      ? `<div class="flex flex-col items-center text-center py-4 gap-2">
+           <span class="material-symbols-outlined text-3xl text-on-surface-variant/40">lock</span>
+           <p class="text-xs font-bold text-on-surface-variant">Your rewards &amp; tier progress unlock once your account is approved.</p>
+         </div>`
+      : renderTierJourneyStepper(engagement, { showHeader: false, showPerks: true });
+  }
+
+  const badgesEl = document.getElementById('donorBadgesSummary');
+  if (badgesEl) {
+    if (locked) {
+      badgesEl.innerHTML = '<p class="text-sm text-on-surface-variant text-center py-4">Badges unlock once your account is approved.</p>';
+    } else if (engagement.badges.length === 0) {
+      badgesEl.innerHTML = '<p class="text-sm text-on-surface-variant text-center py-4">Complete your first donation to earn badges!</p>';
+    } else {
+      const summaryColors = {
+        'First Donation': { bg: '#fecaca', icon: '#dc2626', emblem: 'radial-gradient(circle at 35% 30%, #fecaca, #f87171 25%, #e11d48 50%, #be123c 75%, #881337)' },
+        'Regular Donor': { bg: '#e9d5ff', icon: '#7c3aed', emblem: 'radial-gradient(circle at 35% 30%, #e9d5ff, #a855f7 25%, #7c3aed 50%, #6d28d9 75%, #4c1d95)' },
+        'Life Saver': { bg: '#fef08a', icon: '#ca8a04', emblem: 'radial-gradient(circle at 35% 30%, #fef08a, #facc15 25%, #eab308 50%, #ca8a04 75%, #854d0e)' },
+        'Guardian Angel': { bg: '#ccfbf1', icon: '#0d9488', emblem: 'radial-gradient(circle at 35% 30%, #ccfbf1, #14b8a6 25%, #0d9488 50%, #0f766e 75%, #134e4a)' },
+        'Generous Heart': { bg: '#fed7aa', icon: '#ea580c', emblem: 'radial-gradient(circle at 35% 30%, #fed7aa, #fb923c 25%, #ea580c 50%, #c2410c 75%, #7c2d12)' },
+        'Universal Donor': { bg: '#d1fae5', icon: '#059669', emblem: 'radial-gradient(circle at 35% 30%, #d1fae5, #34d399 25%, #059669 50%, #047857 75%, #064e3b)' },
+      };
+      badgesEl.innerHTML = `
+        <div class="flex flex-wrap gap-3 items-center">
+          ${engagement.badges.slice(0, 5).map(b => {
+            const sc = summaryColors[b.name] || summaryColors['First Donation'];
+            return `
+              <div class="flex flex-col items-center gap-1 group cursor-pointer" onclick="switchDonorView('badges')">
+                <div class="relative w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shadow-sm border border-white/40 group-hover:scale-110 transition-transform" style="background:${sc.emblem}">
+                  <div class="absolute -top-0.5 -left-0.5 w-4 h-2.5 bg-white/20 rounded-full -rotate-12 blur-[1px] pointer-events-none"></div>
+                  <span class="material-symbols-outlined text-base relative z-10" style="color:white;font-variation-settings:'FILL'1">${b.icon}</span>
+                </div>
+                <span class="text-[8px] font-bold text-on-surface-variant leading-tight text-center max-w-[60px] truncate">${b.name}</span>
+              </div>
+            `;
+          }).join('')}
+          ${engagement.badges.length > 5 ? `<div class="flex flex-col items-center gap-1"><div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-black text-on-surface-variant">+${engagement.badges.length - 5}</div></div>` : ''}
+        </div>
+        <button onclick="switchDonorView('badges')" class="press-scale mt-3 text-xs font-bold text-primary hover:underline cursor-pointer inline-flex items-center gap-1">View all badges <span class="material-symbols-outlined text-sm">arrow_forward</span></button>
+      `;
+    }
+  }
+}
+
+// D3: Donation Journey steps 3-4 ("Eligible to Donate" / "Make Your First Donation") stay
+// visible but show a lock instead of a number/check while KYC-pending or rejected — donating
+// isn't actually possible yet regardless of biological eligibility. Steps 1-2 never lock.
+function renderDonorJourneyChecklist(steps) {
+  const journeyEl = document.getElementById('donorJourneyChecklist');
+  if (!journeyEl) return;
+  const doneCount = steps.filter(s => s.done).length;
+  const pct = Math.round((doneCount / steps.length) * 100);
+  const kycLocked = !isDonorVerified();
+  journeyEl.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-[11px] font-bold text-on-surface-variant">${doneCount} of ${steps.length} complete</span>
+      <span class="text-[11px] font-black text-primary">${pct}%</span>
+    </div>
+    <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden mb-4">
+      <div class="h-full bg-success rounded-full" style="width:${pct}%; transition: width 500ms var(--ease-out-strong);"></div>
+    </div>
+    <div class="relative">
+      <div class="absolute left-[11px] top-3 bottom-3 w-0.5 bg-outline-variant/25"></div>
+      <div class="space-y-3.5">
+        ${steps.map((s, i) => {
+          const locked = kycLocked && i >= 2;
+          return `
+            <div class="relative flex items-center gap-3">
+              <span class="relative z-10 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${locked ? 'bg-surface-container border-2 border-outline-variant/40 text-on-surface-variant/50' : s.done ? 'bg-success text-on-success' : 'bg-surface-container border-2 border-outline-variant/40 text-on-surface-variant'}">
+                ${locked
+                  ? `<span class="material-symbols-outlined" style="font-size:13px">lock</span>`
+                  : s.done
+                  ? `<span class="material-symbols-outlined" style="font-size:15px;font-variation-settings:'FILL' 1">check</span>`
+                  : `<span class="text-[10px] font-black">${i + 1}</span>`}
+              </span>
+              <span class="text-sm font-bold ${locked ? 'text-on-surface-variant/50' : s.done ? 'text-on-surface' : 'text-on-surface-variant'}">${s.label}</span>
+              ${locked ? '<span class="ml-auto text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-wider">Verify first</span>' : s.done ? '' : '<span class="ml-auto text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-wider">To do</span>'}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// Guard for window.donorAcceptRequest — defense-in-depth behind the visual locks above
+// (which cover the known UI entry points), so accepting is blocked even if some future
+// entry point forgets to check the DOM lock state first.
+async function warnIfKycPending() {
+  if (isDonorVerified()) return true;
+  const goVerify = await window.vpConfirm(
+    'Complete identity verification before accepting blood requests.',
+    { title: 'Verification required', confirmText: 'Verify Now', cancelText: 'Not Now' },
+  );
+  if (goVerify) switchDonorView('kyc');
+  return false;
+}
+
 window._filterCity = (city) => {
   _selectedCity = city;
   const user = getCurrentUser();
@@ -73,6 +379,7 @@ window._filterCity = (city) => {
   renderCityChips(user);
   renderFilteredFeed();
   renderCentersList();
+  updateNearbyPanelBadge();
   const donorCoords = getCoordinatesForLocation(user.city, user.lat, user.lng);
   renderNearbyMap(donorCoords);
 };
@@ -126,7 +433,10 @@ export function switchDonorView(view) {
   // Leaving the Requests view? Drop its real-time listener so it doesn't keep running (and
   // billing reads) in the background. loadDonorRequests re-subscribes when they return.
   if (view !== 'requests') teardownDonorJourneys();
-  const views = ['dashboard', 'requests', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates'];
+  // Leaving the KYC view mid-liveness-capture? Turn the camera off immediately rather than
+  // leaving it running in the background until the next loadKycView() reset.
+  if (view !== 'kyc') stopLivenessCamera();
+  const views = ['dashboard', 'requests', 'centers', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
   views.forEach(v => {
     const el = document.getElementById('view-' + v);
     if (el) { el.classList.add('hidden'); el.classList.remove('block'); }
@@ -155,12 +465,46 @@ export function switchDonorView(view) {
   switch (view) {
     case 'dashboard': loadDonorDashboard(); break;
     case 'requests': loadDonorRequests(); break;
+    case 'centers': loadDonationCentersView(); break;
     case 'badges': loadDonorBadges(); break;
     case 'profile': loadDonorProfile(); break;
     case 'care-reminders': loadCareRemindersView(); break;
     case 'mythhub': loadMythHubView(); break;
     case 'certificates': loadCertificatesView(); break;
+    case 'kyc': loadKycView(); break;
   }
+}
+
+// ============================================
+// E1.2 — EN/FR LANGUAGE TOGGLE
+// ============================================
+// Coverage is intentionally partial: the primary nav labels (header + mobile drawer) only,
+// not a full translation of every dynamic string this file renders — that would be a
+// separate, much larger i18n workstream (this app's dynamic templates run into the
+// thousands of lines). Shares the same localStorage key / setLang()/getLang() state as
+// hospital.html's existing toggle, so a choice made on one side is remembered on the other.
+function applyDonorTranslations() {
+  document.querySelectorAll('[data-i18n-key]').forEach(el => {
+    el.textContent = t(el.dataset.i18nKey);
+  });
+  document.querySelectorAll('.donor-lang-btn').forEach(btn => {
+    const active = btn.dataset.lang === getLang();
+    btn.className = `donor-lang-btn px-2.5 py-1 rounded-full text-[10px] font-black transition-colors cursor-pointer ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-primary'}`;
+  });
+  // Mobile drawer buttons use a slightly larger touch target — re-apply their own sizing
+  // after the shared class string above (which is tuned for the compact header pill).
+  document.querySelectorAll('#donorLangToggleMobile .donor-lang-btn').forEach(btn => {
+    const active = btn.dataset.lang === getLang();
+    btn.className = `donor-lang-btn px-3 py-1 rounded-full text-xs font-black transition-colors cursor-pointer ${active ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-primary'}`;
+  });
+}
+
+function initDonorLangToggle() {
+  document.querySelectorAll('.donor-lang-btn').forEach(btn => {
+    btn.addEventListener('click', () => setLang(btn.dataset.lang));
+  });
+  window.addEventListener('languagechange', applyDonorTranslations);
+  applyDonorTranslations();
 }
 
 export function initDonorNavigation() {
@@ -170,19 +514,10 @@ export function initDonorNavigation() {
     btn.addEventListener('click', () => switchDonorView(btn.dataset.view));
   });
 
-  // "Find Donation Center" and "Centers" nav now open the searchable All-Centers modal
-  // instead of scrolling to the dashboard section — gives instant search + filtering.
-  const openCentersModal = () => {
-    const onDashboard = !document.getElementById('view-dashboard')?.classList.contains('hidden');
-    if (!onDashboard) {
-      switchDonorView('dashboard');
-      setTimeout(() => window.openAllCentersModal(), 200);
-    } else {
-      window.openAllCentersModal();
-    }
-  };
-  document.getElementById('btnNavCenters')?.addEventListener('click', openCentersModal);
-  document.getElementById('btnQuickFindCenters')?.addEventListener('click', openCentersModal);
+  // E5.3 — "Centers" nav (desktop + mobile drawer) and the "Find Donation Center" quick-action
+  // tile all use the standard .donor-mobile-nav / data-action="switch-view" engine now (both
+  // wired generically above/below), routing to the dedicated view-centers view instead of the
+  // old searchable modal.
 
   // ---- Mobile nav drawer (hamburger) — the mobile navigation hub, replacing the old fixed
   // bottom bar. Slides in from the left; closes on backdrop, close button, or picking a link. ----
@@ -208,7 +543,6 @@ export function initDonorNavigation() {
   document.getElementById('btnMobileMenu')?.addEventListener('click', openDrawer);
   document.getElementById('btnMobileMenuClose')?.addEventListener('click', closeMobileDrawer);
   drawerBackdrop?.addEventListener('click', closeMobileDrawer);
-  document.getElementById('btnNavCentersMobile')?.addEventListener('click', () => { closeMobileDrawer(); window.openAllCentersModal(); });
   // Close the drawer after any destination/action is chosen — except the theme toggle, so the
   // donor can see the theme flip before the drawer slides away.
   drawerPanel?.querySelectorAll('.donor-mobile-nav, [data-action="switch-view"], .logout-btn, [onclick]').forEach(btn => {
@@ -395,8 +729,14 @@ export function initDonorNavigation() {
   pollNotifCount();
   setInterval(pollNotifCount, 30000);
 
+  initKycView();
+  initKycLivenessStep();
+  initDonorStatusListener();
+  initDonorLangToggle();
+  initDonorRequestFilters();
+
   // Restore view from URL hash on reload
-  const donorViews = ['dashboard', 'requests', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates'];
+  const donorViews = ['dashboard', 'requests', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
   const hashView = window.location.hash.replace('#', '');
   if (hashView && donorViews.includes(hashView)) switchDonorView(hashView);
 
@@ -407,6 +747,423 @@ export function initDonorNavigation() {
   });
 
   donorNavigationInitialized = true;
+}
+
+// ============================================
+// KYC (Identity Verification) — Stream C3, donor UI/VitalPulse_Plan_Tracker.md.
+// ============================================
+const submitKycFn = httpsCallable(getFunctions(), 'submitKYC');
+const submitLivenessSelfieFn = httpsCallable(getFunctions(), 'submitLivenessSelfie');
+const KYC_MAX_BYTES = 5 * 1024 * 1024;
+const KYC_MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' };
+const KYC_DOC_LABELS = { national_id: 'National ID', drivers_licence: "Driver's License", passport: 'Passport', other: 'Document' };
+let _kycSelectedDocType = null;
+let _kycSelectedFile = null;
+// National ID is the only doc type that needs both faces — a driver's license/passport is a
+// single page. Kept as a separate variable (not an array) so the existing front-file flow
+// above is untouched for every other doc type.
+let _kycSelectedFileBack = null;
+
+// Liveness step (Step 3) — camera-only, requested directly by the Security Lead
+// (2026-08-02). _livenessStream is the live MediaStream from getUserMedia(); torn down
+// whenever the KYC view resets or the selfie is confirmed, so the camera light never stays
+// on longer than the donor is actually on this step.
+let _livenessStream = null;
+let _livenessCapturedDataUrl = null;
+
+// Pure — exported so it's directly unit-testable without touching the DOM.
+export function validateKycFile(file) {
+  if (!file) return { valid: false, error: "Please choose a file." };
+  if (!KYC_MIME_EXT[file.type]) return { valid: false, error: 'Unsupported format. Please upload a JPG, PNG, or PDF.' };
+  if (file.size === 0) return { valid: false, error: 'File appears to be empty.' };
+  if (file.size > KYC_MAX_BYTES) return { valid: false, error: 'File is too large. Maximum size is 5 MB.' };
+  return { valid: true, error: null };
+}
+
+function kycFileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function updateKycSubmitEnabled() {
+  const btn = document.getElementById('btnKycSubmit');
+  const natIdVal = document.getElementById('kycNationalId')?.value.trim();
+  const alreadyOnFile = Boolean(getCurrentUser()?.cniHash);
+  const backSatisfied = _kycSelectedDocType !== 'national_id' || Boolean(_kycSelectedFileBack);
+  if (btn) btn.disabled = !(_kycSelectedDocType && _kycSelectedFile && backSatisfied && (natIdVal || alreadyOnFile));
+}
+
+// Shared by both the front and back upload zones (National ID is the only doc type that
+// wires up the back zone) — same validate/preview/drag-drop behavior either way, just
+// pointed at different elements and a different file slot via getFile/setFile.
+function wireKycFileZone({ fileInput, dropZone, removeBtn, previewEl, nameEl, metaEl, errorEl, getFile, setFile, onChange }) {
+  const showFileError = (msg) => { if (errorEl) { errorEl.textContent = msg; errorEl.classList.remove('hidden'); } };
+  const clearFileError = () => errorEl?.classList.add('hidden');
+
+  const handleFile = (file) => {
+    clearFileError();
+    const { valid, error } = validateKycFile(file);
+    if (!valid) { showFileError(error); setFile(null); onChange(); return; }
+    setFile(file);
+    if (nameEl) nameEl.textContent = file.name;
+    if (metaEl) metaEl.textContent = (file.size / 1024 / 1024).toFixed(2) + ' MB · Ready to upload';
+    previewEl?.classList.remove('hidden');
+    dropZone?.classList.add('hidden');
+    onChange();
+  };
+
+  fileInput?.addEventListener('change', () => {
+    if (fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  removeBtn?.addEventListener('click', () => {
+    setFile(null);
+    if (fileInput) fileInput.value = '';
+    previewEl?.classList.add('hidden');
+    dropZone?.classList.remove('hidden');
+    onChange();
+  });
+  if (dropZone) {
+    ['dragenter', 'dragover'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropZone.classList.add('border-primary', 'bg-primary/5');
+    }));
+    ['dragleave', 'drop'].forEach(evt => dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('border-primary', 'bg-primary/5');
+    }));
+    dropZone.addEventListener('drop', (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (file) handleFile(file);
+    });
+  }
+  return () => { // reset — used when the donor switches doc type away from national_id
+    setFile(null);
+    if (fileInput) fileInput.value = '';
+    previewEl?.classList.add('hidden');
+    dropZone?.classList.remove('hidden');
+    clearFileError();
+  };
+}
+
+function initKycView() {
+  const grid = document.getElementById('kycDocTypeGrid');
+  const submitBtn = document.getElementById('btnKycSubmit');
+  const dashboardBtn = document.getElementById('btnKycGoToDashboard');
+  const natIdInput = document.getElementById('kycNationalId');
+  if (!grid) return; // not on donor.html (defensive; this file is only ever loaded there)
+
+  natIdInput?.addEventListener('input', () => {
+    document.getElementById('kycNationalIdError')?.classList.add('hidden');
+    updateKycSubmitEnabled();
+  });
+
+  const resetBackZone = wireKycFileZone({
+    fileInput: document.getElementById('kycFileInputBack'),
+    dropZone: document.getElementById('kycDropZoneBack'),
+    removeBtn: document.getElementById('btnKycRemoveFileBack'),
+    previewEl: document.getElementById('kycFilePreviewBack'),
+    nameEl: document.getElementById('kycFileNameBack'),
+    metaEl: document.getElementById('kycFileMetaBack'),
+    errorEl: document.getElementById('kycFileErrorBack'),
+    getFile: () => _kycSelectedFileBack,
+    setFile: (f) => { _kycSelectedFileBack = f; },
+    onChange: updateKycSubmitEnabled,
+  });
+
+  grid.querySelectorAll('.kyc-doctype-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const isNationalId = card.dataset.doctype === 'national_id';
+      if (_kycSelectedDocType === 'national_id' && !isNationalId) resetBackZone();
+      _kycSelectedDocType = card.dataset.doctype;
+      grid.querySelectorAll('.kyc-doctype-card').forEach(c => {
+        const check = c.querySelector('.kyc-doctype-check');
+        const selected = c === card;
+        c.classList.toggle('border-primary', selected);
+        c.classList.toggle('bg-primary/5', selected);
+        check?.classList.toggle('hidden', !selected);
+        check?.classList.toggle('flex', selected);
+      });
+      const previewLabel = document.getElementById('kycPreviewLabel');
+      if (previewLabel) previewLabel.textContent = (KYC_DOC_LABELS[_kycSelectedDocType] || 'Document') + ' Preview';
+      // National ID needs both faces — the front zone's label/back zone's visibility both
+      // reflect that; every other doc type is a single page, so only the front zone shows.
+      const dropZoneLabel = document.getElementById('kycDropZoneLabel');
+      if (dropZoneLabel) dropZoneLabel.textContent = isNationalId ? 'Drag and drop the front of your ID here' : 'Drag and drop document here';
+      document.getElementById('kycBackUploadWrap')?.classList.toggle('hidden', !isNationalId);
+      // C3.4: swap in the doc-type-specific illustrated shape above the drop zone.
+      const shapeContainer = document.getElementById('kycDocPreviewShape');
+      shapeContainer?.classList.remove('hidden');
+      shapeContainer?.classList.add('flex');
+      document.querySelectorAll('.kyc-doc-shape').forEach((shape) => {
+        shape.classList.toggle('hidden', shape.dataset.doctype !== _kycSelectedDocType);
+      });
+      updateKycSubmitEnabled();
+    });
+  });
+
+  wireKycFileZone({
+    fileInput: document.getElementById('kycFileInput'),
+    dropZone: document.getElementById('kycDropZone'),
+    removeBtn: document.getElementById('btnKycRemoveFile'),
+    previewEl: document.getElementById('kycFilePreview'),
+    nameEl: document.getElementById('kycFileName'),
+    metaEl: document.getElementById('kycFileMeta'),
+    errorEl: document.getElementById('kycFileError'),
+    getFile: () => _kycSelectedFile,
+    setFile: (f) => { _kycSelectedFile = f; },
+    onChange: updateKycSubmitEnabled,
+  });
+
+  submitBtn?.addEventListener('click', async () => {
+    const isNationalId = _kycSelectedDocType === 'national_id';
+    if (!_kycSelectedDocType || !_kycSelectedFile || (isNationalId && !_kycSelectedFileBack)) return;
+    const errEl = document.getElementById('kycErrorMessage');
+    errEl?.classList.add('hidden');
+    const currentUser = getCurrentUser();
+    const natIdVal = natIdInput?.value.trim();
+    if (!natIdVal && !currentUser?.cniHash) {
+      const natIdErrEl = document.getElementById('kycNationalIdError');
+      if (natIdErrEl) { natIdErrEl.textContent = 'National ID (CNI) is required.'; natIdErrEl.classList.remove('hidden'); }
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Uploading…';
+    try {
+      // National ID moved here from Sign Up (previously step 1) — same hash/dedupe
+      // pattern the Profile page already uses for editing CNI (loadDonorProfile above),
+      // reused rather than reinvented so cniHash/cniLast4 stay consistent everywhere
+      // they're read (hospital check-in identity card, donation history lookups).
+      if (natIdVal) {
+        const hashed = await hashNationalId(natIdVal);
+        if (hashed) {
+          const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
+          const dupSnap = await getDocs(dupQuery);
+          if (!dupSnap.empty && dupSnap.docs[0].id !== currentUser?.uid) {
+            throw new Error('This National ID (CNI) is already linked to another account.');
+          }
+          const cleanId = natIdVal.replace(/[\s-]/g, '');
+          const cniUpdate = {
+            cniHash: hashed,
+            isCniVerified: true,
+            cniLast4: cleanId.length >= 4 ? cleanId.slice(-4) : cleanId,
+          };
+          await updateUserProfile(currentUser.uid, cniUpdate);
+          localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser, ...cniUpdate }));
+        }
+      }
+
+      const fileBase64 = await kycFileToBase64(_kycSelectedFile);
+      const payload = {
+        docType: _kycSelectedDocType,
+        fileBase64,
+        fileName: _kycSelectedFile.name,
+        mimeType: _kycSelectedFile.type,
+      };
+      if (isNationalId && _kycSelectedFileBack) {
+        payload.fileBackBase64 = await kycFileToBase64(_kycSelectedFileBack);
+        payload.fileNameBack = _kycSelectedFileBack.name;
+        payload.mimeTypeBack = _kycSelectedFileBack.type;
+      }
+      await submitKycFn(payload);
+      // Document uploaded — on to Step 3 (liveness selfie), not straight to success. A
+      // donor is not actually verifiable server-side until both pieces of evidence exist
+      // (reviewDonorKycHandler enforces this), so the flow shouldn't imply "done" yet.
+      showKycLivenessStep();
+    } catch (err) {
+      console.error('submitKYC failed:', err);
+      if (errEl) {
+        errEl.textContent = err?.message || 'Upload failed. Please try again.';
+        errEl.classList.remove('hidden');
+      }
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit for Verification';
+    }
+  });
+
+  dashboardBtn?.addEventListener('click', () => switchDonorView('dashboard'));
+}
+
+// ============================================
+// KYC Step 3 — Liveness selfie (camera-only)
+// ============================================
+function stopLivenessCamera() {
+  if (_livenessStream) {
+    _livenessStream.getTracks().forEach(t => t.stop());
+    _livenessStream = null;
+  }
+}
+
+function setLivenessError(msg) {
+  const el = document.getElementById('kycLivenessError');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.classList.toggle('hidden', !msg);
+}
+
+// stage: 'start' | 'capture' | 'confirm' — exactly one of the three control rows visible.
+function showLivenessControls(stage) {
+  [['start', 'kycLivenessControlsStart'], ['capture', 'kycLivenessControlsCapture'], ['confirm', 'kycLivenessControlsConfirm']].forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const visible = key === stage;
+    el.classList.toggle('hidden', !visible);
+    el.classList.toggle('flex', visible);
+  });
+}
+
+async function startLivenessCamera() {
+  setLivenessError('');
+  if (!navigator.mediaDevices?.getUserMedia) {
+    setLivenessError('Your browser does not support camera access. Please try a different browser.');
+    return;
+  }
+  try {
+    // facingMode 'user' — front camera, since this is a selfie, never the rear camera.
+    _livenessStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+  } catch (err) {
+    console.error('getUserMedia failed:', err);
+    setLivenessError(
+      err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError'
+        ? 'Camera access was denied. Please allow camera access in your browser settings, then try again.'
+        : 'Could not access your camera. Please check that a camera is connected and try again.'
+    );
+    return;
+  }
+  const video = document.getElementById('kycLivenessVideo');
+  if (video) {
+    video.srcObject = _livenessStream;
+    video.classList.remove('hidden');
+  }
+  document.getElementById('kycLivenessPreviewImg')?.classList.add('hidden');
+  document.getElementById('kycLivenessPlaceholder')?.classList.add('hidden');
+  const guide = document.getElementById('kycLivenessGuide');
+  guide?.classList.remove('hidden');
+  guide?.classList.add('flex');
+  showLivenessControls('capture');
+}
+
+function captureLivenessSelfie() {
+  const video = document.getElementById('kycLivenessVideo');
+  const canvas = document.getElementById('kycLivenessCanvas');
+  if (!video || !canvas || !video.videoWidth) return;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  _livenessCapturedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+  // The frame is captured — the live stream itself is no longer needed until/unless the
+  // donor retakes, so stop it now rather than leaving the camera light on indefinitely.
+  stopLivenessCamera();
+  video.classList.add('hidden');
+  const previewImg = document.getElementById('kycLivenessPreviewImg');
+  if (previewImg) { previewImg.src = _livenessCapturedDataUrl; previewImg.classList.remove('hidden'); }
+  const guide = document.getElementById('kycLivenessGuide');
+  guide?.classList.add('hidden');
+  guide?.classList.remove('flex');
+  showLivenessControls('confirm');
+}
+
+function retakeLivenessSelfie() {
+  _livenessCapturedDataUrl = null;
+  document.getElementById('kycLivenessPreviewImg')?.classList.add('hidden');
+  document.getElementById('kycLivenessPlaceholder')?.classList.remove('hidden');
+  showLivenessControls('start');
+}
+
+function resetLivenessStep() {
+  stopLivenessCamera();
+  _livenessCapturedDataUrl = null;
+  setLivenessError('');
+  document.getElementById('kycLivenessVideo')?.classList.add('hidden');
+  document.getElementById('kycLivenessPreviewImg')?.classList.add('hidden');
+  const guide = document.getElementById('kycLivenessGuide');
+  guide?.classList.add('hidden');
+  guide?.classList.remove('flex');
+  document.getElementById('kycLivenessPlaceholder')?.classList.remove('hidden');
+  showLivenessControls('start');
+  const submitSelfieBtn = document.getElementById('btnKycSubmitSelfie');
+  if (submitSelfieBtn) { submitSelfieBtn.disabled = false; submitSelfieBtn.innerHTML = '<span class="material-symbols-outlined text-lg">check</span> Confirm &amp; Submit'; }
+}
+
+function showKycLivenessStep() {
+  document.getElementById('kycUploadStep')?.classList.add('hidden');
+  resetLivenessStep();
+  document.getElementById('kycLivenessStep')?.classList.remove('hidden');
+}
+
+function initKycLivenessStep() {
+  document.getElementById('btnKycStartCamera')?.addEventListener('click', startLivenessCamera);
+  document.getElementById('btnKycCaptureSelfie')?.addEventListener('click', captureLivenessSelfie);
+  document.getElementById('btnKycRetakeSelfie')?.addEventListener('click', retakeLivenessSelfie);
+
+  document.getElementById('btnKycSubmitSelfie')?.addEventListener('click', async () => {
+    if (!_livenessCapturedDataUrl) return;
+    const btn = document.getElementById('btnKycSubmitSelfie');
+    setLivenessError('');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+    try {
+      const fileBase64 = _livenessCapturedDataUrl.split(',')[1] || '';
+      await submitLivenessSelfieFn({ fileBase64, mimeType: 'image/jpeg' });
+      document.getElementById('kycLivenessStep')?.classList.add('hidden');
+      document.getElementById('kycSuccessStep')?.classList.remove('hidden');
+    } catch (err) {
+      console.error('submitLivenessSelfie failed:', err);
+      setLivenessError(err?.message || 'Submission failed. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = '<span class="material-symbols-outlined text-lg">check</span> Confirm &amp; Submit';
+    }
+  });
+}
+
+// Called every time the KYC view becomes active (switchDonorView) — resets visible
+// state so a donor who navigates away mid-selection doesn't come back to stale UI.
+function loadKycView() {
+  _kycSelectedDocType = null;
+  _kycSelectedFile = null;
+  _kycSelectedFileBack = null;
+  document.getElementById('kycUploadStep')?.classList.remove('hidden');
+  document.getElementById('kycLivenessStep')?.classList.add('hidden');
+  resetLivenessStep();
+  document.getElementById('kycSuccessStep')?.classList.add('hidden');
+  document.getElementById('kycFilePreview')?.classList.add('hidden');
+  document.getElementById('kycDropZone')?.classList.remove('hidden');
+  document.getElementById('kycFileError')?.classList.add('hidden');
+  document.getElementById('kycErrorMessage')?.classList.add('hidden');
+  const fileInput = document.getElementById('kycFileInput');
+  if (fileInput) fileInput.value = '';
+  document.getElementById('kycBackUploadWrap')?.classList.add('hidden');
+  document.getElementById('kycFilePreviewBack')?.classList.add('hidden');
+  document.getElementById('kycDropZoneBack')?.classList.remove('hidden');
+  document.getElementById('kycFileErrorBack')?.classList.add('hidden');
+  const fileInputBack = document.getElementById('kycFileInputBack');
+  if (fileInputBack) fileInputBack.value = '';
+  const dropZoneLabel = document.getElementById('kycDropZoneLabel');
+  if (dropZoneLabel) dropZoneLabel.textContent = 'Drag and drop document here';
+  const natIdInput = document.getElementById('kycNationalId');
+  if (natIdInput) {
+    natIdInput.value = '';
+    natIdInput.placeholder = getCurrentUser()?.cniHash ? 'Already on file — re-enter only to update' : 'e.g. 102938475';
+  }
+  document.getElementById('kycNationalIdError')?.classList.add('hidden');
+  const shapeContainer = document.getElementById('kycDocPreviewShape');
+  shapeContainer?.classList.add('hidden');
+  shapeContainer?.classList.remove('flex');
+  document.getElementById('kycDocTypeGrid')?.querySelectorAll('.kyc-doctype-card').forEach(c => {
+    c.classList.remove('border-primary', 'bg-primary/5');
+    const check = c.querySelector('.kyc-doctype-check');
+    check?.classList.add('hidden');
+    check?.classList.remove('flex');
+  });
+  const previewLabel = document.getElementById('kycPreviewLabel');
+  if (previewLabel) previewLabel.textContent = 'Document Preview';
+  updateKycSubmitEnabled();
+  const submitBtn = document.getElementById('btnKycSubmit');
+  if (submitBtn) submitBtn.textContent = 'Submit for Verification';
 }
 
 function getTimeAgo(dateStr) {
@@ -495,9 +1252,12 @@ function renderFilteredFeed() {
   // browse every one without leaving the page. The underlying list is capped at 50 upstream.
   const INITIAL_FEED = 5;
   const shownRequests = _feedExpanded ? filtered : filtered.slice(0, INITIAL_FEED);
-  // Accepting is blocked while Busy OR while inside the 56-day deferral window.
+  // Accepting is blocked while Busy, inside the 56-day deferral window, or (D3) while KYC
+  // is pending/rejected — the whole panel below also gets a blur+lock overlay for this last
+  // case (applyKycLocksToDOM), this per-button state is defense-in-depth on top of that.
   const ineligible = !isDonorEligibleNow();
-  const acceptBlocked = isBusy || ineligible;
+  const kycPending = !isDonorVerified();
+  const acceptBlocked = isBusy || ineligible || kycPending;
   const deferralPct = _donorEligibilityCache?.barPct || 0;
   const deferralDays = _donorEligibilityCache?.daysUntil || 0;
   const blockBanner = isBusy
@@ -565,19 +1325,28 @@ function renderFilteredFeed() {
       ? `<p class="text-xs text-on-surface-variant/90 mt-2 line-clamp-2">${esc(notes)}</p>`
       : '';
 
+    // Card chrome matches "Home Dashboard.png"'s Live Requests panel: colored left border by
+    // urgency, badge pinned top-right, a clock+time-ago+location meta line. The compact
+    // blood-type/component badge and the extra units/component chip aren't in the mock, but
+    // are kept — real information a donor needs to decide, not decorative.
+    const borderColorCls = isCritical ? 'border-l-error' : urgency === 'urgent' ? 'border-l-warning' : 'border-l-outline-variant/40';
     return `
-    <div class="relative hover-lift group bg-surface-container-lowest rounded-2xl border ${isCritical ? 'border-error/20' : 'border-outline-variant/20'} shadow-sm overflow-hidden" style="transition: box-shadow 200ms var(--ease-out-strong);">
-      ${isCritical ? '<div class="absolute left-0 top-0 bottom-0 w-1 bg-error"></div>' : ''}
-      <div class="p-3.5 ${isCritical ? 'pl-[18px]' : ''}">
+    <div class="relative hover-lift group bg-surface-container-lowest rounded-2xl border-l-4 ${borderColorCls} border-y border-r border-outline-variant/20 shadow-sm overflow-hidden" style="transition: box-shadow 200ms var(--ease-out-strong);">
+      <div class="p-3.5">
         <div class="flex items-start gap-3">
           <div class="flex flex-col items-center justify-center size-15 min-w-[60px] rounded-2xl ${isCritical ? 'bg-gradient-to-br from-error via-error/90 to-error-container text-on-error shadow-md shadow-error/20' : 'bg-primary/10 text-primary'} font-black shrink-0 shadow-xs">
             <span class="text-2xl font-black font-headline leading-none tracking-tight">${btDisplay}</span>
             ${componentShort ? `<span class="text-[7px] font-bold uppercase tracking-wider mt-0.5 ${isCritical ? 'text-on-error/80' : 'text-primary/70'}">${esc(componentShort)}</span>` : ''}
           </div>
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <p class="font-extrabold text-sm text-on-surface truncate max-w-[160px]">${esc(req.hospital || req.hospitalName)}</p>
+            <div class="flex items-start justify-between gap-2">
+              <p class="font-extrabold text-sm text-on-surface truncate">${esc(req.hospital || req.hospitalName)}</p>
               ${urgencyBadge}
+            </div>
+            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-on-surface-variant mt-1">
+              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">schedule</span>${getTimeAgo(req.requestedAt)}</span>
+              <span>&bull;</span>
+              <span>${esc(req.city || 'Cameroon')}</span>
             </div>
             <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-on-surface-variant mt-1.5">
               <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">location_on</span>${distanceStr}</span>
@@ -590,11 +1359,9 @@ function renderFilteredFeed() {
             </div>
           </div>
         </div>
-        <div class="mt-3 flex items-center gap-2">
-          <div class="flex-1 min-w-0">
-            ${pickup ? `<p class="text-[10px] text-on-surface-variant inline-flex items-center gap-1"><span class="material-symbols-outlined text-[11px]">meeting_room</span>Pickup: ${esc(pickup)}</p>` : ''}
-          </div>
-          <button ${acceptBlocked ? `disabled title="${ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale shrink-0 px-5 py-2.5 rounded-xl font-extrabold text-xs shadow-sm ${acceptBlocked ? 'bg-surface-container-high text-on-surface-variant opacity-50 cursor-not-allowed' : 'bg-primary text-on-primary hover:opacity-90 shadow-primary/25 cursor-pointer'}" style="transition: opacity 160ms ease;">${acceptBlocked ? 'Unavailable' : 'Accept'}</button>
+        <div class="mt-3 space-y-2">
+          ${pickup ? `<p class="text-[10px] text-on-surface-variant inline-flex items-center gap-1"><span class="material-symbols-outlined text-[11px]">meeting_room</span>Pickup: ${esc(pickup)}</p>` : ''}
+          <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale w-full px-5 py-2.5 rounded-xl font-extrabold text-xs shadow-sm ${acceptBlocked ? 'bg-surface-container-high text-on-surface-variant opacity-50 cursor-not-allowed' : 'bg-primary text-on-primary hover:opacity-90 shadow-primary/25 cursor-pointer'}" style="transition: opacity 160ms ease;">${acceptBlocked ? (kycPending ? 'Verify First' : 'Unavailable') : 'Accept Request'}</button>
         </div>
       </div>
     </div>`;
@@ -621,6 +1388,7 @@ function renderFilteredFeed() {
 // of a fabricated/reused photo. Distance is computed from real coordinates (donor's city/GPS
 // vs. hospital's city/stored coords) via the same helpers the matching engine uses.
 let nearbyMapInstance = null;
+let centersMapInstance = null;
 let _donationCenters = [];
 let _centersVisibleCount = 5;
 let nearbyTabsInitialized = false;
@@ -628,12 +1396,22 @@ let _allCentersSearch = '';
 let _allCentersCity = null;
 let _allCentersWired = false;
 
-// The full, searchable + city-filterable hospital directory (opened from "View all" on the
-// dashboard's Nearby Donation Centers). Scales to any number of hospitals — search narrows by
-// name/city, chips filter by city, and each row starts a donation at that hospital.
-window.openAllCentersModal = () => {
-  const modal = document.getElementById('allCentersModal');
-  if (!modal) return;
+// E5 — the full, searchable + city-filterable hospital directory used to be a modal opened
+// from "View all"; it's now the dedicated view-centers view (switchDonorView('centers')),
+// with its own real map (#centersMap, separate Leaflet instance from the dashboard's shared
+// #nearbyMap so the two don't collide when both exist in the DOM at once).
+async function loadDonationCentersView() {
+  const currentUser = getCurrentUser();
+  const donorCoords = getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng);
+
+  if (_donationCenters.length === 0) {
+    try {
+      await fetchAndCacheDonationCenters(donorCoords);
+    } catch (e) {
+      console.error('Failed to load donation centers:', e);
+    }
+  }
+
   _allCentersSearch = '';
   _allCentersCity = null;
   const search = document.getElementById('allCentersSearch');
@@ -644,13 +1422,42 @@ window.openAllCentersModal = () => {
   }
   renderAllCentersCityChips();
   renderAllCentersList();
-  modal.classList.remove('hidden');
-  modal.classList.add('flex');
-};
-window.closeAllCentersModal = () => {
-  const modal = document.getElementById('allCentersModal');
-  if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-};
+  renderCentersMap(donorCoords);
+}
+
+// Same visual language as renderNearbyMap (donor red, centers green) but centers-only — this
+// view has no blood-request markers to plot, and lives on its own map div so it can coexist
+// with the dashboard's #nearbyMap in the DOM without either instance fighting over one node.
+function renderCentersMap(donorCoords) {
+  const mapEl = document.getElementById('centersMap');
+  if (!mapEl || !window.L) return;
+  if (centersMapInstance) { centersMapInstance.remove(); centersMapInstance = null; }
+
+  const selectedCoords = _allCentersCity ? CITY_COORDINATES[_allCentersCity.toLowerCase()] : null;
+  const center = selectedCoords || donorCoords || { lat: 3.848, lon: 11.5021 }; // Yaoundé fallback
+  const zoom = selectedCoords ? 11 : 7;
+
+  const map = L.map(mapEl, {
+    zoomControl: false,
+    attributionControl: false,
+    maxBounds: CAMEROON_BOUNDS,
+    maxBoundsViscosity: 1,
+    minZoom: 6,
+  }).setView([center.lat, center.lon], zoom);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(map);
+  renderCityLabels(map);
+
+  if (donorCoords) {
+    L.circleMarker([donorCoords.lat, donorCoords.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#af101a', fillOpacity: 1 })
+      .addTo(map).bindTooltip('You are here');
+  }
+  _donationCenters.forEach(h => {
+    if (!h.coords) return;
+    L.circleMarker([h.coords.lat, h.coords.lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#1e8e3e', fillOpacity: 1 })
+      .addTo(map).bindTooltip(esc(h.name));
+  });
+  centersMapInstance = map;
+}
 
 function renderAllCentersCityChips() {
   const row = document.getElementById('allCentersCityRow');
@@ -662,6 +1469,8 @@ function renderAllCentersCityChips() {
     _allCentersCity = btn.dataset.city || null;
     renderAllCentersCityChips();
     renderAllCentersList();
+    const currentUser = getCurrentUser();
+    renderCentersMap(getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng));
   }));
 }
 
@@ -697,7 +1506,6 @@ function renderAllCentersList() {
     </button>`;
   }).join('');
   listEl.querySelectorAll('[data-donate-center]').forEach(btn => btn.addEventListener('click', () => {
-    window.closeAllCentersModal();
     window.openDonationModalForHospital(btn.dataset.donateCenter);
   }));
 }
@@ -755,7 +1563,7 @@ function renderCentersList() {
   listEl.querySelectorAll('[data-donate-center]').forEach(btn => {
     btn.addEventListener('click', () => window.openDonationModalForHospital(btn.dataset.donateCenter));
   });
-  document.getElementById('btnViewAllCenters')?.addEventListener('click', () => window.openAllCentersModal());
+  document.getElementById('btnViewAllCenters')?.addEventListener('click', () => switchDonorView('centers'));
 }
 
 // The city chip row replaces the old schematic Cameroon-outline map, which duplicated the real
@@ -775,6 +1583,25 @@ function renderCityChips(currentUser) {
   });
 }
 
+// "Live Requests · N Near You" heading + count badge above the tabs, matching
+// "Home Dashboard.png"'s right-column panel title. Recomputed on tab switch and whenever the
+// city filter changes (window._filterCity), since both affect what's actually "near you".
+let _nearbyActiveTab = 'requests';
+function updateNearbyPanelBadge() {
+  const titleEl = document.getElementById('nearbyPanelTitle');
+  const countEl = document.getElementById('nearbyPanelCount');
+  if (!titleEl || !countEl) return;
+  if (_nearbyActiveTab === 'requests') {
+    const filtered = _selectedCity ? _allRequests.filter(r => (r.city === _selectedCity || r.preferredLocation === _selectedCity)) : _allRequests;
+    titleEl.textContent = 'Live Requests';
+    countEl.textContent = `${filtered.length} Near You`;
+  } else {
+    const filtered = _selectedCity ? _donationCenters.filter(h => h.city === _selectedCity) : _donationCenters;
+    titleEl.textContent = 'Donation Centers';
+    countEl.textContent = `${filtered.length} Near You`;
+  }
+}
+
 // Tabs switch which list is visible beside the shared map. Bound once — rebinding on every
 // dashboard reload would stack duplicate listeners since these use addEventListener.
 function initNearbyTabs() {
@@ -787,15 +1614,42 @@ function initNearbyTabs() {
   const viewAllTop = document.getElementById('btnViewAllRequestsTop');
   const setActive = (tab) => {
     const isReq = tab === 'requests';
+    _nearbyActiveTab = tab;
     tabRequests.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
     tabCenters.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${!isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
     feedEl?.classList.toggle('hidden', !isReq);
     centersEl?.classList.toggle('hidden', isReq);
     viewAllTop?.classList.toggle('hidden', !isReq);
+    updateNearbyPanelBadge();
   };
   tabRequests?.addEventListener('click', () => setActive('requests'));
   tabCenters?.addEventListener('click', () => setActive('centers'));
   setActive('requests');
+}
+
+// Cameroon's real national bounding box (roughly 1.5°–13.1°N, 8.3°–16.2°E) — keeps the map
+// framed on the country instead of drifting into the Atlantic or neighboring countries when
+// panned/zoomed, closer to "Home Dashboard.png"'s Cameroon-only illustrated map.
+const CAMEROON_BOUNDS = [[1.4, 8.2], [13.2, 16.3]];
+
+// "Home Dashboard.png"'s map has no street/place-name clutter, just the two city callouts
+// (DOUALA/YAOUNDÉ) it draws itself — light_nolabels + these DivIcon labels (real coordinates,
+// same CITY_COORDINATES used everywhere else in this file) gets the live map close to that
+// without fabricating a hand-drawn country outline this codebase has no real GeoJSON for.
+function renderCityLabels(map) {
+  ['yaoundé', 'douala', 'buea'].forEach((city) => {
+    const coords = CITY_COORDINATES[city];
+    if (!coords) return;
+    L.marker([coords.lat, coords.lon], {
+      icon: L.divIcon({
+        className: '',
+        html: `<span style="font-size:10px;font-weight:800;color:#5b5b5b;letter-spacing:.04em;text-shadow:0 1px 2px rgba(255,255,255,.9)">${city.toUpperCase()}</span>`,
+        iconSize: [80, 14],
+        iconAnchor: [-6, 6],
+      }),
+      interactive: false,
+    }).addTo(map);
+  });
 }
 
 // One real map shared by blood requests and donation centers — donor (red), requests
@@ -810,10 +1664,17 @@ function renderNearbyMap(donorCoords) {
   const center = selectedCoords || donorCoords || { lat: 3.848, lon: 11.5021 }; // Yaoundé fallback
   const zoom = selectedCoords ? 11 : 7;
 
-  const map = L.map(mapEl, { zoomControl: false, attributionControl: false }).setView([center.lat, center.lon], zoom);
-  // Light, muted basemap (not the saturated default OSM green/tan) so the map blends
-  // with the app's warm palette instead of reading as a bolted-on generic widget.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(map);
+  const map = L.map(mapEl, {
+    zoomControl: false,
+    attributionControl: false,
+    maxBounds: CAMEROON_BOUNDS,
+    maxBoundsViscosity: 1,
+    minZoom: 6,
+  }).setView([center.lat, center.lon], zoom);
+  // Light, muted, label-free basemap (not the saturated default OSM green/tan + street
+  // names) so the map reads as a clean regional map, not a bolted-on generic street widget.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(map);
+  renderCityLabels(map);
 
   if (donorCoords) {
     L.circleMarker([donorCoords.lat, donorCoords.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#af101a', fillOpacity: 1 })
@@ -833,18 +1694,25 @@ function renderNearbyMap(donorCoords) {
   nearbyMapInstance = map;
 }
 
+// Shared by the Dashboard's inline "Nearby" panel (loadDonationCenters, below) and the
+// dedicated view-centers view (loadDonationCentersView, above) — one fetch, two renderers.
+async function fetchAndCacheDonationCenters(donorCoords) {
+  const hospitals = await fetchAllHospitals();
+  _donationCenters = hospitals.map(h => {
+    const coords = getCoordinatesForLocation(h.city, h.lat, h.lng);
+    const distanceKm = (donorCoords && coords) ? calculateDistanceKm(donorCoords.lat, donorCoords.lon, coords.lat, coords.lon) : null;
+    return { ...h, coords, distanceKm };
+  }).sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+}
+
 async function loadDonationCenters() {
   const currentUser = getCurrentUser();
   const donorCoords = getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng);
   try {
-    const hospitals = await fetchAllHospitals();
-    _donationCenters = hospitals.map(h => {
-      const coords = getCoordinatesForLocation(h.city, h.lat, h.lng);
-      const distanceKm = (donorCoords && coords) ? calculateDistanceKm(donorCoords.lat, donorCoords.lon, coords.lat, coords.lon) : null;
-      return { ...h, coords, distanceKm };
-    }).sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
+    await fetchAndCacheDonationCenters(donorCoords);
     _centersVisibleCount = Math.min(5, _donationCenters.length);
     renderCentersList();
+    updateNearbyPanelBadge();
   } catch (e) {
     console.error('Failed to load donation centers:', e);
     _donationCenters = [];
@@ -944,81 +1812,9 @@ export async function loadDonorDashboard() {
     const bloodLabelEl = document.getElementById('donorBloodTypeLabel');
     if (bloodLabelEl) bloodLabelEl.textContent = bloodInfo.label || 'Common';
 
-    // Stats
-    if (engagement) {
-      const statDonations = document.getElementById('statDonations');
-      if (statDonations) statDonations.textContent = engagement.donationCount;
-
-      // Bare number — the "up to N Lives" phrasing lives in the surrounding hero copy now,
-      // not baked into this element, so it can be reused inline without duplicating "up to".
-      const livesCount = engagement.totalUnits > 0 ? engagement.totalUnits * 3 : 3;
-      const statLivesSavedText = document.getElementById('statLivesSavedText');
-      if (statLivesSavedText) statLivesSavedText.textContent = livesCount;
-
-      const statLivesSaved = document.getElementById('statLivesSaved');
-      if (statLivesSaved) statLivesSaved.textContent = engagement.totalUnits * 3;
-
-      const statPoints = document.getElementById('statPoints');
-      if (statPoints) statPoints.textContent = engagement.points;
-
-      const statRank = document.getElementById('statRank');
-      if (statRank) statRank.textContent = engagement.tier;
-
-      const lastDonation = engagement.donations
-        .filter(d => d.status === 'completed')
-        .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
-      const last = lastDonation[0];
-      const lastDonationText = document.getElementById('statLastDonation');
-      if (lastDonationText) {
-        const lastDate = last?.completedAt || last?.preferredDate;
-        lastDonationText.textContent = lastDate
-          ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : 'Never';
-      }
-
-      // Tier progress
-      const tierEl = document.getElementById('donorTierProgress');
-      if (tierEl) {
-        const pct = engagement.nextTier ? Math.min(100, engagement.nextTierProgress) : 100;
-        tierEl.innerHTML = `
-          <div class="flex items-center gap-4">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-warning to-[#8a4c00] flex items-center justify-center shadow-sm shadow-warning/30 shrink-0">
-              <span class="material-symbols-outlined text-white text-xl">${engagement.tierIcon}</span>
-            </div>
-            <div class="flex-1 min-w-0">
-              <div class="flex justify-between items-center mb-1.5">
-                <span class="font-black font-headline text-lg text-on-surface tracking-tight">${engagement.tier} Tier</span>
-                <span class="text-xs font-bold text-warning">${engagement.points} pts</span>
-              </div>
-              ${engagement.nextTier ? `
-              <div class="flex justify-between text-[10px] font-bold text-on-surface-variant mb-1">
-                <span>${engagement.tier}</span>
-                <span>Next: ${engagement.nextTier}</span>
-              </div>
-              <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                <div class="h-full bg-gradient-to-r from-primary to-[#7a0c14] rounded-full" style="width: ${pct}%; transition: width 500ms var(--ease-out-strong);"></div>
-              </div>
-              <p class="text-[10px] text-on-surface-variant mt-1.5 font-medium">${Math.max(1, getNextTierDonationsNeeded(engagement))} more donation${engagement.donationCount >= 4 ? 's' : ''} to reach ${engagement.nextTier}!</p>
-              ` : '<p class="text-xs text-success font-bold">Max tier reached!</p>'}
-            </div>
-          </div>
-          <div class="flex gap-3 mt-5 pt-4 border-t border-outline-variant/15">
-            <div class="flex-1 text-center">
-              <p class="text-2xl font-black font-headline text-primary tracking-tight">${engagement.donationCount}</p>
-              <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Donations</p>
-            </div>
-            <div class="flex-1 text-center border-x border-outline-variant/15">
-              <p class="text-2xl font-black font-headline text-success tracking-tight">${engagement.totalUnits * 3}</p>
-              <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Lives Saved</p>
-            </div>
-            <div class="flex-1 text-center">
-              <p class="text-2xl font-black font-headline text-on-surface tracking-tight">${engagement.points}</p>
-              <p class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Points</p>
-            </div>
-          </div>
-        `;
-      }
-    }
+    // Stats — D8: gated by KYC verification status inside renderDonorEngagementStats itself
+    // (also cached there so the KYC listener can re-render this reactively on approval).
+    renderDonorEngagementStats(engagement);
 
     // Eligibility countdown
     const eligEl = document.getElementById('donorEligibilityBar');
@@ -1040,94 +1836,35 @@ export async function loadDonorDashboard() {
         <p class="text-[11px] text-on-surface-variant mt-2 font-medium">${elig.eligible ? 'You are eligible to donate now!' : `Next donation available in ${elig.daysUntil} days (56-day deferral period)`}</p>
       `;
 
-      // Same elig data, shown as the quick-glance stat card at the top of the dashboard.
+      // Same elig data, shown as the "Eligibility" pill in the hero's Active Blood Type card.
       const quickStatEl = document.getElementById('donorEligibilityQuickStat');
-      if (quickStatEl) quickStatEl.textContent = elig.eligible ? 'Eligible' : `${elig.daysUntil}d`;
-      const quickTagEl = document.getElementById('donorEligibilityQuickTag');
-      if (quickTagEl) quickTagEl.textContent = elig.eligible ? 'You can donate now' : 'Almost there';
+      if (quickStatEl) {
+        quickStatEl.textContent = elig.eligible ? 'Eligible' : `${elig.daysUntil}d`;
+        quickStatEl.className = `text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${elig.eligible ? 'bg-success-container text-on-success-container' : 'bg-warning-container text-on-warning-container'}`;
+      }
 
-      // Hero live status pill — green pulse when eligible, amber countdown otherwise.
+      // Hero live status pill — solid green "Eligible to donate now" pill when eligible
+      // (matches "Home Dashboard.png" exactly), amber countdown pill otherwise.
       const heroPill = document.getElementById('donorHeroStatusPill');
-      if (heroPill) {
-        const dot = elig.eligible ? 'bg-success' : 'bg-warning';
-        const ping = elig.eligible ? 'bg-success/60' : 'bg-warning/60';
-        const text = elig.eligible ? 'Eligible to donate now' : `Next donation in ${elig.daysUntil} day${elig.daysUntil === 1 ? '' : 's'}`;
-        heroPill.innerHTML = `<span class="relative flex w-2 h-2"><span class="absolute inline-flex w-full h-full rounded-full ${ping} animate-ping"></span><span class="relative inline-flex w-2 h-2 rounded-full ${dot}"></span></span><span class="text-xs font-bold text-on-surface">${text}</span>`;
+      const heroStatusText = document.getElementById('donorHeroStatus');
+      if (heroPill && heroStatusText) {
+        const icon = elig.eligible ? 'check_circle' : 'schedule';
+        heroPill.className = `stagger-in inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-3.5 py-1.5 ${elig.eligible ? 'bg-success-container/60 text-on-success-container' : 'bg-warning-container/60 text-on-warning-container'}`;
+        heroPill.querySelector('.material-symbols-outlined').textContent = icon;
+        heroStatusText.textContent = elig.eligible ? 'Eligible to donate now' : `Next donation in ${elig.daysUntil} day${elig.daysUntil === 1 ? '' : 's'}`;
       }
 
       // Donation Journey — four real milestones rendered as a connected timeline (numbered
       // nodes joined by a rail, completed ones filled + checked) with a progress summary.
-      const journeyEl = document.getElementById('donorJourneyChecklist');
-      if (journeyEl) {
-        const steps = [
-          { label: 'Profile Completed', done: !!(currentUser.name && currentUser.bloodType && currentUser.bloodType !== 'Unknown' && currentUser.city) },
-          { label: 'Availability Updated', done: !!currentUser.lastAvailabilityScreeningAt },
-          { label: 'Eligible to Donate', done: elig.eligible },
-          { label: 'Make Your First Donation', done: engagement.donationCount > 0 },
-        ];
-        const doneCount = steps.filter(s => s.done).length;
-        const pct = Math.round((doneCount / steps.length) * 100);
-        journeyEl.innerHTML = `
-          <div class="flex items-center justify-between mb-3">
-            <span class="text-[11px] font-bold text-on-surface-variant">${doneCount} of ${steps.length} complete</span>
-            <span class="text-[11px] font-black text-primary">${pct}%</span>
-          </div>
-          <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden mb-4">
-            <div class="h-full bg-success rounded-full" style="width:${pct}%; transition: width 500ms var(--ease-out-strong);"></div>
-          </div>
-          <div class="relative">
-            <div class="absolute left-[11px] top-3 bottom-3 w-0.5 bg-outline-variant/25"></div>
-            <div class="space-y-3.5">
-              ${steps.map((s, i) => `
-                <div class="relative flex items-center gap-3">
-                  <span class="relative z-10 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${s.done ? 'bg-success text-on-success' : 'bg-surface-container border-2 border-outline-variant/40 text-on-surface-variant'}">
-                    ${s.done
-                      ? `<span class="material-symbols-outlined" style="font-size:15px;font-variation-settings:'FILL' 1">check</span>`
-                      : `<span class="text-[10px] font-black">${i + 1}</span>`}
-                  </span>
-                  <span class="text-sm font-bold ${s.done ? 'text-on-surface' : 'text-on-surface-variant'}">${s.label}</span>
-                  ${s.done ? '' : '<span class="ml-auto text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-wider">To do</span>'}
-                </div>
-              `).join('')}
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    // Badges summary — mini medallions matching the full badges view
-    const badgesEl = document.getElementById('donorBadgesSummary');
-    if (badgesEl && engagement) {
-      if (engagement.badges.length === 0) {
-        badgesEl.innerHTML = '<p class="text-sm text-on-surface-variant text-center py-4">Complete your first donation to earn badges!</p>';
-      } else {
-        const summaryColors = {
-          'First Donation': { bg: '#fecaca', icon: '#dc2626', emblem: 'radial-gradient(circle at 35% 30%, #fecaca, #f87171 25%, #e11d48 50%, #be123c 75%, #881337)' },
-          'Regular Donor': { bg: '#e9d5ff', icon: '#7c3aed', emblem: 'radial-gradient(circle at 35% 30%, #e9d5ff, #a855f7 25%, #7c3aed 50%, #6d28d9 75%, #4c1d95)' },
-          'Life Saver': { bg: '#fef08a', icon: '#ca8a04', emblem: 'radial-gradient(circle at 35% 30%, #fef08a, #facc15 25%, #eab308 50%, #ca8a04 75%, #854d0e)' },
-          'Guardian Angel': { bg: '#ccfbf1', icon: '#0d9488', emblem: 'radial-gradient(circle at 35% 30%, #ccfbf1, #14b8a6 25%, #0d9488 50%, #0f766e 75%, #134e4a)' },
-          'Generous Heart': { bg: '#fed7aa', icon: '#ea580c', emblem: 'radial-gradient(circle at 35% 30%, #fed7aa, #fb923c 25%, #ea580c 50%, #c2410c 75%, #7c2d12)' },
-          'Universal Donor': { bg: '#d1fae5', icon: '#059669', emblem: 'radial-gradient(circle at 35% 30%, #d1fae5, #34d399 25%, #059669 50%, #047857 75%, #064e3b)' },
-        };
-        badgesEl.innerHTML = `
-          <div class="flex flex-wrap gap-3 items-center">
-            ${engagement.badges.slice(0, 5).map(b => {
-              const sc = summaryColors[b.name] || summaryColors['First Donation'];
-              return `
-                <div class="flex flex-col items-center gap-1 group cursor-pointer" onclick="switchDonorView('badges')">
-                  <div class="relative w-10 h-10 rounded-full flex items-center justify-center overflow-hidden shadow-sm border border-white/40 group-hover:scale-110 transition-transform" style="background:${sc.emblem}">
-                    <div class="absolute -top-0.5 -left-0.5 w-4 h-2.5 bg-white/20 rounded-full -rotate-12 blur-[1px] pointer-events-none"></div>
-                    <span class="material-symbols-outlined text-base relative z-10" style="color:white;font-variation-settings:'FILL'1">${b.icon}</span>
-                  </div>
-                  <span class="text-[8px] font-bold text-on-surface-variant leading-tight text-center max-w-[60px] truncate">${b.name}</span>
-                </div>
-              `;
-            }).join('')}
-            ${engagement.badges.length > 5 ? `<div class="flex flex-col items-center gap-1"><div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-black text-on-surface-variant">+${engagement.badges.length - 5}</div></div>` : ''}
-          </div>
-          <button onclick="switchDonorView('badges')" class="press-scale mt-3 text-xs font-bold text-primary hover:underline cursor-pointer inline-flex items-center gap-1">View all badges <span class="material-symbols-outlined text-sm">arrow_forward</span></button>
-        `;
-      }
+      // Steps cached (D1) so the KYC status listener can re-render this checklist's lock
+      // state reactively without refetching engagement/eligibility.
+      _donorJourneySteps = [
+        { label: 'Profile Completed', done: !!(currentUser.name && currentUser.bloodType && currentUser.bloodType !== 'Unknown' && currentUser.city) },
+        { label: 'Availability Updated', done: !!currentUser.lastAvailabilityScreeningAt },
+        { label: 'Eligible to Donate', done: elig.eligible },
+        { label: 'Make Your First Donation', done: engagement.donationCount > 0 },
+      ];
+      renderDonorJourneyChecklist(_donorJourneySteps);
     }
 
     // Handle null engagement — clear remaining loading spinners
@@ -1166,6 +1903,8 @@ export async function loadDonorDashboard() {
     }
 
     renderFilteredFeed();
+    renderDonorKycStatusBanner();
+    applyKycLocksToDOM();
     loadDonationCenters();
 
     // Recent activity
@@ -1312,6 +2051,81 @@ function getNextTierDonationsNeeded(engagement) {
   return Math.max(1, needed - engagement.donationCount);
 }
 
+// ============================================
+// E1.4 / E3.2 — SHARED TIER-JOURNEY STEPPER
+// ============================================
+// One renderer, three call sites (Dashboard's "Your Status" card, the Impact view's
+// "Your Donation Journey" card, and the Profile sidebar's compact rank row below) so tier
+// math/labels can never drift between views — matches the mock's horizontal
+// Start(Bronze)→Silver→Gold→Platinum stepper. Tier names follow this app's existing data
+// model (Bronze/Silver/Gold/Platinum, from computeDonorEngagement in db.js) rather than the
+// mock's generic "Start/Hero" wording, since those are the real values donors are scored on.
+const TIER_ORDER = ['Bronze', 'Silver', 'Gold', 'Platinum'];
+const TIER_ICONS = { Bronze: 'shield', Silver: 'workspace_premium', Gold: 'stars', Platinum: 'diamond' };
+
+function renderTierJourneyStepper(engagement, { showPerks = false, showHeader = true } = {}) {
+  const idx = Math.max(0, TIER_ORDER.indexOf(engagement.tier));
+  const N = TIER_ORDER.length;
+  const cell = 100 / N, edge = cell / 2;
+  const segFrac = engagement.nextTier ? Math.min(1, Math.max(0, engagement.nextTierProgress / 100)) : 1;
+  const progressW = Math.max(0, Math.min(idx + segFrac, N - 1)) * cell;
+
+  const nodes = TIER_ORDER.map((name, i) => {
+    const reached = i <= idx;
+    const isCurrent = i === idx;
+    const nodeCls = isCurrent
+      ? 'bg-primary text-on-primary border-primary shadow-md shadow-primary/25'
+      : reached
+      ? 'bg-warning text-white border-warning'
+      : 'bg-surface-container-high text-on-surface-variant border-surface-container-high';
+    const labelCls = isCurrent ? 'text-primary' : reached ? 'text-on-surface' : 'text-on-surface-variant/50';
+    return `
+      <div class="relative z-10 flex flex-col items-center gap-1.5" style="width:${cell}%">
+        <span class="relative w-9 h-9 rounded-full flex items-center justify-center border-2 ${nodeCls}">
+          ${isCurrent ? '<span class="absolute inset-0 rounded-full bg-primary/30 animate-ping"></span>' : ''}
+          <span class="material-symbols-outlined relative text-base" style="font-variation-settings:'FILL' ${reached ? 1 : 0}">${TIER_ICONS[name]}</span>
+        </span>
+        <span class="text-[10px] font-bold text-center ${labelCls}">${name}</span>
+      </div>`;
+  }).join('');
+
+  const perksHtml = !showPerks ? '' : (() => {
+    const perks = [
+      { label: 'Priority Matching', unlockedAt: 0 },
+      { label: 'Exclusive Events', unlockedAt: TIER_ORDER.indexOf('Silver') },
+      { label: 'Premium Profile Badge', unlockedAt: TIER_ORDER.indexOf('Gold') },
+    ];
+    return `<div class="flex flex-wrap items-center gap-2 mt-4">${perks.map(p => {
+      const unlocked = idx >= p.unlockedAt;
+      return unlocked
+        ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-success bg-success-container/40 px-2.5 py-1 rounded-full border border-success/20"><span class="material-symbols-outlined text-xs">check_circle</span>${p.label}</span>`
+        : `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-on-surface-variant bg-surface-container-high px-2.5 py-1 rounded-full"><span class="material-symbols-outlined text-xs">lock</span>${p.label}</span>`;
+    }).join('')}</div>`;
+  })();
+
+  const nextTierDonations = engagement.nextTier ? Math.max(1, getNextTierDonationsNeeded(engagement)) : null;
+  return `
+    ${showHeader ? `
+    <div class="flex items-center justify-between mb-4">
+      <span class="font-black font-headline text-lg text-on-surface tracking-tight">${engagement.tier} Tier</span>
+      <span class="text-xs font-bold text-warning">${engagement.points} pts</span>
+    </div>` : ''}
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest">Donation Journey</span>
+      <span class="text-[10px] font-black text-on-surface uppercase tracking-widest">${engagement.donationCount} / ${engagement.nextTier ? engagement.donationCount + nextTierDonations : engagement.donationCount} donations</span>
+    </div>
+    <div class="relative pt-1 pb-1">
+      <div class="absolute top-[18px] h-0.5 bg-surface-container-high" style="left:${edge}%; right:${edge}%"></div>
+      <div class="absolute top-[18px] h-0.5 bg-warning transition-all duration-500" style="left:${edge}%; width:${progressW}%"></div>
+      <div class="relative flex justify-between">${nodes}</div>
+    </div>
+    <p class="text-[11px] text-warning mt-3 font-bold">${engagement.nextTier
+      ? `You're ${nextTierDonations} donation${nextTierDonations === 1 ? '' : 's'} away from ${engagement.nextTier}!`
+      : 'Max tier reached!'}</p>
+    ${perksHtml}
+  `;
+}
+
 
 let _currentReqFilter = 'all';
 window.filterDonorRequests = (filterType) => {
@@ -1335,6 +2149,19 @@ window.filterDonorRequests = (filterType) => {
   // Re-render from the already-subscribed cache — no need to re-fetch/re-subscribe on a filter change.
   renderDonorRequestsList();
 };
+
+// E2.2 — the 4 dropdown filters (Blood Type/Component/Urgency/Distance) sit alongside the
+// pill filters above and apply on top of them, operating on the same already-fetched
+// journeys array (subscribeToDonorJourneys returns the full requests/public_requests docs,
+// so bloodType/componentType/urgency are all real fields already present — no new reads).
+let _reqDropdownFilters = { bloodType: '', component: '', urgency: '', distance: '' };
+function initDonorRequestFilters() {
+  const map = { reqFilterBloodType: 'bloodType', reqFilterComponent: 'component', reqFilterUrgency: 'urgency', reqFilterDistance: 'distance' };
+  Object.entries(map).forEach(([elId, key]) => {
+    const el = document.getElementById(elId);
+    if (el) el.onchange = () => { _reqDropdownFilters[key] = el.value; renderDonorRequestsList(); };
+  });
+}
 
 // Live-journey state. The active journeys come from a real-time Firestore listener (see
 // subscribeToDonorJourneys) so status changes — the donor's own AND the hospital's — appear
@@ -1421,12 +2248,28 @@ function renderDonorJourneyCard(r) {
   const publicBadge = r.isPublicRequest ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-warning-container/50 text-on-warning-container border border-warning/25">Public</span>` : '';
   const passCode = r.checkInToken ? `<span class="inline-flex items-center gap-1.5 text-[11px] font-mono font-black text-success bg-success-container/40 border border-success/25 px-2.5 py-1 rounded-lg"><span class="material-symbols-outlined" style="font-size:14px">qr_code_2</span> ${esc(r.checkInToken)}</span>` : '';
 
+  // E2.3 — colored left border by urgency (same critical/urgent convention as the browsable
+  // dashboard feed cards), plus an icon-chip metadata row matching the mock's layout.
+  const urgencyLevel = (r.urgency || '').toLowerCase();
+  const borderCls = urgencyLevel === 'critical' ? 'border-l-4 border-l-error' : urgencyLevel === 'urgent' ? 'border-l-4 border-l-warning' : 'border-l-4 border-l-outline-variant/30';
+  const urgencyChip = urgencyLevel === 'critical'
+    ? '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-error text-on-error">Critical</span>'
+    : urgencyLevel === 'urgent'
+    ? '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-warning-container text-on-warning-container border border-warning/30">Urgent</span>'
+    : '';
+
   // Where to go + who to call, plus what's needed — the pickup details the hospital entered.
   // Most useful once you've accepted, so they live on the journey card (not the browse feed).
   const units = r.units || 1;
   const component = r.componentType || 'Whole Blood';
   const pickup = (r.pickupLocation || '').trim();
   const phone = (r.contactPhone || '').trim();
+  const chip = (icon, label) => `<span class="inline-flex items-center gap-1 bg-surface-container-low text-[10px] font-bold text-on-surface-variant px-2.5 py-1.5 rounded-lg border border-outline-variant/15"><span class="material-symbols-outlined text-[13px]">${icon}</span>${esc(label)}</span>`;
+  const chipRow = `<div class="flex flex-wrap items-center gap-1.5 mt-2.5">
+    ${chip('science', component)}
+    ${typeof r.matchedDistanceKm === 'number' ? chip('location_on', r.matchedDistanceKm + ' km') : ''}
+    ${chip('water_drop', `${units} Unit${units > 1 ? 's' : ''}`)}
+  </div>`;
   const detailItem = (icon, label, value) => `
     <div class="flex items-center gap-2 min-w-0">
       <span class="material-symbols-outlined text-[15px] text-on-surface-variant shrink-0">${icon}</span>
@@ -1473,20 +2316,21 @@ function renderDonorJourneyCard(r) {
   }).join('');
 
   return `
-  <div class="hover-lift bg-surface-container-lowest p-5 md:p-6 rounded-3xl border border-outline-variant/20 shadow-sm space-y-5">
+  <div class="hover-lift bg-surface-container-lowest p-5 md:p-6 rounded-3xl border border-y border-r border-outline-variant/20 ${borderCls} shadow-sm space-y-5">
     <div class="flex items-start justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-3.5 min-w-0">
         <span class="w-14 h-14 rounded-2xl bg-error-container/50 text-error flex items-center justify-center font-black text-xl shrink-0 border border-error/20 font-headline">${esc(r.bloodType || r.type || '?')}</span>
         <div class="min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <p class="font-extrabold text-base text-on-surface truncate">${esc(r.hospital || r.hospitalName || 'Hospital')}</p>
-            ${publicBadge}
+            ${urgencyChip}${publicBadge}
           </div>
           <div class="flex items-center gap-2 mt-1 text-xs text-on-surface-variant font-medium">
             ${liveBadge}
             <span class="truncate">${esc(r.city || 'Cameroon')}${r.matchedDistanceKm ? ' · ~' + r.matchedDistanceKm + ' km' : ''}</span>
             ${updated ? `<span class="text-on-surface-variant/60">· updated ${getTimeAgo(updated)}</span>` : ''}
           </div>
+          ${chipRow}
         </div>
       </div>
       <div class="flex items-center gap-2 shrink-0">${actions}</div>
@@ -1510,6 +2354,15 @@ function renderDonorJourneyCard(r) {
 function renderDonorRequestsList() {
   const container = document.getElementById('donorRequestsList');
   if (!container) return;
+  const currentUser = getCurrentUser();
+
+  // E2.1 — stat cards, computed from the same already-subscribed journeys array.
+  const statActiveEl = document.getElementById('reqStatActive');
+  if (statActiveEl) statActiveEl.textContent = _activeJourneys.filter(r => r.status !== 'Completed' && r.status !== 'Issued' && r.status !== 'Resolved').length;
+  const statUrgentEl = document.getElementById('reqStatUrgent');
+  if (statUrgentEl) statUrgentEl.textContent = _activeJourneys.filter(r => { const u = (r.urgency || '').toLowerCase(); return u === 'critical' || u === 'urgent'; }).length;
+  const statBloodTypeEl = document.getElementById('reqStatBloodType');
+  if (statBloodTypeEl) statBloodTypeEl.textContent = currentUser?.bloodType || '—';
 
   let journeys = [..._activeJourneys];
   if (_currentReqFilter === 'active') {
@@ -1519,6 +2372,14 @@ function renderDonorRequestsList() {
   } else if (_currentReqFilter === 'completed') {
     journeys = journeys.filter(r => r.status === 'Completed' || r.status === 'Issued' || r.status === 'Resolved');
   }
+
+  // E2.2 — dropdown filters apply on top of whichever pill is active.
+  const df = _reqDropdownFilters;
+  if (df.bloodType) journeys = journeys.filter(r => (r.bloodType || r.type) === df.bloodType);
+  if (df.component) journeys = journeys.filter(r => (r.componentType || 'Whole Blood') === df.component);
+  if (df.urgency) journeys = journeys.filter(r => (r.urgency || '').toLowerCase() === df.urgency);
+  if (df.distance) journeys = journeys.filter(r => typeof r.matchedDistanceKm === 'number' && r.matchedDistanceKm <= Number(df.distance));
+
   const showPast = _pastDonations.length > 0 && (_currentReqFilter === 'all' || _currentReqFilter === 'completed');
 
   if (journeys.length === 0 && !showPast) {
@@ -1533,7 +2394,8 @@ function renderDonorRequestsList() {
       <h3 class="font-black text-lg text-on-surface">Active Donation Journeys</h3>
       <span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-full"><span class="relative flex w-1.5 h-1.5"><span class="absolute inline-flex w-full h-full rounded-full bg-primary opacity-60 animate-ping"></span><span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-primary"></span></span> Live</span>
     </div>`;
-    html += `<div class="space-y-4">${journeys.map(renderDonorJourneyCard).join('')}</div>`;
+    // E2.3: 2-col grid instead of a single stacked column
+    html += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${journeys.map(renderDonorJourneyCard).join('')}</div>`;
   }
 
   if (showPast) {
@@ -1564,12 +2426,84 @@ function renderDonorRequestsList() {
   container.innerHTML = html;
 }
 
+// E3.5 — shareable donor card. WhatsApp deep link needs no library; the download uses a
+// plain <canvas> drawn client-side from data already on the page, exported via toDataURL().
+// Re-wired on every loadDonorBadges() call (onclick assignment, not addEventListener) so
+// re-entering the view never stacks duplicate listeners or goes stale on new engagement data.
+function initShareCard(currentUser, { bloodType, donationCount, livesSaved, tier }) {
+  const waBtn = document.getElementById('btnShareWhatsapp');
+  if (waBtn) {
+    waBtn.onclick = () => {
+      const text = `I'm a VitalPulse Donor! 🩸 ${bloodType} · ${donationCount} donation${donationCount === 1 ? '' : 's'} · ${livesSaved} lives saved. Join me and help save lives in Cameroon!`;
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    };
+  }
+
+  const dlBtn = document.getElementById('btnDownloadShareCard');
+  if (dlBtn) {
+    dlBtn.onclick = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 450;
+      const ctx = canvas.getContext('2d');
+
+      const grad = ctx.createLinearGradient(0, 0, 800, 450);
+      grad.addColorStop(0, '#af101a');
+      grad.addColorStop(1, '#7a0c14');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 800, 450);
+
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      ctx.beginPath(); ctx.arc(760, 420, 200, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 22px sans-serif';
+      ctx.fillText((currentUser?.name || 'VitalPulse Donor'), 56, 70);
+
+      ctx.font = '900 30px sans-serif';
+      ctx.fillText("I'm a VitalPulse Donor!", 56, 120);
+
+      ctx.font = '600 16px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText('Join me and help save lives in Cameroon.', 56, 150);
+
+      ctx.font = '900 84px sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(bloodType, 56, 270);
+
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillText(`${donationCount} donation${donationCount === 1 ? '' : 's'}   ·   ${livesSaved} lives saved   ·   ${tier} Tier`, 56, 320);
+
+      ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillText('VitalPulse — Blood Donation Coordination for Cameroon', 56, 400);
+
+      const link = document.createElement('a');
+      link.download = 'vitalpulse-donor-card.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+  }
+}
+
 async function loadDonorBadges() {
   const container = document.getElementById('badgesFullView');
   if (!container) return;
 
   const currentUser = getCurrentUser();
   if (!currentUser) return;
+
+  // D8 — same principle as the Dashboard's engagement stats: an account still awaiting admin
+  // approval can't have real donation history, so the whole rewards/badges block is replaced
+  // with a locked placeholder instead of populating it (with real or fallback numbers).
+  const lockedEl = document.getElementById('badgesLockedState');
+  const contentEl = document.getElementById('badgesContentWrap');
+  const locked = !isDonorVerified();
+  lockedEl?.classList.toggle('hidden', !locked);
+  lockedEl?.classList.toggle('flex', locked);
+  contentEl?.classList.toggle('hidden', locked);
+  if (locked) return;
 
   try {
     const engagement = await computeDonorEngagement(currentUser.uid);
@@ -1598,6 +2532,74 @@ async function loadDonorBadges() {
       emblemEl.querySelector('span').className = `material-symbols-outlined text-4xl ${tier.iconColor} relative z-10`;
       emblemEl.querySelector('span').textContent = tier.icon;
     }
+
+    // E3.1 — stat cards. Lives Saved / Total Donations reuse the same engagement fields the
+    // Dashboard shows (totalUnits * 3, same "up to 3 lives per unit" convention used there).
+    // Distance Traveled is a pure client-side haversine sum over completed donations' city —
+    // no new Firestore field, and the same city-level approximation this app already uses
+    // for matched-request distance (exact hospital geocoding doesn't exist in this schema).
+    const statLivesEl = document.getElementById('impactStatLives');
+    if (statLivesEl) statLivesEl.textContent = totalUnits * 3;
+    const statDonationsEl = document.getElementById('impactStatDonations');
+    if (statDonationsEl) statDonationsEl.textContent = donationCount;
+    const statLivesTagEl = document.getElementById('impactStatLivesTag');
+    if (statLivesTagEl) statLivesTagEl.textContent = donationCount > 0 ? 'Amazing work!' : 'Amazing Potential!';
+
+    const statDistanceEl = document.getElementById('impactStatDistance');
+    if (statDistanceEl && engagement) {
+      const donorCoords = getCoordinatesForLocation(currentUser.city, currentUser.lat, currentUser.lng) || CITY_COORDINATES['yaoundé'];
+      const totalKm = engagement.donations
+        .filter(d => d.status === 'completed')
+        .reduce((sum, d) => {
+          const hospCoords = getCoordinatesForLocation(d.preferredLocation);
+          if (!donorCoords || !hospCoords) return sum;
+          const km = calculateDistanceKm(donorCoords.lat, donorCoords.lon, hospCoords.lat, hospCoords.lon);
+          return sum + (km || 0);
+        }, 0);
+      statDistanceEl.innerHTML = `${Math.round(totalKm)} <span class="text-base">km</span>`;
+    }
+
+    // E3.2/E3.3 — shared tier-journey stepper (same renderer as the Dashboard card), with
+    // perk chips shown here (not on the Dashboard, to keep that card compact).
+    const impactTierEl = document.getElementById('impactTierJourney');
+    if (impactTierEl && engagement) {
+      impactTierEl.innerHTML = `
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-extrabold font-headline text-on-surface flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1">stars</span>
+            Your Donation Journey
+          </h2>
+          <span class="text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-full">${engagement.tier} Tier</span>
+        </div>
+        ${renderTierJourneyStepper(engagement, { showPerks: true })}
+      `;
+    }
+
+    // E3.4 — Donation History inline, reusing the same donationHistoryRowHtml() template as
+    // the #myDonationsModal, capped to the 5 most recent (the "View All >" link opens that
+    // same modal for the full list, so nothing is hidden — just not duplicated in full here).
+    const historyEl = document.getElementById('impactDonationHistory');
+    if (historyEl && engagement) {
+      const sorted = [...engagement.donations].sort((a, b) => new Date(b.completedAt || b.preferredDate || b.createdAt || 0) - new Date(a.completedAt || a.preferredDate || a.createdAt || 0));
+      historyEl.innerHTML = sorted.length === 0
+        ? `<div class="text-center py-12 space-y-3">
+            <div class="w-16 h-16 rounded-full bg-surface-container-low text-on-surface-variant/40 mx-auto flex items-center justify-center"><span class="material-symbols-outlined text-3xl">receipt_long</span></div>
+            <p class="text-sm font-bold text-on-surface">No donations yet</p>
+            <p class="text-[11px] text-on-surface-variant/70">Your journey to saving lives starts here.</p>
+            <button data-action="switch-view" data-view="dashboard" class="press-scale inline-flex items-center gap-1.5 bg-primary text-on-primary font-bold text-xs px-4 py-2.5 rounded-xl mt-1 cursor-pointer"><span class="material-symbols-outlined text-sm">event_available</span>Schedule your first donation</button>
+          </div>`
+        : sorted.slice(0, 5).map(donationHistoryRowHtml).join('');
+    }
+
+    // E3.5 — shareable donor card. Static canvas render + wa.me deep link; no new library,
+    // no server round-trip.
+    const shareBloodTypeEl = document.getElementById('shareCardBloodType');
+    if (shareBloodTypeEl) shareBloodTypeEl.textContent = bloodType;
+    const shareDonationsEl = document.getElementById('shareCardDonations');
+    if (shareDonationsEl) shareDonationsEl.textContent = donationCount;
+    const shareLivesEl = document.getElementById('shareCardLives');
+    if (shareLivesEl) shareLivesEl.textContent = totalUnits * 3;
+    initShareCard(currentUser, { bloodType, donationCount, livesSaved: totalUnits * 3, tier: engagement?.tier || 'Bronze' });
 
     // Master Catalog of 3D Achievement Medals
     const masterBadges = [
@@ -1897,7 +2899,97 @@ async function loadDonorProfile() {
     }
   }
 
-  renderBloodTypeSourceBadge(currentUser);
+  renderBloodTypeSourceBadge(currentUser, ['donorSidebarBloodSourceBadge', 'medStatusBloodSource']);
+
+  // E4.1: sidebar avatar/name/blood type (mirrors the header hero, different element ids).
+  const sidebarInitialsEl = document.getElementById('donorSidebarInitials');
+  if (sidebarInitialsEl) sidebarInitialsEl.textContent = nameVal.slice(0, 2).toUpperCase();
+  const sidebarNameEl = document.getElementById('donorSidebarName');
+  if (sidebarNameEl) sidebarNameEl.textContent = nameVal;
+  const sidebarBloodTypeEl = document.getElementById('donorSidebarBloodType');
+  if (sidebarBloodTypeEl) sidebarBloodTypeEl.textContent = currentUser.bloodType || '—';
+  const medBloodTypeEl = document.getElementById('medStatusBloodType');
+  if (medBloodTypeEl) medBloodTypeEl.textContent = currentUser.bloodType || '—';
+  const sidebarMemberSinceEl = document.getElementById('donorSidebarMemberSince');
+  if (sidebarMemberSinceEl) sidebarMemberSinceEl.textContent = currentUser.createdAt ? new Date(currentUser.createdAt).getFullYear() : '—';
+
+  // E4.1/E4.2/E4.4 — tier/points/stat tiles, last donation, eligibility, and the security
+  // checklist all need computeDonorEngagement + a live email-verification check; run once and
+  // fan the results out to every element rather than fetching per-card.
+  (async () => {
+    const [engagement, emailVerified] = await Promise.all([
+      computeDonorEngagement(currentUser.uid).catch(() => null),
+      isEmailVerified().catch(() => false),
+    ]);
+
+    if (engagement) {
+      const sidebarTierEl = document.getElementById('donorSidebarTier');
+      if (sidebarTierEl) sidebarTierEl.textContent = `${engagement.tier} Tier`;
+      const sidebarPointsEl = document.getElementById('donorSidebarPoints');
+      if (sidebarPointsEl) sidebarPointsEl.textContent = `${engagement.points} pts`;
+      const sidebarNextTierEl = document.getElementById('donorSidebarNextTier');
+      if (sidebarNextTierEl) sidebarNextTierEl.textContent = engagement.nextTier ? `Next: ${engagement.nextTier}` : 'Max tier';
+      const sidebarDonationsEl = document.getElementById('donorSidebarDonations');
+      if (sidebarDonationsEl) sidebarDonationsEl.textContent = engagement.donationCount;
+      const sidebarLivesEl = document.getElementById('donorSidebarLives');
+      if (sidebarLivesEl) sidebarLivesEl.textContent = engagement.totalUnits * 3;
+      const sidebarPointsTileEl = document.getElementById('donorSidebarPointsTile');
+      if (sidebarPointsTileEl) sidebarPointsTileEl.textContent = engagement.points;
+
+      const completed = engagement.donations
+        .filter(d => d.status === 'completed')
+        .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
+      const lastDate = completed[0]?.completedAt || completed[0]?.preferredDate || null;
+      const medLastDonationEl = document.getElementById('medStatusLastDonation');
+      const medLastDonationTagEl = document.getElementById('medStatusLastDonationTag');
+      if (medLastDonationEl) medLastDonationEl.textContent = lastDate ? new Date(lastDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Never';
+      if (medLastDonationTagEl) medLastDonationTagEl.textContent = lastDate ? `${completed.length} donation${completed.length === 1 ? '' : 's'} on record` : 'No records found';
+
+      const elig = getEligibilityInfo(lastDate);
+      const medEligEl = document.getElementById('medStatusEligibility');
+      const medEligTagEl = document.getElementById('medStatusEligibilityTag');
+      if (medEligEl) { medEligEl.textContent = elig.label; medEligEl.className = `text-xl font-black mt-1 ${elig.color}`; }
+      if (medEligTagEl) { medEligTagEl.textContent = elig.eligible ? 'You can donate now' : `Eligible again in ${elig.daysUntil} days`; medEligTagEl.className = `text-[10px] font-bold mt-1.5 ${elig.color}`; }
+
+      // E4.4 — 5-signal checklist.
+      const checklistEl = document.getElementById('donorSecurityChecklist');
+      if (checklistEl) {
+        const items = [
+          { id: 'email', label: 'Email Verification', done: emailVerified, clickable: !emailVerified },
+          { id: 'phone', label: 'Phone Verification', done: Boolean(currentUser.phone) },
+          { id: 'bloodtype', label: 'Blood Type Status', done: Boolean(currentUser.bloodType) },
+          { id: '2fa', label: 'Two-Factor Auth', done: false, pending: true },
+          { id: 'firstdonation', label: 'First Donation', done: engagement.donationCount >= 1 },
+        ];
+        checklistEl.innerHTML = items.map(item => `
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="material-symbols-outlined text-lg ${item.done ? 'text-success' : item.pending ? 'text-on-surface-variant/40' : 'text-error'}">${item.done ? 'check_circle' : item.pending ? 'radio_button_unchecked' : 'cancel'}</span>
+              <span class="text-xs font-bold text-on-surface">${item.label}</span>
+            </div>
+            ${item.clickable
+              ? `<button data-checklist-action="${item.id}" class="text-[10px] font-bold text-primary hover:underline cursor-pointer">Verify Now</button>`
+              : `<span class="text-[10px] font-bold ${item.done ? 'text-success' : item.pending ? 'text-on-surface-variant/60' : 'text-on-surface-variant'}">${item.done ? 'Done' : item.pending ? 'Pending' : 'Incomplete'}</span>`}
+          </div>`).join('');
+
+        checklistEl.querySelector('[data-checklist-action="email"]')?.addEventListener('click', async (e) => {
+          const btn = e.currentTarget;
+          btn.textContent = 'Sending...';
+          btn.disabled = true;
+          try {
+            await sendEmailVerificationLink();
+            showToast(`Verification email sent to ${currentUser.email}`);
+          } catch (err) {
+            console.error('Failed to resend verification email:', err);
+            showToast('Failed to send verification email.', 'error');
+          } finally {
+            btn.textContent = 'Verify Now';
+            btn.disabled = false;
+          }
+        });
+      }
+    }
+  })();
 
   const form = document.getElementById('donorProfileForm');
   if (form) {
@@ -1973,6 +3065,34 @@ async function loadDonorProfile() {
     };
   }
 
+  // E4.3 — the two new relabeled toggles, same onchange/updateUserProfile pattern as SMS/WhatsApp above.
+  const notifEmergency = document.getElementById('donorNotifEmergency');
+  const notifEmail = document.getElementById('donorNotifEmail');
+  if (notifEmergency) {
+    notifEmergency.checked = currentUser.notifEmergency !== false;
+    notifEmergency.onchange = async () => {
+      try {
+        await updateUserProfile(currentUser.uid, { notifEmergency: notifEmergency.checked });
+        showToast(notifEmergency.checked ? 'Emergency blood alerts enabled' : 'Emergency blood alerts disabled');
+      } catch (err) {
+        console.error('Failed to update emergency alert preference:', err);
+        showToast('Failed to save preference.', 'error');
+      }
+    };
+  }
+  if (notifEmail) {
+    notifEmail.checked = currentUser.notifEmail === true;
+    notifEmail.onchange = async () => {
+      try {
+        await updateUserProfile(currentUser.uid, { notifEmail: notifEmail.checked });
+        showToast(notifEmail.checked ? 'Email notifications enabled' : 'Email notifications disabled');
+      } catch (err) {
+        console.error('Failed to update email preference:', err);
+        showToast('Failed to save preference.', 'error');
+      }
+    };
+  }
+
   const changePasswordBtn = document.getElementById('btnDonorChangePassword');
   if (changePasswordBtn) {
     changePasswordBtn.onclick = async () => {
@@ -1992,6 +3112,29 @@ async function loadDonorProfile() {
       }
     };
   }
+
+  // E4.7 — current session label, parsed from the real navigator.userAgent (browser/OS) plus
+  // the donor's own on-file city. No fake devices, no fabricated location.
+  const sessionLabelEl = document.getElementById('donorCurrentSessionLabel');
+  if (sessionLabelEl) {
+    const ua = navigator.userAgent || '';
+    const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+    const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Linux/.test(ua) ? 'Linux' : 'Unknown OS';
+    sessionLabelEl.textContent = currentUser.city ? `${os} · ${browser} · ${currentUser.city}` : `${os} · ${browser}`;
+  }
+
+  // E4.8 — Danger Zone. Never deletes anything client-side; just explains why, per Policy 12.
+  const deleteBtn = document.getElementById('btnDonorDeleteAccount');
+  if (deleteBtn) {
+    deleteBtn.onclick = () => {
+      window.vpAlert({
+        type: 'warning',
+        title: 'Account deletion unavailable',
+        message: 'Account deletion requires a Security Lead-approved backend, which does not exist yet. Please contact support if you need your account removed.',
+        confirmText: 'Got it',
+      });
+    };
+  }
 }
 
 // A donor's blood type is self-reported at signup with no lab check behind it. It only becomes
@@ -2000,10 +3143,14 @@ async function loadDonorProfile() {
 // rather than being written back onto the donor's own profile — a hospital session doesn't have
 // permission to edit another user's account, and a type correction is exactly the kind of change
 // that should go through a reviewed step rather than a silent background write.
-async function renderBloodTypeSourceBadge(currentUser) {
+// E4.1/E4.2 add two more blood-type-source badges (sidebar avatar area, Medical Status card)
+// that need the exact same lab-verified/self-reported logic as the form's existing badge —
+// `extraBadgeIds` lets all three share the single donations fetch instead of one read each.
+async function renderBloodTypeSourceBadge(currentUser, extraBadgeIds = []) {
   const badge = document.getElementById('donorBloodTypeSourceBadge');
   const mismatchNote = document.getElementById('donorBloodTypeMismatchNote');
   if (!badge) return;
+  const extraBadges = extraBadgeIds.map(id => document.getElementById(id)).filter(Boolean);
 
   let labConfirmed = null;
   try {
@@ -2019,6 +3166,7 @@ async function renderBloodTypeSourceBadge(currentUser) {
   if (labConfirmed) {
     badge.textContent = 'Lab-Verified';
     badge.className = 'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700';
+    extraBadges.forEach(b => { b.textContent = 'Lab-Verified'; b.className = 'text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700'; });
     if (mismatchNote) {
       if (labConfirmed !== (currentUser.bloodType || '')) {
         mismatchNote.textContent = `Your last donation was lab-confirmed as ${labConfirmed}, which differs from the type on file here. Please contact hospital staff to update your profile.`;
@@ -2030,6 +3178,7 @@ async function renderBloodTypeSourceBadge(currentUser) {
   } else {
     badge.textContent = 'Self-Reported';
     badge.className = 'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
+    extraBadges.forEach(b => { b.textContent = 'Self Reported'; b.className = 'text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-100 text-amber-700'; });
     if (mismatchNote) mismatchNote.classList.add('hidden');
   }
 }
@@ -2205,6 +3354,9 @@ function initAvailabilityScreeningModal() {
 }
 
 window.donorAcceptRequest = async (requestId, donorId, isPublic = false) => {
+  // D3: block accepting while KYC-pending/rejected — checked first since it's the more
+  // fundamental gate (an unverified donor shouldn't even see the eligibility prompt).
+  if (!await warnIfKycPending()) return;
   // Gate: block accepting an emergency request when the donor isn't eligible yet.
   if (!await warnIfIneligible()) return;
   initAcceptScreeningModal();
@@ -2672,6 +3824,53 @@ function initMyDonationsModal() {
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
 }
 
+// Shared by the donation history modal (#myDonationsList) and the E3.4 inline "Donation
+// History" card on the Impact view — one row template, two render targets.
+function donationHistoryRowHtml(d) {
+  const statusBadges = {
+    'pending': 'bg-amber-500/15 text-amber-700 border-amber-500/30',
+    'approved': 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
+    'rejected': 'bg-rose-500/15 text-rose-700 border-rose-500/30',
+    'completed': 'bg-blue-500/15 text-blue-700 border-blue-500/30',
+    'cancelled': 'bg-surface-container text-on-surface-variant border-outline-variant/30',
+  };
+  const sc = statusBadges[d.status] || statusBadges['pending'];
+  const date = d.preferredDate ? new Date(d.preferredDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date not set';
+
+  return `
+  <div class="p-4 bg-surface-container-low/60 rounded-2xl border border-outline-variant/20 hover:border-outline-variant/40 transition-all space-y-2">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-primary to-rose-500 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+          ${esc(d.bloodType || 'O+')}
+        </div>
+        <div>
+          <p class="font-extrabold text-sm text-on-surface">${d.units || 1} Unit${(d.units || 1) > 1 ? 's' : ''} Blood Gift</p>
+          <p class="text-[11px] font-medium text-on-surface-variant flex items-center gap-1 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-primary">location_on</span>
+            ${esc(d.preferredLocation || 'Hospital Center')}
+          </p>
+        </div>
+      </div>
+      <span class="px-2.5 py-1 ${sc} text-[10px] font-black rounded-full uppercase tracking-wider border">${esc(d.status)}</span>
+    </div>
+    <div class="pt-2 border-t border-outline-variant/10 flex items-center justify-between text-[11px] text-on-surface-variant font-medium">
+      <span class="flex items-center gap-1"><span class="material-symbols-outlined text-xs">calendar_today</span> ${date}</span>
+      ${d.labConfirmedBloodType ? `<span class="text-emerald-600 font-bold flex items-center gap-1"><span class="material-symbols-outlined text-xs">verified</span> Lab Verified (${esc(d.labConfirmedBloodType)})</span>` : ''}
+    </div>
+  </div>
+  `;
+}
+
+const donationHistoryEmptyStateHtml = `
+  <div class="text-center py-12 space-y-3">
+    <div class="w-16 h-16 rounded-full bg-surface-container-low text-on-surface-variant/40 mx-auto flex items-center justify-center">
+      <span class="material-symbols-outlined text-3xl">receipt_long</span>
+    </div>
+    <p class="text-xs font-bold text-on-surface-variant">No donation history recorded yet</p>
+  </div>
+`;
+
 export async function loadDonorDonations() {
   const listEl = document.getElementById('myDonationsList');
   if (!listEl) return;
@@ -2684,53 +3883,9 @@ export async function loadDonorDonations() {
 
   try {
     const donations = await fetchDonationRequestsForDonor(currentUser.uid);
-    if (donations.length === 0) {
-      listEl.innerHTML = `
-        <div class="text-center py-12 space-y-3">
-          <div class="w-16 h-16 rounded-full bg-surface-container-low text-on-surface-variant/40 mx-auto flex items-center justify-center">
-            <span class="material-symbols-outlined text-3xl">receipt_long</span>
-          </div>
-          <p class="text-xs font-bold text-on-surface-variant">No donation history recorded yet</p>
-        </div>
-      `;
-      return;
-    }
-
-    listEl.innerHTML = donations.map(d => {
-      const statusBadges = {
-        'pending': 'bg-amber-500/15 text-amber-700 border-amber-500/30',
-        'approved': 'bg-emerald-500/15 text-emerald-700 border-emerald-500/30',
-        'rejected': 'bg-rose-500/15 text-rose-700 border-rose-500/30',
-        'completed': 'bg-blue-500/15 text-blue-700 border-blue-500/30',
-        'cancelled': 'bg-surface-container text-on-surface-variant border-outline-variant/30',
-      };
-      const sc = statusBadges[d.status] || statusBadges['pending'];
-      const date = d.preferredDate ? new Date(d.preferredDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Date not set';
-      
-      return `
-      <div class="p-4 bg-surface-container-low/60 rounded-2xl border border-outline-variant/20 hover:border-outline-variant/40 transition-all space-y-2">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-primary to-rose-500 text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
-              ${d.bloodType || 'O+'}
-            </div>
-            <div>
-              <p class="font-extrabold text-sm text-on-surface">${d.units || 1} Unit${(d.units || 1) > 1 ? 's' : ''} Blood Gift</p>
-              <p class="text-[11px] font-medium text-on-surface-variant flex items-center gap-1 mt-0.5">
-                <span class="material-symbols-outlined text-xs text-primary">location_on</span>
-                ${d.preferredLocation || 'Hospital Center'}
-              </p>
-            </div>
-          </div>
-          <span class="px-2.5 py-1 ${sc} text-[10px] font-black rounded-full uppercase tracking-wider border">${d.status}</span>
-        </div>
-        <div class="pt-2 border-t border-outline-variant/10 flex items-center justify-between text-[11px] text-on-surface-variant font-medium">
-          <span class="flex items-center gap-1"><span class="material-symbols-outlined text-xs">calendar_today</span> ${date}</span>
-          ${d.labConfirmedBloodType ? `<span class="text-emerald-600 font-bold flex items-center gap-1"><span class="material-symbols-outlined text-xs">verified</span> Lab Verified (${d.labConfirmedBloodType})</span>` : ''}
-        </div>
-      </div>
-      `;
-    }).join('');
+    listEl.innerHTML = donations.length === 0
+      ? donationHistoryEmptyStateHtml
+      : donations.map(donationHistoryRowHtml).join('');
   } catch (err) {
     console.error('Failed to load donations:', err);
     listEl.innerHTML = '<p class="text-center text-error py-4">Failed to load.</p>';

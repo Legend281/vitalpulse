@@ -51,6 +51,12 @@ const translations = {
     info: 'Info',
     'mark all read': 'Mark all read',
     'view all': 'View all',
+    home: 'Home',
+    centers: 'Centers',
+    impact: 'Impact',
+    profile: 'Profile',
+    'donation centers': 'Donation Centers',
+    'impact & badges': 'Impact & Badges',
   },
   fr: {
     dashboard: 'Tableau de Bord',
@@ -104,6 +110,12 @@ const translations = {
     info: 'Info',
     'mark all read': 'Tout marquer lu',
     'view all': 'Voir tout',
+    home: 'Accueil',
+    centers: 'Centres',
+    impact: 'Impact',
+    profile: 'Profil',
+    'donation centers': 'Centres de Don',
+    'impact & badges': 'Impact et Badges',
   }
 };
 

@@ -48,7 +48,7 @@ vi.mock('firebase/functions', () => ({
     httpsCallable: functionsMocks.httpsCallable,
 }));
 
-import { getDocs, updateDoc, where } from 'firebase/firestore';
+import { getDocs, getDoc, addDoc, updateDoc, where } from 'firebase/firestore';
 import {
     getCompatibleBloodTypes,
     getCompatibleDonorTypes,
@@ -380,5 +380,112 @@ describe('Inventory Cloud Functions (Phase 3)', () => {
 
         expect(functionsMocks.callables.setInventoryThreshold).toHaveBeenCalledWith({ bloodType: 'O+', threshold: 10 });
         expect(updateDoc).not.toHaveBeenCalled();
+    });
+});
+
+describe('issueBloodToPatient (Phase 3)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        getDocs.mockResolvedValue(fakeSnapshot([]));
+    });
+
+    it('calls the issueBloodToPatient Cloud Function and never writes inventory/issuance_log directly', async () => {
+        const { issueBloodToPatient } = await import('./db.js');
+        functionsMocks.callables.issueBloodToPatient.mockResolvedValueOnce({
+            data: { unitsAvailable: 4, issuanceLogId: 'ISSUE1', deductedBatches: [] },
+        });
+
+        const result = await issueBloodToPatient('O+', 2, {
+            hospital: 'General Hospital',
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: true,
+            crossmatchResult: 'Compatible',
+            ward: 'ICU',
+            diagnosis: 'Trauma',
+        });
+
+        expect(functionsMocks.callables.issueBloodToPatient).toHaveBeenCalledWith({
+            bloodType: 'O+',
+            units: 2,
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: true,
+            crossmatchResult: 'Compatible',
+            ward: 'ICU',
+            diagnosis: 'Trauma',
+        });
+        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 4 });
+        // The Cloud Function is the only writer of inventory/issuance_log now; this
+        // client function's remaining Firestore writes are non-privileged follow-up
+        // (audit_logs/activity_logs), not a direct issuance_log/inventory write.
+        expect(addDoc).not.toHaveBeenCalledWith(expect.objectContaining({ path: 'issuance_log' }), expect.anything());
+        expect(updateDoc).not.toHaveBeenCalled();
+    });
+
+    it('HOSTILE: rejects locally, without calling the Cloud Function, if the crossmatch is not confirmed compatible', async () => {
+        const { issueBloodToPatient } = await import('./db.js');
+        await expect(issueBloodToPatient('O+', 2, {
+            hospital: 'General Hospital',
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: false,
+            crossmatchResult: 'Compatible',
+        })).rejects.toThrow(/CRITICAL MEDICAL SAFETY GATE/);
+        expect(functionsMocks.callables.issueBloodToPatient).not.toHaveBeenCalled();
+    });
+
+    it('HOSTILE: rejects locally if crossmatchResult is anything other than "Compatible"', async () => {
+        const { issueBloodToPatient } = await import('./db.js');
+        await expect(issueBloodToPatient('O+', 2, {
+            hospital: 'General Hospital',
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: true,
+            crossmatchResult: 'Incompatible',
+        })).rejects.toThrow(/CRITICAL MEDICAL SAFETY GATE/);
+        expect(functionsMocks.callables.issueBloodToPatient).not.toHaveBeenCalled();
+    });
+
+    it('omits optional patient fields entirely rather than sending them as empty strings/null', async () => {
+        const { issueBloodToPatient } = await import('./db.js');
+        functionsMocks.callables.issueBloodToPatient.mockResolvedValueOnce({
+            data: { unitsAvailable: 1, issuanceLogId: 'ISSUE2', deductedBatches: [] },
+        });
+
+        await issueBloodToPatient('O+', 1, {
+            hospital: 'General Hospital',
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: true,
+            crossmatchResult: 'Compatible',
+        });
+
+        expect(functionsMocks.callables.issueBloodToPatient).toHaveBeenCalledWith({
+            bloodType: 'O+',
+            units: 1,
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: true,
+            crossmatchResult: 'Compatible',
+        });
+    });
+
+    it('links each deducted batch\'s source donation request to "Issued" and notifies the donor, using the server-returned batches', async () => {
+        const { issueBloodToPatient } = await import('./db.js');
+        functionsMocks.callables.issueBloodToPatient.mockResolvedValueOnce({
+            data: {
+                unitsAvailable: 4,
+                issuanceLogId: 'ISSUE3',
+                deductedBatches: [{ id: 'b1', units: 2, sourceDonationId: 'D1' }],
+            },
+        });
+        getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ donorId: 'donor-1' }) });
+
+        await issueBloodToPatient('O+', 2, {
+            hospital: 'General Hospital',
+            patientName: 'Jane Doe',
+            crossmatchConfirmed: true,
+            crossmatchResult: 'Compatible',
+        });
+
+        expect(updateDoc).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'donation_requests' }),
+            expect.objectContaining({ status: 'Issued' }),
+        );
     });
 });
