@@ -156,6 +156,10 @@ describe('canAccessView', () => {
         forecasting: ['hospital_admin'],
         mythbusting: ['hospital_admin'],
         certificates: ['hospital_admin'],
+        lab: ['lab_tech', 'hospital_admin'],
+        requests: ['nurse', 'hospital_admin'],
+        hemovigilance: ['nurse', 'lab_tech', 'hospital_admin'],
+        donors: ['reception', 'nurse', 'hospital_admin'],
     };
 
     it('allows hospital_admin to access staff roster', () => {
@@ -227,5 +231,37 @@ describe('canAccessView', () => {
             expect(canAccessView({ roles: [role] }, 'mythbusting', map)).toBe(false);
             expect(canAccessView({ roles: [role] }, 'certificates', map)).toBe(false);
         });
+    });
+
+    it('Lab & Testing: allows lab_tech and hospital_admin; blocks nurse and reception', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['lab_tech'] }, 'lab', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'lab', map)).toBe(true);
+        expect(canAccessView({ roles: ['nurse'] }, 'lab', map)).toBe(false);
+        expect(canAccessView({ roles: ['reception'] }, 'lab', map)).toBe(false);
+    });
+
+    it('My Requests: allows nurse and hospital_admin; blocks lab_tech and reception', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['nurse'] }, 'requests', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'requests', map)).toBe(true);
+        expect(canAccessView({ roles: ['lab_tech'] }, 'requests', map)).toBe(false);
+        expect(canAccessView({ roles: ['reception'] }, 'requests', map)).toBe(false);
+    });
+
+    it('Hemovigilance: allows nurse, lab_tech, and hospital_admin; blocks reception', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['nurse'] }, 'hemovigilance', map)).toBe(true);
+        expect(canAccessView({ roles: ['lab_tech'] }, 'hemovigilance', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'hemovigilance', map)).toBe(true);
+        expect(canAccessView({ roles: ['reception'] }, 'hemovigilance', map)).toBe(false);
+    });
+
+    it('Incoming Donors: allows reception, nurse, and hospital_admin; blocks lab_tech', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['reception'] }, 'donors', map)).toBe(true);
+        expect(canAccessView({ roles: ['nurse'] }, 'donors', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'donors', map)).toBe(true);
+        expect(canAccessView({ roles: ['lab_tech'] }, 'donors', map)).toBe(false);
     });
 });

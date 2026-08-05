@@ -889,6 +889,11 @@ const HOSPITAL_VIEW_PERMISSIONS = {
     forecasting: ['hospital_admin'],
     mythbusting: ['hospital_admin'],
     certificates: ['hospital_admin'],
+    // Phase 3 Moderate Pages
+    lab: ['lab_tech', 'hospital_admin'],
+    requests: ['nurse', 'hospital_admin'],
+    hemovigilance: ['nurse', 'lab_tech', 'hospital_admin'],
+    donors: ['reception', 'nurse', 'hospital_admin'],
 };
 
 export function updateHospitalNavVisibility() {
@@ -910,6 +915,19 @@ export function updateHospitalNavVisibility() {
                 mobileBtn.classList.remove('hidden');
             } else {
                 mobileBtn.classList.add('hidden');
+            }
+        }
+    });
+
+    // Urgent Request Buttons (nurse & hospital_admin only)
+    const canRequestEmergency = isLegacyAccount(user) || hasAnyRole(user, ['nurse', 'hospital_admin']);
+    ['btnUrgentRequest', 'mobileDrawerUrgent', 'dashUrgentBtn'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            if (canRequestEmergency) {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
             }
         }
     });
