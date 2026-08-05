@@ -886,6 +886,9 @@ const HOSPITAL_VIEW_PERMISSIONS = {
     staff: ['hospital_admin'],
     settings: ['hospital_admin'],
     campaigns: ['hospital_admin'],
+    forecasting: ['hospital_admin'],
+    mythbusting: ['hospital_admin'],
+    certificates: ['hospital_admin'],
 };
 
 export function updateHospitalNavVisibility() {

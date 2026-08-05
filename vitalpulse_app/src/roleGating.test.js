@@ -153,6 +153,9 @@ describe('canAccessView', () => {
         staff: ['hospital_admin'],
         settings: ['hospital_admin'],
         campaigns: ['hospital_admin'],
+        forecasting: ['hospital_admin'],
+        mythbusting: ['hospital_admin'],
+        certificates: ['hospital_admin'],
     };
 
     it('allows hospital_admin to access staff roster', () => {
@@ -208,5 +211,21 @@ describe('canAccessView', () => {
         expect(canAccessView({ roles: ['nurse'] }, 'campaigns', map)).toBe(false);
         expect(canAccessView({ roles: ['lab_tech'] }, 'campaigns', map)).toBe(false);
         expect(canAccessView({ roles: ['reception'] }, 'campaigns', map)).toBe(false);
+    });
+
+    it('allows hospital_admin to access forecasting, mythbusting, certificates', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'forecasting', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'mythbusting', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'certificates', map)).toBe(true);
+    });
+
+    it('blocks nurse/lab_tech/reception from accessing forecasting, mythbusting, certificates', () => {
+        const { canAccessView } = require('./roleGating');
+        ['nurse', 'lab_tech', 'reception'].forEach(role => {
+            expect(canAccessView({ roles: [role] }, 'forecasting', map)).toBe(false);
+            expect(canAccessView({ roles: [role] }, 'mythbusting', map)).toBe(false);
+            expect(canAccessView({ roles: [role] }, 'certificates', map)).toBe(false);
+        });
     });
 });
