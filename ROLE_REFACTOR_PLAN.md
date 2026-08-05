@@ -68,10 +68,10 @@
 - [x] Staff Roster → hospital_admin only — **VERIFIED ✅** (commit `db1ca42`)
 - [x] Settings → hospital_admin only — **VERIFIED ✅** (commit `669df40`)
 - [x] Campaigns → hospital_admin only — **VERIFIED ✅** (commit `51c7d41`)
-- [ ] Forecasting → hospital_admin only — NOT STARTED
-- [ ] Myth-Busting → hospital_admin only — NOT STARTED
-- [ ] Certificates → hospital_admin only — NOT STARTED
-- **Status: IN PROGRESS (3/6 done)**
+- [x] Forecasting → hospital_admin only — **VERIFIED ✅** (commit `6181980`)
+- [x] Myth-Busting → hospital_admin only — **VERIFIED ✅** (commit `6181980`)
+- [x] Certificates → hospital_admin only — **VERIFIED ✅** (commit `6181980`)
+- **Status: DONE ✅** (373 total tests passing: 239 backend + 134 frontend)
 
 ### Phase 3: Moderate Pages (role-gated + backend confirmation)
 - [ ] Lab & Testing → lab_tech, hospital_admin — NOT STARTED
