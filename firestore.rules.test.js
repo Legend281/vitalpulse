@@ -22,6 +22,7 @@ const claims = {
   donorA:   { role: 'donor' },
   donorB:   { role: 'donor' },
   donorC:   { role: 'donor' },
+  donorD:   { role: 'donor' },
   staffH1:  { role: 'hospital_staff', hospitalId: 'H1' },
   staffH2:  { role: 'hospital_staff', hospitalId: 'H2' },
   labH1:    { role: 'lab_tech', hospitalId: 'H1' },
@@ -59,8 +60,14 @@ beforeEach(async () => {
     // B7 (Auth & Onboarding Stream B) fixtures: donorA has NO donors/ doc, representing
     // every pre-existing donor today (grandfathered — see firestore.rules' isKycEligible
     // comment). donorB has an unverified (pending) KYC record; donorC is fully verified.
-    await setDoc(doc(db, 'donors/donorB'), { kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycSubmittedAt: null, kycRejectionReason: null });
-    await setDoc(doc(db, 'donors/donorC'), { kycStatus: 'verified', kycDocType: 'national_id', kycDocRef: 'kyc/donorC/national_id_1.jpg', kycSubmittedAt: 'now', kycRejectionReason: null });
+    await setDoc(doc(db, 'donors/donorB'), { kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycDocBackRef: null, livenessSelfieRef: null, kycSubmittedAt: null, kycRejectionReason: null });
+    await setDoc(doc(db, 'donors/donorC'), { kycStatus: 'verified', kycDocType: 'national_id', kycDocRef: 'kyc/donorC/national_id_1.jpg', kycDocBackRef: 'kyc/donorC/national_id_back_1.jpg', livenessSelfieRef: 'kyc/donorC/liveness_1.jpg', kycSubmittedAt: 'now', kycRejectionReason: null });
+    // donorD: pending but with a rejection reason already on the doc (e.g. rejected once,
+    // then re-opened to pending for resubmission without the reason being cleared) — the
+    // only fixture shape that can actually exercise the rejectionReason field-lock, since
+    // diff().affectedKeys() can't see a same-value write (null -> null on donorB is a true
+    // no-op, invisible to rules; see firestore.rules' unchangedExcept() comment).
+    await setDoc(doc(db, 'donors/donorD'), { kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycDocBackRef: null, livenessSelfieRef: null, kycSubmittedAt: null, kycRejectionReason: 'Document was blurry.' });
 
     await setDoc(doc(db, 'inventory/H1_O-'), { bloodType: 'O-', hospital: 'Hospital One', hospitalId: 'H1', unitsAvailable: 10 });
     await setDoc(doc(db, 'inventory/H2_A+'), { bloodType: 'A+', hospital: 'Hospital Two', hospitalId: 'H2', unitsAvailable: 3 });
@@ -235,7 +242,11 @@ describe('public_requests — B7 KYC gate mirrors requests/', () => {
     })));
 });
 
-describe('donors/{uid} — KYC records (Auth & Onboarding Stream B, NEW KYC-only collection)', () => {
+// SPARK PLAN MIGRATION (vitalpulse_app/docs/SPARK_PLAN_MIGRATION.md §6, Security Lead decision
+// 2026-08-05): donors/{uid} moved from Cloud-Function-only to direct client writes, gated by
+// the rules block itself. These tests are the entire safety argument for risk R1 (self-approval)
+// and R4 (approving with no evidence) — they must stay exhaustive, not just "happy path."
+describe('donors/{uid} — KYC records (direct client writes, Spark Plan Migration)', () => {
   it('a donor reads their own KYC record', async () =>
     assertSucceeds(getDoc(doc(ctx('donorB'), 'donors/donorB'))));
 
@@ -254,14 +265,75 @@ describe('donors/{uid} — KYC records (Auth & Onboarding Stream B, NEW KYC-only
   it('HOSTILE: a donor cannot list donors\' KYC records', async () =>
     assertFails(getDocs(collection(ctx('donorB'), 'donors'))));
 
-  it('HOSTILE: no client, not even the owning donor, can write kycStatus directly', async () =>
+  // ---- create: donor bootstraps their own record (replaces onDonorSignUp) ----
+  it('a donor creates their own donors/{uid} doc with the fixed pending shape', async () =>
+    assertSucceeds(setDoc(doc(ctx('donorA'), 'donors/donorA'), {
+      kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycDocBackRef: null,
+      livenessSelfieRef: null, kycSubmittedAt: null, kycRejectionReason: null,
+    })));
+
+  it('HOSTILE: a donor cannot create their own doc pre-verified', async () =>
+    assertFails(setDoc(doc(ctx('donorA'), 'donors/donorA'), {
+      kycStatus: 'verified', kycDocType: null, kycDocRef: null, kycDocBackRef: null,
+      livenessSelfieRef: null, kycSubmittedAt: null, kycRejectionReason: null,
+    })));
+
+  it('HOSTILE: a donor cannot create their own doc with evidence already attached', async () =>
+    assertFails(setDoc(doc(ctx('donorA'), 'donors/donorA'), {
+      kycStatus: 'pending', kycDocType: 'national_id', kycDocRef: 'kyc/donorA/x.jpg', kycDocBackRef: null,
+      livenessSelfieRef: null, kycSubmittedAt: null, kycRejectionReason: null,
+    })));
+
+  it('HOSTILE: a donor cannot create a KYC record for someone else', async () =>
+    assertFails(setDoc(doc(ctx('donorA'), 'donors/donorB2'), {
+      kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycDocBackRef: null,
+      livenessSelfieRef: null, kycSubmittedAt: null, kycRejectionReason: null,
+    })));
+
+  // ---- update (donor): uploading evidence while pending (replaces submitKYC) ----
+  it('a donor uploads their identity document while pending', async () =>
+    assertSucceeds(updateDoc(doc(ctx('donorB'), 'donors/donorB'), {
+      kycDocType: 'national_id', kycDocRef: 'kyc/donorB/national_id_1.jpg', kycSubmittedAt: 'now',
+    })));
+
+  it('HOSTILE: the CORE self-approval guard — a donor cannot set their own kycStatus to verified', async () =>
     assertFails(updateDoc(doc(ctx('donorB'), 'donors/donorB'), { kycStatus: 'verified' })));
 
-  it('HOSTILE: system_admin cannot write kycStatus directly either — Cloud Functions only', async () =>
+  it('HOSTILE: a donor cannot set kycStatus even alongside a legitimate-looking evidence upload', async () =>
+    assertFails(updateDoc(doc(ctx('donorB'), 'donors/donorB'), {
+      kycDocRef: 'kyc/donorB/national_id_1.jpg', kycStatus: 'verified',
+    })));
+
+  it('HOSTILE: a donor cannot write their own kycRejectionReason to clear it', async () =>
+    assertFails(updateDoc(doc(ctx('donorD'), 'donors/donorD'), { kycRejectionReason: null })));
+
+  it('HOSTILE: a donor cannot upload evidence once already verified (donorC)', async () =>
+    assertFails(updateDoc(doc(ctx('donorC'), 'donors/donorC'), { kycDocRef: 'kyc/donorC/new.jpg' })));
+
+  it('HOSTILE: a donor cannot upload evidence to another donor\'s record', async () =>
+    assertFails(updateDoc(doc(ctx('donorA'), 'donors/donorB'), { kycDocRef: 'kyc/donorB/x.jpg' })));
+
+  // ---- update (admin): approve/reject (replaces verifyDonor/rejectDonorKyc) ----
+  it('R4 evidence gate: system_admin CANNOT approve a donor missing the liveness selfie (donorB has none yet)', async () =>
     assertFails(updateDoc(doc(ctx('sysAdmin'), 'donors/donorB'), { kycStatus: 'verified' })));
 
-  it('HOSTILE: a donor cannot self-create their own donors/{uid} doc, bypassing onDonorSignUp', async () =>
-    assertFails(setDoc(doc(ctx('donorA'), 'donors/donorA'), { kycStatus: 'verified' })));
+  it('system_admin approves a donor who genuinely has both pieces of evidence (donorC re-verify)', async () =>
+    assertSucceeds(updateDoc(doc(ctx('sysAdmin'), 'donors/donorC'), {
+      kycStatus: 'verified', kycRejectionReason: null,
+    })));
+
+  it('system_admin rejects a donor with a reason (no evidence gate on rejection)', async () =>
+    assertSucceeds(updateDoc(doc(ctx('sysAdmin'), 'donors/donorB'), {
+      kycStatus: 'rejected', kycRejectionReason: 'Document was blurry.',
+    })));
+
+  it('HOSTILE: hospital_admin cannot approve/reject a donor — system_admin only', async () =>
+    assertFails(updateDoc(doc(ctx('hAdminH1'), 'donors/donorB'), { kycStatus: 'rejected' })));
+
+  it('HOSTILE: system_admin cannot smuggle other field changes into an approval write', async () =>
+    assertFails(updateDoc(doc(ctx('sysAdmin'), 'donors/donorC'), {
+      kycStatus: 'verified', kycDocRef: 'kyc/donorC/swapped.jpg',
+    })));
 });
 
 describe('adminQueue/{id} — KYC review worklist (Cloud Function only)', () => {

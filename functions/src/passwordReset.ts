@@ -25,7 +25,7 @@ async function sendResetEmail(apiKey: string, toEmail: string, resetUrl: string)
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Vital Pulse Team <onboarding@resend.dev>',
+      from: 'Vital Pulse Team <contact@vitalpulse237.com>',
       to: [toEmail],
       subject: 'Reset your VitalPulse password',
       html: `

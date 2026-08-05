@@ -118,7 +118,7 @@ describe('requestPasswordResetHandler', () => {
       }),
     );
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-    expect(body.from).toBe('Vital Pulse Team <onboarding@resend.dev>');
+    expect(body.from).toBe('Vital Pulse Team <contact@vitalpulse237.com>');
     expect(body.to).toEqual(['d1@example.com']);
     expect(body.html).toContain('https://vitalpulse-fa458.web.app/reset-password.html?uid=d1&token=');
 
