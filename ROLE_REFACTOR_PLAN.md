@@ -74,12 +74,12 @@
 - **Status: DONE ✅** (373 total tests passing: 239 backend + 134 frontend)
 
 ### Phase 3: Moderate Pages (role-gated + backend confirmation)
-- [ ] Lab & Testing → lab_tech, hospital_admin — NOT STARTED
-- [ ] My Requests + Chronic Patient Registry → nurse, hospital_admin — NOT STARTED
-- [ ] Hemovigilance → nurse, lab_tech, hospital_admin — NOT STARTED
-- [ ] Incoming Donors → reception, nurse, hospital_admin — NOT STARTED
-- [ ] Dashboard "Place Emergency Request" quick action → nurse, hospital_admin — NOT STARTED
-- **Status: NOT STARTED**
+- [x] Lab & Testing → lab_tech, hospital_admin — **VERIFIED ✅** (commit `f8786ac`)
+- [x] My Requests + Chronic Patient Registry → nurse, hospital_admin — **VERIFIED ✅** (commit `f8786ac`)
+- [x] Hemovigilance → nurse, lab_tech, hospital_admin — **VERIFIED ✅** (commit `f8786ac`)
+- [x] Incoming Donors → reception, nurse, hospital_admin — **VERIFIED ✅** (commit `f8786ac`)
+- [x] Dashboard "Place Emergency Request" quick action → nurse, hospital_admin — **VERIFIED ✅** (commit `f8786ac`)
+- **Status: DONE ✅** (377 total tests passing: 239 backend + 138 frontend)
 
 ### Phase 4: Inventory (most complex — last)
 - [ ] Page-level visibility (nurse view-only, lab_tech + hospital_admin full) — NOT STARTED
