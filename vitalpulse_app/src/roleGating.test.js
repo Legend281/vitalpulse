@@ -160,6 +160,7 @@ describe('canAccessView', () => {
         requests: ['nurse', 'hospital_admin'],
         hemovigilance: ['nurse', 'lab_tech', 'hospital_admin'],
         donors: ['reception', 'nurse', 'hospital_admin'],
+        inventory: ['nurse', 'lab_tech', 'hospital_admin'],
     };
 
     it('allows hospital_admin to access staff roster', () => {
@@ -263,5 +264,27 @@ describe('canAccessView', () => {
         expect(canAccessView({ roles: ['nurse'] }, 'donors', map)).toBe(true);
         expect(canAccessView({ roles: ['hospital_admin'] }, 'donors', map)).toBe(true);
         expect(canAccessView({ roles: ['lab_tech'] }, 'donors', map)).toBe(false);
+    });
+
+    it('Inventory: allows nurse, lab_tech, and hospital_admin; blocks reception', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['nurse'] }, 'inventory', map)).toBe(true);
+        expect(canAccessView({ roles: ['lab_tech'] }, 'inventory', map)).toBe(true);
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'inventory', map)).toBe(true);
+        expect(canAccessView({ roles: ['reception'] }, 'inventory', map)).toBe(false);
+    });
+
+    it('Inventory Button Gating: Add/Issue allowed for lab_tech & admin; blocked for nurse & reception', () => {
+        expect(hasAnyRole({ roles: ['lab_tech'] }, ['lab_tech', 'hospital_admin'])).toBe(true);
+        expect(hasAnyRole({ roles: ['hospital_admin'] }, ['lab_tech', 'hospital_admin'])).toBe(true);
+        expect(hasAnyRole({ roles: ['nurse'] }, ['lab_tech', 'hospital_admin'])).toBe(false);
+        expect(hasAnyRole({ roles: ['reception'] }, ['lab_tech', 'hospital_admin'])).toBe(false);
+    });
+
+    it('Inventory Button Gating: Remove/Thresh/Transfer allowed for hospital_admin ONLY', () => {
+        expect(hasAnyRole({ roles: ['hospital_admin'] }, ['hospital_admin'])).toBe(true);
+        expect(hasAnyRole({ roles: ['lab_tech'] }, ['hospital_admin'])).toBe(false);
+        expect(hasAnyRole({ roles: ['nurse'] }, ['hospital_admin'])).toBe(false);
+        expect(hasAnyRole({ roles: ['reception'] }, ['hospital_admin'])).toBe(false);
     });
 });

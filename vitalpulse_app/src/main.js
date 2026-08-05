@@ -1497,6 +1497,11 @@ async function loadHospitalInventoryData() {
                   ).join('')
                 : '';
 
+            const addBtn = canAdd ? `<button onclick="window.openHospitalAddStock('${type}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Add</button>` : '';
+            const issueBtn = canIssue ? `<button onclick="window.openHospitalIssueBlood('${type}', ${inv.unitsAvailable || 0})" class="text-[9px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 py-1.5 rounded-lg transition-colors">Issue</button>` : '';
+            const removeBtn = canRemove ? `<button onclick="window.openHospitalRemoveStock('${type}')" class="text-[9px] font-bold text-red-700 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Remove</button>` : '';
+            const threshBtn = canThresh ? `<button onclick="window.openHospitalSetThreshold('${type}')" class="text-[9px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 py-1.5 rounded-lg transition-colors">Thresh</button>` : '';
+
             return `
             <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${borderColor} hover:shadow-md transition-all group">
                 <div class="flex items-center justify-between mb-4">
@@ -1521,12 +1526,13 @@ async function loadHospitalInventoryData() {
                 </div>
                 ${expSoonCount > 0 ? `<div class="mt-2 text-[9px] font-bold text-amber-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">schedule</span>${expSoonCount} unit(s) expiring in < 5 days</div>` : ''}
                 ${expCount > 0 ? `<div class="mt-2 text-[9px] font-bold text-red-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">dangerous</span>${expCount} unit(s) EXPIRED — action required</div>` : ''}
+                ${(canAdd || canIssue || canRemove || canThresh) ? `
                 <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-4 gap-1">
-                    <button onclick="window.openHospitalAddStock('${type}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Add</button>
-                    <button onclick="window.openHospitalIssueBlood('${type}', ${inv.unitsAvailable || 0})" class="text-[9px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 py-1.5 rounded-lg transition-colors">Issue</button>
-                    <button onclick="window.openHospitalRemoveStock('${type}')" class="text-[9px] font-bold text-red-700 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Remove</button>
-                    <button onclick="window.openHospitalSetThreshold('${type}')" class="text-[9px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 py-1.5 rounded-lg transition-colors">Thresh</button>
-                </div>
+                    ${addBtn}
+                    ${issueBtn}
+                    ${removeBtn}
+                    ${threshBtn}
+                </div>` : ''}
             </div>
             `;
         }).join('');
@@ -1536,7 +1542,6 @@ async function loadHospitalInventoryData() {
         document.getElementById('invHealthy').textContent = healthyCount;
         document.getElementById('invExpiring').textContent = totalExpiring;
 
-        // Low stock alerts
         const alertsEl = document.getElementById('lowStockAlerts');
         if (alertsEl) {
             const lowItems = allTypes.filter(type => {
@@ -1551,12 +1556,13 @@ async function loadHospitalInventoryData() {
                     <div class="space-y-2">
                         ${lowItems.map(type => {
                             const inv = inventory[type] || {};
+                            const addStockBtn = canAdd ? `<button onclick="window.openHospitalAddStock('${type}')" class="text-xs font-bold text-red-600 hover:underline">Add Stock</button>` : '';
                             return `<div class="flex items-center justify-between p-3 bg-white rounded-xl">
                                 <div class="flex items-center gap-3">
                                     <span class="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm">${type}</span>
                                     <div><p class="text-sm font-bold text-on-surface">${inv.unitsAvailable || 0} units available</p><p class="text-[10px] text-slate-500">Min threshold: ${inv.minimumThreshold || 5}</p></div>
                                 </div>
-                                <button onclick="window.openHospitalAddStock('${type}')" class="text-xs font-bold text-red-600 hover:underline">Add Stock</button>
+                                ${addStockBtn}
                             </div>`;
                         }).join('')}
                     </div>
@@ -1564,7 +1570,6 @@ async function loadHospitalInventoryData() {
             }
         }
 
-        // Load inventory movement history (Feature 7)
         loadInventoryMovements();
     } catch (e) {
         console.error('Failed to load inventory:', e);
@@ -1667,7 +1672,14 @@ function initTransferModal() {
     if (openBtn) openBtn.addEventListener('click', () => open());
     if (backdrop) backdrop.addEventListener('click', close);
     if (closeBtn) closeBtn.addEventListener('click', close);
-    window.openTransferModal = open;
+    window.openTransferModal = (targetHospital = '') => {
+        const currentUser = getCurrentUser();
+        if (!isLegacyAccount(currentUser) && !hasAnyRole(currentUser, ['hospital_admin'])) {
+            showToast('Access Restricted: Inter-hospital blood transfers require Hospital Admin permission.');
+            return;
+        }
+        open(targetHospital);
+    };
 
     if (form) {
         form.onsubmit = async (e) => {
@@ -2911,6 +2923,11 @@ function initHospitalAddStockModal() {
 }
 
 window.openHospitalAddStock = (type) => {
+    const currentUser = getCurrentUser();
+    if (!isLegacyAccount(currentUser) && !hasAnyRole(currentUser, ['lab_tech', 'hospital_admin'])) {
+        showToast('Access Restricted: Adding inventory stock requires Lab Tech or Hospital Admin permission.');
+        return;
+    }
     closeInventoryActionModals();
     const modal = document.getElementById('addStockModal');
     if (modal) {
@@ -6530,6 +6547,11 @@ function initIssueBloodModal() {
 }
 
 window.openHospitalIssueBlood = (type, currentStock) => {
+    const currentUser = getCurrentUser();
+    if (!isLegacyAccount(currentUser) && !hasAnyRole(currentUser, ['lab_tech', 'hospital_admin'])) {
+        showToast('Access Restricted: Issuing blood requires Lab Tech or Hospital Admin permission.');
+        return;
+    }
     closeInventoryActionModals();
     const modal = document.getElementById('issueModal');
     if (!modal) return;
@@ -6654,6 +6676,11 @@ function initThresholdModal() {
 }
 
 window.openHospitalSetThreshold = (type) => {
+    const currentUser = getCurrentUser();
+    if (!isLegacyAccount(currentUser) && !hasAnyRole(currentUser, ['hospital_admin'])) {
+        showToast('Access Restricted: Modifying stock threshold requires Hospital Admin permission.');
+        return;
+    }
     closeInventoryActionModals();
     const modal = document.getElementById('thresholdModal');
     if (!modal) return;
@@ -6777,6 +6804,11 @@ function initRemoveStockModal() {
 }
 
 window.openHospitalRemoveStock = (type) => {
+    const currentUser = getCurrentUser();
+    if (!isLegacyAccount(currentUser) && !hasAnyRole(currentUser, ['hospital_admin'])) {
+        showToast('Access Restricted: Removing inventory stock requires Hospital Admin permission.');
+        return;
+    }
     closeInventoryActionModals();
     const modal = document.getElementById('removeStockModal');
     if (!modal) return;

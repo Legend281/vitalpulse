@@ -106,10 +106,10 @@ describe('addInventoryStockHandler', () => {
     ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
-  it('HOSTILE: lab_tech cannot add stock (separation of duties, Master Plan 1.2)', async () => {
+  it('HOSTILE: nurse cannot add stock (view-only on inventory)', async () => {
     await expect(
       addInventoryStockHandler(
-        req({ uid: 'l1', token: { role: 'lab_tech', hospitalId: 'H1' } }, { bloodType: 'O+', units: 1 }),
+        req({ uid: 'n1', token: { role: 'nurse', hospitalId: 'H1' } }, { bloodType: 'O+', units: 1 }),
       ),
     ).rejects.toMatchObject({ code: 'permission-denied' });
   });

@@ -75,7 +75,9 @@ function computeAggregates(batches: BatchLike[]): {
   return { unitsAvailable, unitsPendingTest, unitsRejected, unitsExpired, componentTotals };
 }
 
-const STOCK_MANAGER_ROLES = new Set(['nurse', 'hospital_staff', 'hospital_admin', 'system_admin']);
+const STOCK_ADDER_ROLES = new Set(['lab_tech', 'hospital_staff', 'hospital_admin', 'system_admin']);
+const STOCK_REMOVER_ROLES = new Set(['hospital_staff', 'hospital_admin', 'system_admin']);
+const THRESHOLD_MANAGER_ROLES = new Set(['hospital_staff', 'hospital_admin', 'system_admin']);
 const LAB_RESOLVER_ROLES = new Set(['lab_tech', 'hospital_admin', 'system_admin']);
 const ISSUANCE_ROLES = new Set(['lab_tech', 'hospital_admin', 'system_admin']);
 
@@ -144,7 +146,7 @@ async function resolveTargetHospital(
 }
 
 async function addInventoryStockHandler(request: CallableRequest) {
-  const caller = requireCaller(request, STOCK_MANAGER_ROLES);
+  const caller = requireCaller(request, STOCK_ADDER_ROLES);
   const parsed = addInventoryStockSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', 'Invalid addInventoryStock payload.', parsed.error.flatten());
@@ -210,7 +212,7 @@ async function addInventoryStockHandler(request: CallableRequest) {
 }
 
 async function deductInventoryStockHandler(request: CallableRequest) {
-  const caller = requireCaller(request, STOCK_MANAGER_ROLES);
+  const caller = requireCaller(request, STOCK_REMOVER_ROLES);
   const parsed = deductInventoryStockSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', 'Invalid deductInventoryStock payload.', parsed.error.flatten());
@@ -343,7 +345,7 @@ async function resolveLabTestHandler(request: CallableRequest) {
 }
 
 async function setInventoryThresholdHandler(request: CallableRequest) {
-  const caller = requireCaller(request, STOCK_MANAGER_ROLES);
+  const caller = requireCaller(request, THRESHOLD_MANAGER_ROLES);
   const parsed = setInventoryThresholdSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', 'Invalid setInventoryThreshold payload.', parsed.error.flatten());
