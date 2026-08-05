@@ -2217,6 +2217,27 @@ export async function checkInDonor(requestId) {
     return reqData;
 }
 
+async function hashPinFallback(pin) {
+    if (!pin) return null;
+    try {
+        if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+            const encoder = new TextEncoder();
+            const buffer = await window.crypto.subtle.digest('SHA-256', encoder.encode('VitalPulse_PIN_' + pin));
+            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    } catch (e) { /* fall through */ }
+
+    // Fallback for non-secure HTTP local IP context (e.g. http://192.168.1.116:5173)
+    const str = 'VitalPulse_PIN_' + pin;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash |= 0;
+    }
+    return 'pin_hash_' + Math.abs(hash).toString(16);
+}
+
 export async function createStaffAccountCall(data) {
     try {
         const fn = httpsCallable(getFunctions(), 'createStaffAccount');
@@ -2229,12 +2250,7 @@ export async function createStaffAccountCall(data) {
             throw new Error('Missing required staff fields (name, email, roles, hospitalId).');
         }
         const staffUid = 'staff_' + Math.random().toString(36).slice(2, 10);
-        let pinHash = null;
-        if (pin) {
-            const encoder = new TextEncoder();
-            const buffer = await crypto.subtle.digest('SHA-256', encoder.encode('VitalPulse_PIN_' + pin));
-            pinHash = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+        const pinHash = await hashPinFallback(pin);
         const staffData = {
             uid: staffUid,
             name,
@@ -2271,9 +2287,7 @@ export async function verifyStaffPinCall(data) {
             throw new Error('Staff account is inactive.');
         }
         if (staffData.pinHash) {
-            const encoder = new TextEncoder();
-            const buffer = await crypto.subtle.digest('SHA-256', encoder.encode('VitalPulse_PIN_' + pin));
-            const computedHash = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const computedHash = await hashPinFallback(pin);
             if (computedHash !== staffData.pinHash) {
                 throw new Error('Incorrect 4-digit PIN.');
             }
