@@ -2218,13 +2218,13 @@ export async function checkInDonor(requestId) {
 }
 
 export async function createStaffAccountCall(data) {
-    const fn = httpsCallable(functions, 'createStaffAccount');
+    const fn = httpsCallable(getFunctions(), 'createStaffAccount');
     const res = await fn(data);
     return res.data;
 }
 
 export async function verifyStaffPinCall(data) {
-    const fn = httpsCallable(functions, 'verifyStaffPin');
+    const fn = httpsCallable(getFunctions(), 'verifyStaffPin');
     const res = await fn(data);
     return res.data;
 }
