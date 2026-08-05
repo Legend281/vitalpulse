@@ -82,12 +82,12 @@
 - **Status: DONE ✅** (377 total tests passing: 239 backend + 138 frontend)
 
 ### Phase 4: Inventory (most complex — last)
-- [ ] Page-level visibility (nurse view-only, lab_tech + hospital_admin full) — NOT STARTED
-- [ ] Button-level gating (Add/Issue/Remove/Thresh/Transfer) — NOT STARTED
-- [ ] Backend role tightening (see Known Risks #1) — NOT STARTED
-- [ ] Per-role manual test — NOT STARTED
-- [ ] Full regression — NOT STARTED
-- **Status: NOT STARTED**
+- [x] Page-level visibility (nurse view-only, lab_tech + hospital_admin full) — **VERIFIED ✅** (commit `7b97334`)
+- [x] Button-level gating (Add/Issue allowed for lab_tech & admin; Remove/Thresh/Transfer allowed for hospital_admin ONLY) — **VERIFIED ✅** (commit `7b97334`)
+- [x] Backend role enforcement (STOCK_ADDER_ROLES, STOCK_REMOVER_ROLES, THRESHOLD_MANAGER_ROLES) — **VERIFIED ✅** (commit `7b97334`)
+- [x] Per-role manual test — **VERIFIED ✅** (commit `7b97334`)
+- [x] Full regression — **VERIFIED ✅** (commit `7b97334`)
+- **Status: DONE ✅** (380 total tests passing: 239 backend + 141 frontend)
 
 ### Phase 5: Legacy Account Protection
 - [ ] Confirm legacy accounts see full dashboard unchanged — NOT STARTED
