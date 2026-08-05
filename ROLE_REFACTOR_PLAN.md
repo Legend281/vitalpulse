@@ -67,11 +67,11 @@
 ### Phase 2: Simplest Pages (single-role-gated, low risk)
 - [x] Staff Roster → hospital_admin only — **VERIFIED ✅** (commit `db1ca42`)
 - [x] Settings → hospital_admin only — **VERIFIED ✅** (commit `669df40`)
-- [ ] Campaigns → hospital_admin only — NOT STARTED
+- [x] Campaigns → hospital_admin only — **VERIFIED ✅** (commit `51c7d41`)
 - [ ] Forecasting → hospital_admin only — NOT STARTED
 - [ ] Myth-Busting → hospital_admin only — NOT STARTED
 - [ ] Certificates → hospital_admin only — NOT STARTED
-- **Status: IN PROGRESS (2/6 done)**
+- **Status: IN PROGRESS (3/6 done)**
 
 ### Phase 3: Moderate Pages (role-gated + backend confirmation)
 - [ ] Lab & Testing → lab_tech, hospital_admin — NOT STARTED
