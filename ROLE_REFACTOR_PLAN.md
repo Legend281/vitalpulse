@@ -65,13 +65,13 @@
 - **Status: DONE ✅** (361 total tests passing: 239 backend + 122 frontend)
 
 ### Phase 2: Simplest Pages (single-role-gated, low risk)
-- [ ] Staff Roster → hospital_admin only — NOT STARTED
+- [x] Staff Roster → hospital_admin only — **VERIFIED ✅** (commit `db1ca42`)
 - [ ] Settings → hospital_admin only — NOT STARTED
 - [ ] Campaigns → hospital_admin only — NOT STARTED
 - [ ] Forecasting → hospital_admin only — NOT STARTED
 - [ ] Myth-Busting → hospital_admin only — NOT STARTED
 - [ ] Certificates → hospital_admin only — NOT STARTED
-- **Status: NOT STARTED**
+- **Status: IN PROGRESS (1/6 done)**
 
 ### Phase 3: Moderate Pages (role-gated + backend confirmation)
 - [ ] Lab & Testing → lab_tech, hospital_admin — NOT STARTED
