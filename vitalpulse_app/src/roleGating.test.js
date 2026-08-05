@@ -151,6 +151,7 @@ describe('setActiveStaffSession / clearActiveStaffSession', () => {
 describe('canAccessView', () => {
     const map = {
         staff: ['hospital_admin'],
+        settings: ['hospital_admin'],
     };
 
     it('allows hospital_admin to access staff roster', () => {
@@ -182,5 +183,17 @@ describe('canAccessView', () => {
         const { canAccessView, setActiveStaffSession } = require('./roleGating');
         setActiveStaffSession({ uid: 'admin1', name: 'Admin', roles: ['hospital_admin'] });
         expect(canAccessView({ roles: ['nurse'] }, 'staff', map)).toBe(true);
+    });
+
+    it('allows hospital_admin to access settings', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'settings', map)).toBe(true);
+    });
+
+    it('blocks nurse/lab_tech/reception from accessing settings', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['nurse'] }, 'settings', map)).toBe(false);
+        expect(canAccessView({ roles: ['lab_tech'] }, 'settings', map)).toBe(false);
+        expect(canAccessView({ roles: ['reception'] }, 'settings', map)).toBe(false);
     });
 });

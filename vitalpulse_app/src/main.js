@@ -884,6 +884,7 @@ let hospitalNavigationInitialized = false;
 
 const HOSPITAL_VIEW_PERMISSIONS = {
     staff: ['hospital_admin'],
+    settings: ['hospital_admin'],
 };
 
 export function updateHospitalNavVisibility() {
