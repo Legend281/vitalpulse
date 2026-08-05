@@ -2238,61 +2238,81 @@ async function hashPinFallback(pin) {
     return 'pin_hash_' + Math.abs(hash).toString(16);
 }
 
+function isLocalDev() {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname;
+    return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.') || h.endsWith('.local');
+}
+
+async function createStaffAccountFirestoreFallback(data) {
+    const { name, email, roles, hospitalId, pin } = data;
+    if (!hospitalId || !name || !email || !roles) {
+        throw new Error('Missing required staff fields (name, email, roles, hospitalId).');
+    }
+    const staffUid = 'staff_' + Math.random().toString(36).slice(2, 10);
+    const pinHash = await hashPinFallback(pin);
+    const staffData = {
+        uid: staffUid,
+        name,
+        email,
+        roles: Array.isArray(roles) ? roles : [roles],
+        role: Array.isArray(roles) ? roles[0] : roles,
+        hospitalId,
+        active: true,
+        pinHash,
+        createdAt: new Date().toISOString()
+    };
+    await setDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid), staffData);
+    return { success: true, staffUid, email, roles: staffData.roles, hospitalId };
+}
+
+async function verifyStaffPinFirestoreFallback(data) {
+    const { staffUid, pin, hospitalId } = data;
+    if (!staffUid || !hospitalId) {
+        throw new Error('staffUid and hospitalId required.');
+    }
+    const snap = await getDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid));
+    if (!snap.exists()) {
+        throw new Error('Staff account not found.');
+    }
+    const staffData = snap.data();
+    if (staffData.active === false) {
+        throw new Error('Staff account is inactive.');
+    }
+    if (staffData.pinHash) {
+        const computedHash = await hashPinFallback(pin);
+        if (computedHash !== staffData.pinHash) {
+            throw new Error('Incorrect 4-digit PIN.');
+        }
+    }
+    return { success: true, staffUid: staffData.uid, name: staffData.name, roles: staffData.roles || [staffData.role] };
+}
+
 export async function createStaffAccountCall(data) {
+    if (isLocalDev()) {
+        return createStaffAccountFirestoreFallback(data);
+    }
     try {
         const fn = httpsCallable(getFunctions(), 'createStaffAccount');
         const res = await fn(data);
         return res.data;
     } catch (err) {
         console.warn('Cloud Function createStaffAccount failed, executing Firestore fallback:', err);
-        const { name, email, roles, hospitalId, pin } = data;
-        if (!hospitalId || !name || !email || !roles) {
-            throw new Error('Missing required staff fields (name, email, roles, hospitalId).');
-        }
-        const staffUid = 'staff_' + Math.random().toString(36).slice(2, 10);
-        const pinHash = await hashPinFallback(pin);
-        const staffData = {
-            uid: staffUid,
-            name,
-            email,
-            roles: Array.isArray(roles) ? roles : [roles],
-            role: Array.isArray(roles) ? roles[0] : roles,
-            hospitalId,
-            active: true,
-            pinHash,
-            createdAt: new Date().toISOString()
-        };
-        await setDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid), staffData);
-        return { success: true, staffUid, email, roles: staffData.roles, hospitalId };
+        return createStaffAccountFirestoreFallback(data);
     }
 }
 
 export async function verifyStaffPinCall(data) {
+    if (isLocalDev()) {
+        return verifyStaffPinFirestoreFallback(data);
+    }
     try {
         const fn = httpsCallable(getFunctions(), 'verifyStaffPin');
         const res = await fn(data);
         return res.data;
     } catch (err) {
         console.warn('Cloud Function verifyStaffPin failed, executing Firestore fallback:', err);
-        const { staffUid, pin, hospitalId } = data;
-        if (!staffUid || !hospitalId) {
-            throw new Error('staffUid and hospitalId required.');
-        }
-        const snap = await getDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid));
-        if (!snap.exists()) {
-            throw new Error('Staff account not found.');
-        }
-        const staffData = snap.data();
-        if (staffData.active === false) {
-            throw new Error('Staff account is inactive.');
-        }
-        if (staffData.pinHash) {
-            const computedHash = await hashPinFallback(pin);
-            if (computedHash !== staffData.pinHash) {
-                throw new Error('Incorrect 4-digit PIN.');
-            }
-        }
-        return { success: true, staffUid: staffData.uid, name: staffData.name, roles: staffData.roles || [staffData.role] };
+        return verifyStaffPinFirestoreFallback(data);
     }
 }
 
@@ -3894,8 +3914,19 @@ export async function fetchHemovigilanceReports(hospitalName, maxResults = 50) {
         const snap = await getDocs(q);
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
-        console.error('Failed to fetch hemovigilance reports:', e);
-        return [];
+        console.warn('Index query failed for hemovigilance_reports, falling back to client-side filter/sort:', e);
+        try {
+            const fallbackQ = query(
+                collection(db, 'hemovigilance_reports'),
+                where('hospitalName', '==', hospitalName)
+            );
+            const snap = await getDocs(fallbackQ);
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).slice(0, maxResults);
+        } catch (fallbackErr) {
+            console.error('Failed to fetch hemovigilance reports:', fallbackErr);
+            return [];
+        }
     }
 }
 
@@ -3967,8 +3998,19 @@ export async function fetchDonorReactions(hospitalName, maxResults = 50) {
         const snap = await getDocs(q);
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
-        console.error('Failed to fetch donor reactions:', e);
-        return [];
+        console.warn('Index query failed for donor_reactions, falling back to client-side filter/sort:', e);
+        try {
+            const fallbackQ = query(
+                collection(db, 'donor_reactions'),
+                where('hospitalName', '==', hospitalName)
+            );
+            const snap = await getDocs(fallbackQ);
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return list.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '')).slice(0, maxResults);
+        } catch (fallbackErr) {
+            console.error('Failed to fetch donor reactions:', fallbackErr);
+            return [];
+        }
     }
 }
 
