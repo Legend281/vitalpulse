@@ -298,6 +298,9 @@ export async function loginUser(email, password) {
             // Deliberately placed AFTER the ...userData spread so the token claim always
             // wins if a field ever collides — role here overrides userData.role.
             role: claims.role || role,
+            // Multi-role array from custom claims (set by grantRole/createStaffAccount).
+            // Frontend roleGating.js reads this for hasAnyRole evaluation.
+            roles: Array.isArray(claims.roles) ? claims.roles : undefined,
             kycStatus: claims.kycStatus || null,
             suspended: claims.suspended === true,
         };

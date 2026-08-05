@@ -9,7 +9,7 @@ import { db } from './firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingKycReviews, fetchKycDocumentUrl, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingKycReviews, fetchKycDocumentUrl, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -884,8 +884,8 @@ let hospitalNavigationInitialized = false;
 function initHospitalNavigation() {
     if (hospitalNavigationInitialized) return;
 
-    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
-    const viewIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    const viewIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
 
     const globalTitle = document.getElementById('globalHeaderTitle');
     const globalSubtitle = document.getElementById('globalHeaderSubtitle');
@@ -897,6 +897,7 @@ function initHospitalNavigation() {
         inventory: { title: 'Inventory', sub: 'Blood Stock Management' },
         donors: { title: 'Incoming Donors', sub: 'Donor Coordination' },
         settings: { title: 'Settings', sub: 'Hospital Profile & Preferences' },
+        staff: { title: 'Staff Roster', sub: 'Individual Staff Logins, Roles & PIN Access' },
         campaigns: { title: 'Campaigns', sub: 'Donation Drives' },
         hemovigilance: { title: 'Hemovigilance', sub: 'Adverse Transfusion Reaction Tracking' },
         forecasting: { title: 'Forecasting', sub: 'Blood Demand Forecasting' },
@@ -957,6 +958,7 @@ function initHospitalNavigation() {
             case 'inventory': loadHospitalInventoryData(); break;
             case 'donors': loadHospitalDonors(); break;
             case 'settings': loadHospitalSettings(); break;
+            case 'staff': loadHospitalStaffView(); break;
             case 'campaigns': loadHospitalCampaignsView(); break;
             case 'hemovigilance': loadHemovigilanceView(); break;
             case 'forecasting': loadForecastingView(); break;
@@ -1422,8 +1424,10 @@ async function loadHospitalInventoryData() {
             const barColor = isLow ? 'bg-red-500' : pct > 75 ? 'bg-emerald-500' : 'bg-amber-500';
 
             let badge = '';
-            if (inv.expiredUnits > 0) badge = '<span class="text-[9px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Expired</span>';
-            else if (inv.expiringSoon > 0) badge = '<span class="text-[9px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Expiring</span>';
+            const expCount = inv.unitsExpired || inv.expiredUnits || 0;
+            const expSoonCount = inv.expiringSoonUnits || inv.expiringSoon || 0;
+            if (expCount > 0) badge = '<span class="text-[9px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Action Required: Expired</span>';
+            else if (expSoonCount > 0) badge = '<span class="text-[9px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Expiring Soon</span>';
             else if (isLow) badge = '<span class="text-[9px] font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Low Stock</span>';
             else badge = '<span class="text-[9px] font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full uppercase tracking-wider">In Stock</span>';
 
@@ -1440,7 +1444,7 @@ async function loadHospitalInventoryData() {
                         <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg" style="background-color: ${info.color}15; color: ${info.color}">${type}</div>
                         <div>
                             <p class="text-2xl font-black text-on-surface">${inv.unitsAvailable || 0}</p>
-                            <p class="text-[10px] text-slate-500 font-medium">units</p>
+                            <p class="text-[10px] text-slate-500 font-medium">units available</p>
                         </div>
                     </div>
                     ${badge}
@@ -1455,8 +1459,8 @@ async function loadHospitalInventoryData() {
                         <span class="font-bold">${pct}%</span>
                     </div>
                 </div>
-                ${inv.expiringSoon > 0 ? `<div class="mt-2 text-[9px] font-bold text-amber-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">schedule</span>${inv.expiringSoon} unit(s) expiring within 30 days</div>` : ''}
-                ${inv.expiredUnits > 0 ? `<div class="mt-2 text-[9px] font-bold text-red-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">dangerous</span>${inv.expiredUnits} unit(s) expired</div>` : ''}
+                ${expSoonCount > 0 ? `<div class="mt-2 text-[9px] font-bold text-amber-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">schedule</span>${expSoonCount} unit(s) expiring in < 5 days</div>` : ''}
+                ${expCount > 0 ? `<div class="mt-2 text-[9px] font-bold text-red-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">dangerous</span>${expCount} unit(s) EXPIRED — action required</div>` : ''}
                 <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-4 gap-1">
                     <button onclick="window.openHospitalAddStock('${type}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Add</button>
                     <button onclick="window.openHospitalIssueBlood('${type}', ${inv.unitsAvailable || 0})" class="text-[9px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 py-1.5 rounded-lg transition-colors">Issue</button>
@@ -7634,6 +7638,187 @@ function initNotificationFeatures() {
             } catch (e) { console.error(e); }
         });
     }
+}
+
+export async function loadHospitalStaffView() {
+    const currentUser = getCurrentUser();
+    const hospitalId = currentUser?.uid || currentUser?.hospitalId;
+    const container = document.getElementById('staffRosterList');
+    if (!container) return;
+
+    try {
+        const staffList = await fetchHospitalStaff(hospitalId).catch(() => []);
+        if (staffList.length === 0) {
+            container.innerHTML = `
+                <div class="col-span-full py-12 text-center text-slate-400">
+                    <span class="material-symbols-outlined text-4xl mb-2">badge</span>
+                    <p class="text-sm font-bold text-slate-600">No Staff Accounts Created Yet</p>
+                    <p class="text-xs text-slate-400 mt-1">Click "+ Add Staff Account" above to set up individual staff logins for Reception, Nurses, and Lab Techs.</p>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = staffList.map(s => {
+            const roleBadges = (s.roles || [s.role || 'staff']).map(r => {
+                const color = r === 'lab_tech' ? 'bg-purple-100 text-purple-700' : r === 'nurse' ? 'bg-emerald-100 text-emerald-700' : r === 'reception' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700';
+                return `<span class="text-[10px] font-bold ${color} px-2 py-0.5 rounded-full uppercase tracking-wider">${r.replace('_', ' ')}</span>`;
+            }).join(' ');
+
+            return `
+            <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between space-y-4">
+                <div class="flex items-start justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-black text-slate-700 shadow-sm">
+                            ${s.name ? s.name.charAt(0).toUpperCase() : 'S'}
+                        </div>
+                        <div>
+                            <h4 class="font-extrabold text-sm text-slate-900">${s.name || 'Staff Member'}</h4>
+                            <p class="text-[11px] text-slate-500 font-mono">${s.email || ''}</p>
+                        </div>
+                    </div>
+                    <span class="w-2.5 h-2.5 rounded-full ${s.active !== false ? 'bg-emerald-500' : 'bg-red-500'}" title="${s.active !== false ? 'Active Account' : 'Inactive'}"></span>
+                </div>
+                <div class="flex flex-wrap gap-1">
+                    ${roleBadges}
+                </div>
+                <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                    <span>PIN Access: ${s.pinHash ? '•••• (Set)' : 'Not Set'}</span>
+                    <span class="text-[10px] text-slate-400">Added: ${new Date(s.createdAt || Date.now()).toLocaleDateString()}</span>
+                </div>
+            </div>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Failed to load staff list:', err);
+        container.innerHTML = `<div class="col-span-full py-8 text-center text-red-500 text-sm">Failed to load staff list: ${err.message}</div>`;
+    }
+}
+
+window.openAddStaffModal = () => {
+    const modal = document.getElementById('modalAddStaff');
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+};
+
+window.closeAddStaffModal = () => {
+    const modal = document.getElementById('modalAddStaff');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+
+window.openStaffQuickSwitchModal = async () => {
+    const modal = document.getElementById('modalStaffQuickSwitch');
+    const select = document.getElementById('selectQuickSwitchStaff');
+    const errAlert = document.getElementById('alertQuickSwitchError');
+    if (errAlert) errAlert.classList.add('hidden');
+
+    if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+
+    if (select) {
+        select.innerHTML = '<option value="">Loading staff members...</option>';
+        try {
+            const currentUser = getCurrentUser();
+            const hospitalId = currentUser?.uid || currentUser?.hospitalId;
+            const staffList = await fetchHospitalStaff(hospitalId).catch(() => []);
+            if (staffList.length === 0) {
+                select.innerHTML = '<option value="">No staff accounts created yet</option>';
+                return;
+            }
+            select.innerHTML = staffList.map(s => `
+                <option value="${s.uid}">${s.name} (${(s.roles || [s.role || 'staff']).join(', ')})</option>
+            `).join('');
+        } catch (e) {
+            select.innerHTML = '<option value="">Failed to load staff</option>';
+        }
+    }
+};
+
+window.closeStaffQuickSwitchModal = () => {
+    const modal = document.getElementById('modalStaffQuickSwitch');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+};
+
+function initStaffModalHandlers() {
+    const formAdd = document.getElementById('formAddStaff');
+    if (formAdd) {
+        formAdd.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('inputAddStaffName')?.value.trim();
+            const email = document.getElementById('inputAddStaffEmail')?.value.trim();
+            const pin = document.getElementById('inputAddStaffPin')?.value.trim();
+
+            const roles = [];
+            if (document.getElementById('roleReception')?.checked) roles.push('reception');
+            if (document.getElementById('roleNurse')?.checked) roles.push('nurse');
+            if (document.getElementById('roleLabTech')?.checked) roles.push('lab_tech');
+            if (document.getElementById('roleAdmin')?.checked) roles.push('hospital_admin');
+
+            if (roles.length === 0) {
+                showToast('Please select at least one role for this staff member.', 'error');
+                return;
+            }
+
+            try {
+                showToast('Creating staff account...');
+                const currentUser = getCurrentUser();
+                const hospitalId = currentUser?.uid || currentUser?.hospitalId;
+                const res = await createStaffAccountCall({ name, email, roles, hospitalId, pin: pin || undefined });
+                showToast(`Staff account created! (${name})`);
+                window.closeAddStaffModal();
+                formAdd.reset();
+                loadHospitalStaffView();
+            } catch (err) {
+                console.error('Failed to create staff account:', err);
+                showToast(err.message || 'Failed to create staff account.', 'error');
+            }
+        });
+    }
+
+    const formQuick = document.getElementById('formStaffQuickSwitch');
+    if (formQuick) {
+        formQuick.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const staffUid = document.getElementById('selectQuickSwitchStaff')?.value;
+            const pin = document.getElementById('inputQuickSwitchPin')?.value.trim();
+            const errAlert = document.getElementById('alertQuickSwitchError');
+
+            if (!staffUid) {
+                showToast('Please select a staff member.', 'error');
+                return;
+            }
+
+            try {
+                showToast('Verifying PIN...');
+                const currentUser = getCurrentUser();
+                const hospitalId = currentUser?.uid || currentUser?.hospitalId;
+                const res = await verifyStaffPinCall({ staffUid, pin, hospitalId });
+
+                // Update active staff session UI badge
+                const badge = document.getElementById('activeStaffBadge');
+                if (badge) badge.textContent = `Staff: ${res.name}`;
+
+                showToast(`Switched active session to ${res.name}!`);
+                window.closeStaffQuickSwitchModal();
+                formQuick.reset();
+                if (errAlert) errAlert.classList.add('hidden');
+            } catch (err) {
+                console.error('PIN verification failed:', err);
+                if (errAlert) {
+                    errAlert.textContent = err.message || 'PIN verification failed.';
+                    errAlert.classList.remove('hidden');
+                } else {
+                    showToast(err.message || 'PIN verification failed.', 'error');
+                }
+            }
+        });
+    }
+}
+
+// Call initStaffModalHandlers during hospital dashboard init
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+        initStaffModalHandlers();
+    });
+    initStaffModalHandlers();
 }
 
 

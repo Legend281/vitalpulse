@@ -45,7 +45,17 @@ export async function grantRoleHandler(request: CallableRequest) {
   });
   const existingClaims = (targetUser.customClaims ?? {}) as CallerClaims;
 
-  const newClaims: Record<string, unknown> = { role };
+  const existingRoles = existingClaims.roles && existingClaims.roles.length > 0
+    ? existingClaims.roles
+    : existingClaims.role
+      ? [existingClaims.role]
+      : [];
+  const updatedRoles = Array.from(new Set([...existingRoles, role]));
+
+  const newClaims: Record<string, unknown> = {
+    roles: updatedRoles,
+    role,
+  };
   if (isHospitalScopedRole(role)) {
     newClaims.hospitalId = hospitalId;
   }

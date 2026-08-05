@@ -144,6 +144,7 @@ export const issueBloodToPatientSchema = z
     patientBloodType: bloodTypeSchema.optional(),
     ward: z.string().trim().max(120).optional(),
     requestingDoctor: z.string().trim().max(120).optional(),
+    requestingPhysicianName: z.string().trim().min(2).max(150),
     diagnosis: z.string().trim().max(500).optional(),
     crossmatchConfirmed: z.literal(true),
     crossmatchResult: z.literal('Compatible'),
@@ -152,6 +153,30 @@ export const issueBloodToPatientSchema = z
   .strict();
 
 export type IssueBloodToPatientInput = z.infer<typeof issueBloodToPatientSchema>;
+
+export const staffRoleEnum = z.enum(['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']);
+
+export const createStaffAccountSchema = z
+  .object({
+    ...targetHospitalFields,
+    name: z.string().trim().min(2).max(150),
+    email: z.string().trim().email(),
+    roles: z.array(staffRoleEnum).min(1),
+    pin: z.string().trim().regex(/^\d{4}$/, 'PIN must be exactly 4 digits').optional(),
+  })
+  .strict();
+
+export type CreateStaffAccountInput = z.infer<typeof createStaffAccountSchema>;
+
+export const verifyStaffPinSchema = z
+  .object({
+    ...targetHospitalFields,
+    staffUid: z.string().trim().min(1),
+    pin: z.string().trim().regex(/^\d{4}$/, 'PIN must be exactly 4 digits'),
+  })
+  .strict();
+
+export type VerifyStaffPinInput = z.infer<typeof verifyStaffPinSchema>;
 
 // KYC / donor onboarding — Auth & Onboarding workstream (donor UI/VitalPulse_Plan_Tracker.md
 // Stream B). donors/{uid} is a NEW, KYC-only collection approved 2026-08-01 (Stream A4) —

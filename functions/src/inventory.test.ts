@@ -531,6 +531,7 @@ describe('issueBloodToPatientHandler', () => {
     bloodType: 'O+',
     units: 2,
     patientName: 'Jane Doe',
+    requestingPhysicianName: 'Dr. Mbida',
     crossmatchConfirmed: true,
     crossmatchResult: 'Compatible',
     ...overrides,
@@ -542,11 +543,33 @@ describe('issueBloodToPatientHandler', () => {
     });
   });
 
+  it('ADDITIVE SAFETY GATE: lab_tech user with crossmatchConfirmed: false is STILL rejected', async () => {
+    await expect(
+      issueBloodToPatientHandler(
+        req(
+          { uid: 'lt1', token: { roles: ['lab_tech'], hospitalId: 'H1' } },
+          validPayload({ crossmatchConfirmed: false }),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-argument' });
+  });
+
+  it('HOSTILE: nurse-only role attempting issueBloodToPatient is rejected with permission-denied', async () => {
+    await expect(
+      issueBloodToPatientHandler(
+        req(
+          { uid: 'n1', token: { roles: ['nurse'], hospitalId: 'H1' } },
+          validPayload(),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'permission-denied' });
+  });
+
   it('HOSTILE: rejects a payload that doesn\'t confirm the crossmatch (medical safety gate, Master Plan 1.3)', async () => {
     await expect(
       issueBloodToPatientHandler(
         req(
-          { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+          { uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } },
           validPayload({ crossmatchConfirmed: false }),
         ),
       ),
@@ -557,7 +580,7 @@ describe('issueBloodToPatientHandler', () => {
     await expect(
       issueBloodToPatientHandler(
         req(
-          { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+          { uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } },
           validPayload({ crossmatchResult: 'Incompatible' }),
         ),
       ),
@@ -567,14 +590,14 @@ describe('issueBloodToPatientHandler', () => {
   it('HOSTILE: rejects a payload missing patientName', async () => {
     const { patientName: _patientName, ...rest } = validPayload();
     await expect(
-      issueBloodToPatientHandler(req({ uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } }, rest)),
+      issueBloodToPatientHandler(req({ uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } }, rest)),
     ).rejects.toMatchObject({ code: 'invalid-argument' });
   });
 
-  it('HOSTILE: lab_tech cannot issue blood (separation of duties: clearance vs. issuance)', async () => {
+  it('HOSTILE: reception cannot issue blood', async () => {
     await expect(
       issueBloodToPatientHandler(
-        req({ uid: 'l1', token: { role: 'lab_tech', hospitalId: 'H1' } }, validPayload()),
+        req({ uid: 'r1', token: { role: 'reception', hospitalId: 'H1' } }, validPayload()),
       ),
     ).rejects.toMatchObject({ code: 'permission-denied' });
   });
@@ -589,7 +612,7 @@ describe('issueBloodToPatientHandler', () => {
     mocks.txGet.mockResolvedValue(invSnap({ batches: [{ id: 'b1', units: 5, testStatus: 'Cleared' }] }));
     await issueBloodToPatientHandler(
       req(
-        { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+        { uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } },
         validPayload({ units: 1, hospitalId: 'SOMEONE-ELSES-HOSPITAL' }),
       ),
     );
@@ -601,7 +624,7 @@ describe('issueBloodToPatientHandler', () => {
     mocks.txGet.mockResolvedValue(invSnap(undefined));
     await expect(
       issueBloodToPatientHandler(
-        req({ uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } }, validPayload()),
+        req({ uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } }, validPayload()),
       ),
     ).rejects.toMatchObject({ code: 'not-found' });
   });
@@ -617,7 +640,7 @@ describe('issueBloodToPatientHandler', () => {
     );
     await expect(
       issueBloodToPatientHandler(
-        req({ uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } }, validPayload({ units: 2 })),
+        req({ uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } }, validPayload({ units: 2 })),
       ),
     ).rejects.toMatchObject({ code: 'failed-precondition' });
     expect(mocks.txSet).not.toHaveBeenCalled();
@@ -638,7 +661,7 @@ describe('issueBloodToPatientHandler', () => {
 
     const result = await issueBloodToPatientHandler(
       req(
-        { uid: 'h1', token: { role: 'hospital_staff', hospitalId: 'H1' } },
+        { uid: 'h1', token: { role: 'lab_tech', hospitalId: 'H1' } },
         validPayload({ units: 3, patientId: 'P1', diagnosis: 'Trauma', ward: 'ICU' }),
       ),
     );

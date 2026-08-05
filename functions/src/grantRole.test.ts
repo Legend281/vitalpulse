@@ -114,7 +114,7 @@ describe('grantRoleHandler', () => {
     );
 
     expect(result).toEqual({ success: true, role: 'hospital_admin', hospitalId: 'H1' });
-    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('t1', { role: 'hospital_admin', hospitalId: 'H1' });
+    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('t1', expect.objectContaining({ role: 'hospital_admin', hospitalId: 'H1' }));
     expect(mockAuth.revokeRefreshTokens).toHaveBeenCalledWith('t1');
     expect(writeAudit).toHaveBeenCalledWith({
       actorUid: 'admin-1',
@@ -133,7 +133,7 @@ describe('grantRoleHandler', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('t1', { role: 'lab_tech', hospitalId: 'H1' });
+    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('t1', expect.objectContaining({ role: 'lab_tech', hospitalId: 'H1' }));
   });
 
   it('preserves an existing suspension when re-granting a role', async () => {
@@ -141,6 +141,6 @@ describe('grantRoleHandler', () => {
     await grantRoleHandler(
       req({ uid: 'admin-1', token: { role: 'system_admin' } }, { targetUid: 't1', role: 'donor' }),
     );
-    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('t1', { role: 'donor', suspended: true });
+    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('t1', expect.objectContaining({ role: 'donor', suspended: true }));
   });
 });

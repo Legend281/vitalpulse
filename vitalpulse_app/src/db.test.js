@@ -255,6 +255,24 @@ describe('fetchMatchedRequestsForDonor', () => {
     });
 });
 
+describe('Scoped Check-In Tokens & Token Expiration', () => {
+    it('generateScopedCheckInToken generates VP-[PREFIX]-[RANDOM] format', async () => {
+        const { generateScopedCheckInToken } = await import('./db.js');
+        const token = generateScopedCheckInToken('req-abc1234');
+        expect(token).toMatch(/^VP-1234-[A-Z0-9]{4}$/);
+    });
+
+    it('findRequestByCheckInToken rejects expired check-in tokens', async () => {
+        const { findRequestByCheckInToken } = await import('./db.js');
+        const expiredDate = new Date(Date.now() - 3600000).toISOString();
+        getDocs.mockResolvedValueOnce(fakeSnapshot([
+            { id: 'r1', data: { checkInToken: 'VP-1234-ABCD', checkInTokenExpiresAt: expiredDate } }
+        ]));
+
+        await expect(findRequestByCheckInToken('VP-1234-ABCD', 'requests')).rejects.toThrow(/pass code has expired/);
+    });
+});
+
 describe('suspendDonor/reactivateDonor (Phase 3)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -435,6 +453,7 @@ describe('issueBloodToPatient (Phase 3)', () => {
             bloodType: 'O+',
             units: 2,
             patientName: 'Jane Doe',
+            requestingPhysicianName: 'Dr. Unspecified',
             crossmatchConfirmed: true,
             crossmatchResult: 'Compatible',
             ward: 'ICU',
@@ -484,6 +503,7 @@ describe('issueBloodToPatient (Phase 3)', () => {
             bloodType: 'O+',
             units: 1,
             patientName: 'Jane Doe',
+            requestingPhysicianName: 'Dr. Unspecified',
             crossmatchConfirmed: true,
             crossmatchResult: 'Compatible',
         });

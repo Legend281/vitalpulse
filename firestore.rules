@@ -52,22 +52,18 @@ service cloud.firestore {
       // picking one unilaterally, since (b) has a real cost/quota tradeoff at scale.
       return request.auth != null && request.auth.token.get('suspended', false) != true;
     }
-    function role() { return request.auth.token.get('role', null); }
-    function myHospitalId() { return request.auth.token.get('hospitalId', null); }
+    function rolesList() {
+      return request.auth.token.get('roles', [request.auth.token.get('role', 'donor')]);
+    }
+    function hasAnyRole(targetRoles) {
+      return signedIn() && rolesList().hasAny(targetRoles);
+    }
 
-    // Any real, provisioned role — as opposed to merely signedIn(), which is also true
-    // for an account that has never been through grantRole (i.e. every account today).
-    // Deny-by-default means a claims-less signed-in user gets nothing beyond what an
-    // unauthenticated user would, not implicit "any logged-in user" access.
-    function hasRole() { return signedIn() && role() in ['donor', 'hospital_staff', 'lab_tech', 'hospital_admin', 'system_admin', 'nbtp_viewer']; }
-
-    function isDonor()         { return signedIn() && role() == 'donor'; }
-    function isHospitalRole()  { return signedIn() && role() in ['hospital_staff', 'lab_tech', 'hospital_admin']; }
-    // Master Plan 1.2 separation of duties: lab_tech may view hospital-side data but
-    // never create requests or edit stock directly.
-    function canManageStock()  { return signedIn() && role() in ['hospital_staff', 'hospital_admin']; }
-    function isSystemAdmin()   { return signedIn() && role() == 'system_admin'; }
-    function isNbtpViewer()    { return signedIn() && role() == 'nbtp_viewer'; }
+    function isDonor()         { return signedIn() && (rolesList().hasAny(['donor']) || role() == 'donor'); }
+    function isHospitalRole()  { return signedIn() && (rolesList().hasAny(['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']) || role() in ['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']); }
+    function canManageStock()  { return signedIn() && (rolesList().hasAny(['nurse', 'hospital_staff', 'hospital_admin']) || role() in ['hospital_staff', 'hospital_admin']); }
+    function isSystemAdmin()   { return signedIn() && (rolesList().hasAny(['system_admin']) || role() == 'system_admin'); }
+    function isNbtpViewer()    { return signedIn() && (rolesList().hasAny(['nbtp_viewer']) || role() == 'nbtp_viewer'); }
 
     // True if the caller is hospital-role AND scoped to the given hospitalId.
     function sameHospital(hid) { return isHospitalRole() && hid == myHospitalId(); }
@@ -491,6 +487,11 @@ service cloud.firestore {
     // The app writes audit_logs client-side via logAuditTrail() (try/catch, non-blocking).
     // Rules lock it admin-read + no client writes, matching the activity_logs decision:
     // Phase 3's writeAudit Cloud Function is the real home. Flagged, not silently deferred.
+    match /hospitals/{hospitalId}/staff/{staffUid} {
+      allow read: if signedIn() && (sameHospital(hospitalId) || isSystemAdmin());
+      allow write: if signedIn() && ((sameHospital(hospitalId) && hasAnyRole(['hospital_admin'])) || isSystemAdmin());
+    }
+
     match /audit_logs/{id} {
       allow get, list: if isSystemAdmin();
       allow write: if false;

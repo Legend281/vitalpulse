@@ -2,7 +2,7 @@ import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/
 import type { Transaction } from 'firebase-admin/firestore';
 import { db } from './firebaseAdmin';
 import { writeAudit } from './audit';
-import { type CallerClaims } from './roles';
+import { hasAnyRole, type CallerClaims, type Role } from './roles';
 import {
   addInventoryStockSchema,
   deductInventoryStockSchema,
@@ -47,15 +47,22 @@ function computeAggregates(batches: BatchLike[]): {
   unitsAvailable: number;
   unitsPendingTest: number;
   unitsRejected: number;
+  unitsExpired: number;
   componentTotals: Record<string, number>;
 } {
   let unitsAvailable = 0;
   let unitsPendingTest = 0;
   let unitsRejected = 0;
+  let unitsExpired = 0;
+  const now = new Date();
   const componentTotals: Record<string, number> = {};
   for (const b of batches) {
     const status = b.testStatus || 'Cleared';
-    if (status === 'Cleared') {
+    const isExpired = b.expiresAt ? new Date(b.expiresAt) < now : false;
+
+    if (isExpired) {
+      unitsExpired += b.units;
+    } else if (status === 'Cleared') {
       unitsAvailable += b.units;
       const component = b.componentType || 'Whole Blood';
       componentTotals[component] = (componentTotals[component] || 0) + b.units;
@@ -65,11 +72,12 @@ function computeAggregates(batches: BatchLike[]): {
       unitsPendingTest += b.units;
     }
   }
-  return { unitsAvailable, unitsPendingTest, unitsRejected, componentTotals };
+  return { unitsAvailable, unitsPendingTest, unitsRejected, unitsExpired, componentTotals };
 }
 
-const STOCK_MANAGER_ROLES = new Set(['hospital_staff', 'hospital_admin', 'system_admin']);
+const STOCK_MANAGER_ROLES = new Set(['nurse', 'hospital_staff', 'hospital_admin', 'system_admin']);
 const LAB_RESOLVER_ROLES = new Set(['lab_tech', 'hospital_admin', 'system_admin']);
+const ISSUANCE_ROLES = new Set(['lab_tech', 'hospital_admin', 'system_admin']);
 
 function requireCaller(request: CallableRequest, allowedRoles: Set<string>): CallerClaims {
   if (!request.auth) {
@@ -79,7 +87,8 @@ function requireCaller(request: CallableRequest, allowedRoles: Set<string>): Cal
   if (caller.suspended) {
     throw new HttpsError('permission-denied', 'Caller account is suspended.');
   }
-  if (!caller.role || !allowedRoles.has(caller.role)) {
+  const allowedList = Array.from(allowedRoles) as Role[];
+  if (!hasAnyRole(caller, allowedList)) {
     throw new HttpsError('permission-denied', 'Caller role is not authorized for this operation.');
   }
   return caller;
@@ -149,11 +158,12 @@ async function addInventoryStockHandler(request: CallableRequest) {
     const existing = snap.exists ? snap.data()! : {};
     const batches: BatchLike[] = existing.batches || [];
 
+    const defaultExpiry = new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString();
     batches.push({
       id: `batch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       units: input.units,
       componentType: input.componentType || 'Whole Blood',
-      expiresAt: input.expiresAt || null,
+      expiresAt: input.expiresAt || defaultExpiry,
       testStatus: input.testStatus || 'Waiting for Lab Test',
       rejectionReason: null,
       sourceDonationId: input.sourceDonationId || null,
@@ -170,6 +180,7 @@ async function addInventoryStockHandler(request: CallableRequest) {
         unitsAvailable: aggregates.unitsAvailable,
         unitsPendingTest: aggregates.unitsPendingTest,
         unitsRejected: aggregates.unitsRejected,
+        unitsExpired: aggregates.unitsExpired,
         unitsReserved: existing.unitsReserved || 0,
         batches,
         componentTotals: aggregates.componentTotals,
@@ -386,7 +397,7 @@ async function setInventoryThresholdHandler(request: CallableRequest) {
  * than a stock adjustment.
  */
 async function issueBloodToPatientHandler(request: CallableRequest) {
-  const caller = requireCaller(request, STOCK_MANAGER_ROLES);
+  const caller = requireCaller(request, ISSUANCE_ROLES);
   const parsed = issueBloodToPatientSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', 'Invalid issueBloodToPatient payload.', parsed.error.flatten());
@@ -403,8 +414,9 @@ async function issueBloodToPatientHandler(request: CallableRequest) {
     const data = snap.data()!;
     const batches: BatchLike[] = (data.batches || []).map((b: BatchLike) => ({ ...b }));
 
+    const now = new Date();
     const clearedAvailable = batches
-      .filter((b) => (b.testStatus || 'Cleared') === 'Cleared')
+      .filter((b) => (b.testStatus || 'Cleared') === 'Cleared' && (!b.expiresAt || new Date(b.expiresAt) >= now))
       .reduce((sum, b) => sum + b.units, 0);
     if (input.units > clearedAvailable) {
       throw new HttpsError(
@@ -418,6 +430,7 @@ async function issueBloodToPatientHandler(request: CallableRequest) {
     const remainingBatches = batches.filter((b) => {
       if (toDeduct <= 0) return true;
       if ((b.testStatus || 'Cleared') !== 'Cleared') return true;
+      if (b.expiresAt && new Date(b.expiresAt) < now) return true;
       if (b.units <= toDeduct) {
         toDeduct -= b.units;
         deductedBatches.push(b);
@@ -439,6 +452,7 @@ async function issueBloodToPatientHandler(request: CallableRequest) {
         unitsAvailable: newAggregates.unitsAvailable,
         unitsPendingTest: newAggregates.unitsPendingTest,
         unitsRejected: newAggregates.unitsRejected,
+        unitsExpired: newAggregates.unitsExpired,
         componentTotals: newAggregates.componentTotals,
         lastUpdated: new Date().toISOString(),
       },
@@ -455,7 +469,8 @@ async function issueBloodToPatientHandler(request: CallableRequest) {
     patientId: input.patientId || '',
     patientBloodType: input.patientBloodType || input.bloodType,
     ward: input.ward || '',
-    requestingDoctor: input.requestingDoctor || '',
+    requestingDoctor: input.requestingDoctor || input.requestingPhysicianName,
+    requestingPhysicianName: input.requestingPhysicianName,
     diagnosis: input.diagnosis || '',
     crossmatchConfirmed: true,
     crossmatchResult: 'Compatible',
@@ -463,21 +478,21 @@ async function issueBloodToPatientHandler(request: CallableRequest) {
     hospital: hospitalName,
     hospitalId,
     issuedAt: new Date().toISOString(),
+    performedByUid: request.auth!.uid,
+    performedByRole: caller.roles ? caller.roles.join(',') : caller.role || 'lab_tech',
   });
 
-  // Per Policy 5, audit events log actor/action/target/timestamp REFERENCES
-  // only, never PHI values — the patient's name/diagnosis/ward live solely
-  // in issuance_log, pointed to here by ID, not duplicated into the log.
   await writeAudit({
     actorUid: request.auth!.uid,
     action: 'issueBloodToPatient',
     targetUid: hospitalId ?? undefined,
     details: {
-      actorRole: caller.role ?? null,
+      actorRole: caller.roles ? caller.roles.join(',') : caller.role ?? null,
       hospitalName,
       bloodType: input.bloodType,
       units: input.units,
       issuanceLogId: issuanceRef.id,
+      requestingPhysicianName: input.requestingPhysicianName,
     },
   });
 

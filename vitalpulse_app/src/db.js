@@ -227,6 +227,89 @@ export async function fetchMatchedRequestsForDonor(bloodType, location) {
         .slice(0, 50);
 }
 
+export function generateScopedCheckInToken(requestId = '') {
+    const prefix = (requestId || '').replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase() || 'VP';
+    const rand = Array.from(crypto.getRandomValues(new Uint8Array(3)))
+        .map(b => b.toString(36).padStart(2, '0'))
+        .join('')
+        .slice(0, 4)
+        .toUpperCase();
+    return `VP-${prefix}-${rand}`;
+}
+
+export async function reconcileStaleAssignedRequests(timeoutHours = 3, nudgeMinutes = 150) {
+    const now = Date.now();
+    const timeoutMs = timeoutHours * 60 * 60 * 1000;
+    const nudgeMs = nudgeMinutes * 60 * 1000;
+    let reconciledCount = 0;
+    let nudgedCount = 0;
+
+    for (const colName of ['requests', 'public_requests']) {
+        try {
+            const q = query(
+                collection(db, colName),
+                where('status', 'in', ['Donor Assigned', 'Donor En Route'])
+            );
+            const snap = await getDocs(q);
+            for (const d of snap.docs) {
+                const data = d.data();
+                const matchedAt = data.matchedAt ? new Date(data.matchedAt).getTime() : 0;
+                if (!matchedAt) continue;
+                const elapsed = now - matchedAt;
+
+                if (elapsed >= timeoutMs) {
+                    const newStatus = colName === 'public_requests' ? 'Broadcasting' : 'Open';
+                    await updateDoc(doc(db, colName, d.id), {
+                        status: newStatus,
+                        matchedDonor: null,
+                        matchedAt: null,
+                        checkInToken: null,
+                        checkInTokenExpiresAt: null,
+                        donorScreeningPassed: null,
+                        reopenedReason: `Donor no-show timeout (${timeoutHours}h)`,
+                        lastReopenedAt: new Date().toISOString()
+                    });
+
+                    reconciledCount++;
+                    const donorId = data.matchedDonor;
+                    const hospital = data.hospital || data.hospitalName || 'Hospital';
+
+                    await logActivity(
+                        'Request Auto-Reopened',
+                        `Request #${d.id.slice(0, 8)} auto-reopened due to donor no-show timeout (${timeoutHours}h) at ${hospital}`,
+                        'warning'
+                    ).catch(() => {});
+
+                    if (donorId) {
+                        await addDonorNotification(
+                            donorId,
+                            'Donation Request Timed Out',
+                            `Your commitment for request #${d.id.slice(0, 8)} at ${hospital} timed out after ${timeoutHours} hours without check-in. The request has been auto-reopened for other donors.`,
+                            'warning'
+                        ).catch(() => {});
+                    }
+                } else if (elapsed >= nudgeMs && !data.nudgeSent) {
+                    const donorId = data.matchedDonor;
+                    const hospital = data.hospital || data.hospitalName || 'Hospital';
+                    await updateDoc(doc(db, colName, d.id), { nudgeSent: true }).catch(() => {});
+                    nudgedCount++;
+                    if (donorId) {
+                        await addDonorNotification(
+                            donorId,
+                            'Check-In Required Soon',
+                            `⏰ Pending Check-In Alert: You accepted request #${d.id.slice(0, 8)} at ${hospital}. Please check in at reception within 30 minutes to prevent auto-reopening.`,
+                            'info'
+                        ).catch(() => {});
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn(`reconcileStaleAssignedRequests error on ${colName}:`, e);
+        }
+    }
+    return { reconciledCount, nudgedCount };
+}
+
 export async function acceptRequest(requestId, donorId, screeningData = {}) {
     const reqDoc = doc(db, 'requests', requestId);
 
@@ -265,7 +348,9 @@ export async function acceptRequest(requestId, donorId, screeningData = {}) {
         if (e.message?.includes('WHO medical deferral')) throw e;
     }
 
-    const checkInToken = 'VP-' + Math.floor(1000 + Math.random() * 9000);
+    const checkInToken = generateScopedCheckInToken(requestId);
+    const nowIso = new Date().toISOString();
+    const checkInTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
     // Transaction guards against two donors accepting the same request at once —
     // without it, the second write silently overwrites the first donor's match.
@@ -279,8 +364,10 @@ export async function acceptRequest(requestId, donorId, screeningData = {}) {
         transaction.update(reqDoc, {
             status: 'Donor Assigned',
             matchedDonor: donorId,
-            matchedAt: new Date().toISOString(),
+            matchedAt: nowIso,
             checkInToken,
+            checkInTokenExpiresAt,
+            nudgeSent: false,
             donorScreeningPassed: screeningData.screeningPassed !== false
         });
         return data;
@@ -1297,20 +1384,25 @@ export async function fetchPendingLabTests(hospitalName) {
 // This is the single source of truth for what counts as "available" — recomputed from the
 // batches themselves rather than trusted from a possibly-stale stored counter.
 function computeInventoryAggregates(batches) {
-    let unitsAvailable = 0, unitsPendingTest = 0, unitsRejected = 0;
-    const componentTotals = {}; // available (Cleared) stock only, broken down by component
+    let unitsAvailable = 0, unitsPendingTest = 0, unitsRejected = 0, unitsExpired = 0;
+    const componentTotals = {}; // available (Cleared & non-expired) stock only
+    const now = new Date();
     (batches || []).forEach(b => {
         const status = b.testStatus || 'Cleared';
-        if (status === 'Cleared') {
+        const isExpired = b.expiresAt ? new Date(b.expiresAt) < now : false;
+        if (isExpired) {
+            unitsExpired += b.units;
+        } else if (status === 'Cleared') {
             unitsAvailable += b.units;
-            componentTotals[b.componentType] = (componentTotals[b.componentType] || 0) + b.units;
+            const comp = b.componentType || 'Whole Blood';
+            componentTotals[comp] = (componentTotals[comp] || 0) + b.units;
         } else if (status === 'Rejected, Not Safe') {
             unitsRejected += b.units;
         } else {
             unitsPendingTest += b.units;
         }
     });
-    return { unitsAvailable, unitsPendingTest, unitsRejected, componentTotals };
+    return { unitsAvailable, unitsPendingTest, unitsRejected, unitsExpired, componentTotals };
 }
 
 function enrichInventoryType(data) {
@@ -1322,7 +1414,7 @@ function enrichInventoryType(data) {
         if (b.expiresAt) {
             const daysLeft = (new Date(b.expiresAt) - now) / (1000 * 60 * 60 * 24);
             if (daysLeft < 0) expiredUnits += b.units;
-            else if (daysLeft <= 30) expiringSoon += b.units;
+            else if (daysLeft <= 5) expiringSoon += b.units;
         }
     });
     const aggregates = computeInventoryAggregates(batches);
@@ -1332,9 +1424,11 @@ function enrichInventoryType(data) {
         unitsAvailable: aggregates.unitsAvailable,
         unitsPendingTest: aggregates.unitsPendingTest,
         unitsRejected: aggregates.unitsRejected,
+        unitsExpired: aggregates.unitsExpired || expiredUnits,
+        expiringSoon: expiringSoon,
+        expiringSoonUnits: expiringSoon,
+        expiredUnits: aggregates.unitsExpired || expiredUnits,
         componentTotals: aggregates.componentTotals,
-        expiringSoon,
-        expiredUnits,
         batchCount: batches.length
     };
 }
@@ -2069,7 +2163,13 @@ export async function findRequestByCheckInToken(checkInToken, collectionName) {
     const snapshot = await getDocs(q);
     if (snapshot.empty) return null;
     const docSnap = snapshot.docs[0];
-    return { id: docSnap.id, ...docSnap.data() };
+    const data = docSnap.data();
+
+    if (data.checkInTokenExpiresAt && new Date(data.checkInTokenExpiresAt) < new Date()) {
+        throw new Error('This check-in pass code has expired (valid for 24 hours).');
+    }
+
+    return { id: docSnap.id, ...data };
 }
 
 // intakeData carries what the hospital captured at the physical intake step: units actually
@@ -2099,9 +2199,11 @@ export async function checkInDonor(requestId) {
         }
 
         const now = new Date().toISOString();
+        const currentUser = getCurrentUser();
         await transaction.update(reqDoc, {
             status: 'Checked In',
-            checkedInAt: now
+            checkedInAt: now,
+            checkedInByStaffUid: currentUser?.uid || null
         });
     });
 
@@ -2113,6 +2215,25 @@ export async function checkInDonor(requestId) {
         await addDonorNotification(donorId, 'Reception Check-In Confirmed', msg, 'info').catch(() => {});
     }
     return reqData;
+}
+
+export async function createStaffAccountCall(data) {
+    const fn = httpsCallable(functions, 'createStaffAccount');
+    const res = await fn(data);
+    return res.data;
+}
+
+export async function verifyStaffPinCall(data) {
+    const fn = httpsCallable(functions, 'verifyStaffPin');
+    const res = await fn(data);
+    return res.data;
+}
+
+export async function fetchHospitalStaff(hospitalId) {
+    if (!hospitalId) return [];
+    const q = query(collection(db, 'hospitals', hospitalId, 'staff'));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 // Several post-acceptance steps (lab clearance, issuance) need to update the original request
@@ -2292,9 +2413,13 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
         bloodType,
         units: parseInt(units, 10),
         patientName: patientData.patientName,
+        requestingPhysicianName: patientData.requestingPhysicianName || patientData.requestingDoctor || 'Dr. Unspecified',
         crossmatchConfirmed: patientData.crossmatchConfirmed,
         crossmatchResult: patientData.crossmatchResult,
     };
+    if (!payload.requestingPhysicianName || payload.requestingPhysicianName.length < 2) {
+        throw new Error('PHYSICIAN REQUISITION MANDATORY: Name of the requesting physician ordering the transfusion is required.');
+    }
     if (patientData.patientId) payload.patientId = patientData.patientId;
     if (patientData.patientBloodType) payload.patientBloodType = patientData.patientBloodType;
     if (patientData.ward) payload.ward = patientData.ward;
@@ -3248,7 +3373,9 @@ export async function acceptPublicRequest(requestId, donorId, screeningData = {}
         if (e.message?.includes('WHO medical deferral')) throw e;
     }
 
-    const checkInToken = 'VP-' + Math.floor(1000 + Math.random() * 9000);
+    const checkInToken = generateScopedCheckInToken(requestId);
+    const nowIso = new Date().toISOString();
+    const checkInTokenExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
     const reqData = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(reqDoc);
@@ -3260,8 +3387,10 @@ export async function acceptPublicRequest(requestId, donorId, screeningData = {}
         transaction.update(reqDoc, {
             status: 'Donor Assigned',
             matchedDonor: donorId,
-            matchedAt: new Date().toISOString(),
+            matchedAt: nowIso,
             checkInToken,
+            checkInTokenExpiresAt,
+            nudgeSent: false,
             donorScreeningPassed: screeningData.screeningPassed !== false
         });
         return data;

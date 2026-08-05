@@ -14,4 +14,5 @@ export { onDonorSignUp, submitKYC, submitLivenessSelfie, verifyDonor, rejectDono
 export { checkPasswordBreach } from './checkPasswordBreach';
 export { resolveSignInIdentifier } from './resolveSignInIdentifier';
 export { requestPasswordReset, checkPasswordResetToken, confirmPasswordReset } from './passwordReset';
+export { createStaffAccount, verifyStaffPin } from './staffManagement';
 
