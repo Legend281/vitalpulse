@@ -90,15 +90,15 @@
 - **Status: DONE ✅** (380 total tests passing: 239 backend + 141 frontend)
 
 ### Phase 5: Legacy Account Protection
-- [ ] Confirm legacy accounts see full dashboard unchanged — NOT STARTED
-- [ ] Add test case — NOT STARTED
-- **Status: NOT STARTED**
+- [x] Confirm legacy accounts see full dashboard unchanged — **VERIFIED ✅** (tested in `roleGating.test.js`)
+- [x] Add test case — **VERIFIED ✅** (tested in `roleGating.test.js`)
+- **Status: DONE ✅**
 
 ### Phase 6: Final Sign-Off
-- [ ] Full regression pass — NOT STARTED
-- [ ] Summary written — NOT STARTED
-- [ ] Await explicit merge approval — NOT STARTED
-- **Status: NOT STARTED**
+- [x] Full regression pass — **VERIFIED ✅** (380 / 380 unit tests passing)
+- [x] Summary written — **VERIFIED ✅**
+- [x] Await explicit merge approval — **READY FOR USER REVIEW**
+- **Status: READY FOR MERGE APPROVAL 🚀**
 
 ---
 
