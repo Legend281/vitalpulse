@@ -152,6 +152,7 @@ describe('canAccessView', () => {
     const map = {
         staff: ['hospital_admin'],
         settings: ['hospital_admin'],
+        campaigns: ['hospital_admin'],
     };
 
     it('allows hospital_admin to access staff roster', () => {
@@ -195,5 +196,17 @@ describe('canAccessView', () => {
         expect(canAccessView({ roles: ['nurse'] }, 'settings', map)).toBe(false);
         expect(canAccessView({ roles: ['lab_tech'] }, 'settings', map)).toBe(false);
         expect(canAccessView({ roles: ['reception'] }, 'settings', map)).toBe(false);
+    });
+
+    it('allows hospital_admin to access campaigns', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'campaigns', map)).toBe(true);
+    });
+
+    it('blocks nurse/lab_tech/reception from accessing campaigns', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['nurse'] }, 'campaigns', map)).toBe(false);
+        expect(canAccessView({ roles: ['lab_tech'] }, 'campaigns', map)).toBe(false);
+        expect(canAccessView({ roles: ['reception'] }, 'campaigns', map)).toBe(false);
     });
 });
