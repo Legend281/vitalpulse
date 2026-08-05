@@ -2,7 +2,7 @@
 
 > **Branch:** `feature/role-based-hospital-dashboard`
 > **Revert point:** Tag `pre-role-refactor-backup` on `main` (commit `a392e3f`)
-> **Last updated:** 2026-08-05 01:12 WAT
+> **Last updated:** 2026-08-05 01:17 WAT
 
 ---
 
@@ -58,11 +58,11 @@
 - [x] Create `vitalpulse_app/src/roleGating.js` with frontend `hasAnyRole`
   - Checks `sessionStorage` active staff session first (PIN switcher)
   - Falls back to hospital account's own claims
-- [x] Write backend unit tests for `hasAnyRole` in `roles.test.ts`
-- [x] Write frontend unit tests for `hasAnyRole` in `roleGating.test.js`
-- [x] Commit
+- [x] Write backend unit tests for `hasAnyRole` in `roles.test.ts` — **12 new tests, 28 total**
+- [x] Write frontend unit tests for `hasAnyRole` in `roleGating.test.js` — **29 tests**
+- [x] Commit `0535675`
 - [x] Update this file
-- **Status: DONE**
+- **Status: DONE ✅** (361 total tests passing: 239 backend + 122 frontend)
 
 ### Phase 2: Simplest Pages (single-role-gated, low risk)
 - [ ] Staff Roster → hospital_admin only — NOT STARTED

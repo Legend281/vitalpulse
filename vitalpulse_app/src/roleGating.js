@@ -147,3 +147,19 @@ export function clearActiveStaffSession() {
         sessionStorage.removeItem(STAFF_SESSION_KEY);
     } catch (e) { /* ignore */ }
 }
+
+/**
+ * Evaluates whether the current active session can access a specific dashboard view/route.
+ * If user is a legacy account (30-day grace period), returns true for all views.
+ *
+ * @param {object|null} user - Current user object from getCurrentUser().
+ * @param {string} viewId - View ID (e.g. 'staff', 'settings').
+ * @param {Record<string, string[]>} permissionMap - Map of viewId -> allowed role array.
+ * @returns {boolean}
+ */
+export function canAccessView(user, viewId, permissionMap = {}) {
+    if (isLegacyAccount(user)) return true;
+    const allowed = permissionMap[viewId];
+    if (!allowed || allowed.length === 0) return true;
+    return hasAnyRole(user, allowed);
+}

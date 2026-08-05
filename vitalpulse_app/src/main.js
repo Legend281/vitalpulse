@@ -14,6 +14,7 @@ import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchD
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
 import Chart from 'chart.js/auto';
+import { hasAnyRole, isLegacyAccount, getActiveRoles, canAccessView, setActiveStaffSession } from './roleGating';
 
 // Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
 // https, so this rejects javascript:/data: and other dangerous schemes without breaking
@@ -881,6 +882,34 @@ setTimeout(() => showFallbackError(), 20000);
 
 let hospitalNavigationInitialized = false;
 
+const HOSPITAL_VIEW_PERMISSIONS = {
+    staff: ['hospital_admin'],
+};
+
+export function updateHospitalNavVisibility() {
+    const user = getCurrentUser();
+    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    navIds.forEach(id => {
+        const canAccess = canAccessView(user, id, HOSPITAL_VIEW_PERMISSIONS);
+        const nav = document.getElementById('nav-' + id);
+        if (nav) {
+            if (canAccess) {
+                nav.classList.remove('hidden');
+            } else {
+                nav.classList.add('hidden');
+            }
+        }
+        const mobileBtn = document.querySelector(`.mobile-drawer-btn[data-nav="${id}"]`);
+        if (mobileBtn) {
+            if (canAccess) {
+                mobileBtn.classList.remove('hidden');
+            } else {
+                mobileBtn.classList.add('hidden');
+            }
+        }
+    });
+}
+
 function initHospitalNavigation() {
     if (hospitalNavigationInitialized) return;
 
@@ -908,7 +937,15 @@ function initHospitalNavigation() {
     const activeClass = 'bg-red-50 text-red-700 font-bold shadow-sm';
     const inactiveClass = 'text-slate-500 hover:bg-red-50 hover:text-red-700';
 
+    updateHospitalNavVisibility();
+
     const switchView = (target) => {
+        const currentUser = getCurrentUser();
+        if (!canAccessView(currentUser, target, HOSPITAL_VIEW_PERMISSIONS)) {
+            console.warn(`[Route Guard] Access denied to view '${target}' for active session.`);
+            target = 'dashboard';
+        }
+
         viewIds.forEach(id => {
             const el = document.getElementById('view-' + id);
             if (el) {
@@ -7795,6 +7832,10 @@ function initStaffModalHandlers() {
                 // Update active staff session UI badge
                 const badge = document.getElementById('activeStaffBadge');
                 if (badge) badge.textContent = `Staff: ${res.name}`;
+
+                // Save active staff session in sessionStorage and update nav visibility
+                setActiveStaffSession({ uid: res.staffUid, name: res.name, roles: res.roles });
+                updateHospitalNavVisibility();
 
                 showToast(`Switched active session to ${res.name}!`);
                 window.closeStaffQuickSwitchModal();

@@ -147,3 +147,40 @@ describe('setActiveStaffSession / clearActiveStaffSession', () => {
         expect(hasAnyRole({ roles: ['hospital_admin'] }, ['hospital_admin'])).toBe(true);
     });
 });
+
+describe('canAccessView', () => {
+    const map = {
+        staff: ['hospital_admin'],
+    };
+
+    it('allows hospital_admin to access staff roster', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['hospital_admin'] }, 'staff', map)).toBe(true);
+    });
+
+    it('blocks nurse from accessing staff roster', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['nurse'] }, 'staff', map)).toBe(false);
+    });
+
+    it('blocks reception from accessing staff roster', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['reception'] }, 'staff', map)).toBe(false);
+    });
+
+    it('blocks lab_tech from accessing staff roster', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ roles: ['lab_tech'] }, 'staff', map)).toBe(false);
+    });
+
+    it('allows legacy account (no roles array) to access staff roster under 30-day grace period', () => {
+        const { canAccessView } = require('./roleGating');
+        expect(canAccessView({ role: 'hospital_admin' }, 'staff', map)).toBe(true);
+    });
+
+    it('allows PIN-switched hospital_admin staff session to access staff roster', () => {
+        const { canAccessView, setActiveStaffSession } = require('./roleGating');
+        setActiveStaffSession({ uid: 'admin1', name: 'Admin', roles: ['hospital_admin'] });
+        expect(canAccessView({ roles: ['nurse'] }, 'staff', map)).toBe(true);
+    });
+});
