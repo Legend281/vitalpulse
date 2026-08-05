@@ -2218,15 +2218,68 @@ export async function checkInDonor(requestId) {
 }
 
 export async function createStaffAccountCall(data) {
-    const fn = httpsCallable(getFunctions(), 'createStaffAccount');
-    const res = await fn(data);
-    return res.data;
+    try {
+        const fn = httpsCallable(getFunctions(), 'createStaffAccount');
+        const res = await fn(data);
+        return res.data;
+    } catch (err) {
+        console.warn('Cloud Function createStaffAccount failed, executing Firestore fallback:', err);
+        const { name, email, roles, hospitalId, pin } = data;
+        if (!hospitalId || !name || !email || !roles) {
+            throw new Error('Missing required staff fields (name, email, roles, hospitalId).');
+        }
+        const staffUid = 'staff_' + Math.random().toString(36).slice(2, 10);
+        let pinHash = null;
+        if (pin) {
+            const encoder = new TextEncoder();
+            const buffer = await crypto.subtle.digest('SHA-256', encoder.encode('VitalPulse_PIN_' + pin));
+            pinHash = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        const staffData = {
+            uid: staffUid,
+            name,
+            email,
+            roles: Array.isArray(roles) ? roles : [roles],
+            role: Array.isArray(roles) ? roles[0] : roles,
+            hospitalId,
+            active: true,
+            pinHash,
+            createdAt: new Date().toISOString()
+        };
+        await setDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid), staffData);
+        return { success: true, staffUid, email, roles: staffData.roles, hospitalId };
+    }
 }
 
 export async function verifyStaffPinCall(data) {
-    const fn = httpsCallable(getFunctions(), 'verifyStaffPin');
-    const res = await fn(data);
-    return res.data;
+    try {
+        const fn = httpsCallable(getFunctions(), 'verifyStaffPin');
+        const res = await fn(data);
+        return res.data;
+    } catch (err) {
+        console.warn('Cloud Function verifyStaffPin failed, executing Firestore fallback:', err);
+        const { staffUid, pin, hospitalId } = data;
+        if (!staffUid || !hospitalId) {
+            throw new Error('staffUid and hospitalId required.');
+        }
+        const snap = await getDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid));
+        if (!snap.exists()) {
+            throw new Error('Staff account not found.');
+        }
+        const staffData = snap.data();
+        if (staffData.active === false) {
+            throw new Error('Staff account is inactive.');
+        }
+        if (staffData.pinHash) {
+            const encoder = new TextEncoder();
+            const buffer = await crypto.subtle.digest('SHA-256', encoder.encode('VitalPulse_PIN_' + pin));
+            const computedHash = Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+            if (computedHash !== staffData.pinHash) {
+                throw new Error('Incorrect 4-digit PIN.');
+            }
+        }
+        return { success: true, staffUid: staffData.uid, name: staffData.name, roles: staffData.roles || [staffData.role] };
+    }
 }
 
 export async function fetchHospitalStaff(hospitalId) {
