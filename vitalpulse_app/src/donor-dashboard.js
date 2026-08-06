@@ -251,15 +251,12 @@ function renderDonorEngagementStats(engagement) {
   const statRank = document.getElementById('statRank');
   if (statRank) statRank.textContent = engagement.tier;
 
-  const lastDonation = engagement.donations
-    .filter(d => d.status === 'completed')
-    .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
-  const last = lastDonation[0];
+  const currentUser = getCurrentUser();
+  const effectiveLastDate = resolveLastDonationDate(currentUser, engagement);
   const lastDonationText = document.getElementById('statLastDonation');
   if (lastDonationText) {
-    const lastDate = last?.completedAt || last?.preferredDate;
-    lastDonationText.textContent = locked ? '—' : (lastDate
-      ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    lastDonationText.textContent = locked ? '—' : (effectiveLastDate
+      ? new Date(effectiveLastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : 'Never');
   }
 
@@ -1242,6 +1239,44 @@ function getTimeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+export function resolveLastDonationDate(currentUser, engagement) {
+  const dates = [];
+
+  const parseDate = (val) => {
+    if (!val) return null;
+    if (val.toDate && typeof val.toDate === 'function') return val.toDate();
+    if (typeof val === 'number') return new Date(val);
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const addVal = (val) => {
+    const d = parseDate(val);
+    if (d) dates.push(d);
+  };
+
+  addVal(currentUser?.lastDonationDate);
+  addVal(currentUser?.lastDonatedAt);
+
+  if (engagement?.donations) {
+    const completed = engagement.donations
+      .filter(d => d.status === 'completed')
+      .sort((a, b) => {
+        const da = parseDate(b.completedAt || b.preferredDate || 0);
+        const db = parseDate(a.completedAt || a.preferredDate || 0);
+        return (da?.getTime() || 0) - (db?.getTime() || 0);
+      });
+    if (completed[0]) {
+      addVal(completed[0].completedAt || completed[0].preferredDate);
+    }
+  }
+
+  if (dates.length === 0) return null;
+
+  dates.sort((a, b) => b.getTime() - a.getTime());
+  return dates[0].toISOString();
+}
+
 function getEligibilityInfo(lastDonationDate) {
   if (!lastDonationDate) return { eligible: true, daysUntil: 0, label: 'Eligible', color: 'text-success', barPct: 100 };
   const last = new Date(lastDonationDate);
@@ -1258,20 +1293,23 @@ function getEligibilityInfo(lastDonationDate) {
 }
 
 // --- Eligibility gate (56-day rule) ---------------------------------------------------------
-// Blocks scheduling/accepting a donation when the donor donated too recently. Uses the cached
-// eligibility (default: allow, so a not-yet-loaded dashboard or a transient read failure never
-// wrongly blocks a legitimate donor — the hospital check-in + server guard are the backstops).
 function isDonorEligibleNow() {
+  const currentUser = getCurrentUser();
+  if (!_donorEligibilityCache && currentUser) {
+    const effectiveLastDate = resolveLastDonationDate(currentUser, null);
+    _donorEligibilityCache = getEligibilityInfo(effectiveLastDate);
+  }
   return !_donorEligibilityCache || _donorEligibilityCache.eligible !== false;
 }
+
 async function warnIfIneligible() {
   if (isDonorEligibleNow()) return true;
   const d = _donorEligibilityCache?.daysUntil || 0;
   await window.vpAlert({
     type: 'warning',
-    title: 'Not eligible to donate yet',
-    message: `For your safety, donors must wait 56 days between whole-blood donations. You can donate again in ${d} day${d === 1 ? '' : 's'}.`,
-    confirmText: 'Got it',
+    title: 'WHO Medical Deferral Active',
+    message: `For donor health & safety, WHO guidelines require a minimum wait of 56 days between whole blood donations. You will be eligible to donate again in ${d} day${d === 1 ? '' : 's'}.`,
+    confirmText: 'Understood',
   });
   return false;
 }
@@ -1883,13 +1921,11 @@ export async function loadDonorDashboard() {
 
     // Eligibility countdown
     const eligEl = document.getElementById('donorEligibilityBar');
-    if (eligEl && engagement) {
-      const sorted = engagement.donations
-        .filter(d => d.status === 'completed')
-        .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
-      const lastDonationDate = sorted[0]?.completedAt || sorted[0]?.preferredDate || null;
-      const elig = getEligibilityInfo(lastDonationDate);
-      _donorEligibilityCache = elig; // cache for the schedule/accept eligibility gate
+    const effectiveLastDate = resolveLastDonationDate(currentUser, engagement);
+    const elig = getEligibilityInfo(effectiveLastDate);
+    _donorEligibilityCache = elig; // cache for the schedule/accept eligibility gate
+
+    if (eligEl) {
       eligEl.innerHTML = `
         <div class="flex items-center justify-between mb-3">
           <span class="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Eligibility Status</span>
@@ -1927,7 +1963,7 @@ export async function loadDonorDashboard() {
         { label: 'Profile Completed', done: !!(currentUser.name && currentUser.bloodType && currentUser.bloodType !== 'Unknown' && currentUser.city) },
         { label: 'Availability Updated', done: !!currentUser.lastAvailabilityScreeningAt },
         { label: 'Eligible to Donate', done: elig.eligible },
-        { label: 'Make Your First Donation', done: engagement.donationCount > 0 },
+        { label: 'Make Your First Donation', done: (engagement?.donationCount || 0) > 0 },
       ];
       renderDonorJourneyChecklist(_donorJourneySteps);
     }
