@@ -136,13 +136,56 @@ service cloud.firestore {
     // NEW, KYC-ONLY collection, approved 2026-08-01 (donor UI/VitalPulse_Plan_Tracker.md
     // Stream A4) — does NOT replace or duplicate users/{uid}; donor profile data (blood
     // type, points/tier, badges, notification prefs) stays there exactly as before.
-    // kycStatus is set ONLY by functions/src/kyc.ts (onDonorSignUp / submitKYC /
-    // verifyDonor / rejectDonorKyc, all via the Admin SDK, which bypasses these rules
-    // entirely) — never client-writable, mirroring how role/hospitalId/suspended work.
+    //
+    // SPARK PLAN MIGRATION (vitalpulse_app/docs/SPARK_PLAN_MIGRATION.md §6, Security Lead
+    // decision 2026-08-05): kycStatus/kycRejectionReason used to be Cloud-Function-only
+    // (functions/src/kyc.ts, via the Admin SDK, bypassing these rules entirely). Now a
+    // direct client write, gated below. THIS IS A DELIBERATE, DOCUMENTED SECURITY
+    // REGRESSION (plan §4, risk R1) — the guarantee "only a real admin approves a donor"
+    // now depends entirely on these rules being airtight, with no server-side backstop.
+    // Every clause below exists specifically to close the self-approval gap; do not loosen
+    // unchangedExcept()'s field lists without re-reading R1 and R4 first.
     match /donors/{uid} {
       allow get: if (isDonor() && request.auth.uid == uid) || isSystemAdmin();
       allow list: if isSystemAdmin(); // admin review queue only — no donor enumeration
-      allow write: if false; // Cloud Functions only
+
+      // Donor bootstraps their own record once, right after signup (replaces
+      // onDonorSignUp). Fixed initial shape only — cannot create themselves
+      // pre-verified or with evidence already attached.
+      allow create: if isDonor() && request.auth.uid == uid
+        && request.resource.data.kycStatus == 'pending'
+        && request.resource.data.kycDocRef == null
+        && request.resource.data.kycDocBackRef == null
+        && request.resource.data.livenessSelfieRef == null
+        && request.resource.data.kycRejectionReason == null;
+
+      // Donor uploads evidence (replaces submitKYC/submitLivenessSelfie) — only while
+      // still pending, and can NEVER touch kycStatus/kycRejectionReason themselves. This
+      // is the one rule standing between "donor uploads a document" and "donor approves
+      // themselves" — it must stay exactly this narrow.
+      //
+      // unchangedExcept() alone isn't airtight here: it's built on diff().affectedKeys(),
+      // which only flags fields whose VALUE actually changes — a caller "updating"
+      // kycRejectionReason to the same value it already had (e.g. null -> null while
+      // still pending) is invisible to that diff, so the field-lock silently no-ops
+      // rather than blocking it (caught by this rules-test suite, not hypothetical).
+      // Harmless in that exact no-op shape, but this guard is R1's core defense against
+      // self-approval and shouldn't depend on diff-triviality to stay correct — so
+      // kycStatus/kycRejectionReason are also asserted unchanged explicitly, not just
+      // left out of the allowed-keys list.
+      allow update: if isDonor() && request.auth.uid == uid
+        && resource.data.kycStatus == 'pending'
+        && request.resource.data.kycStatus == resource.data.kycStatus
+        && request.resource.data.kycRejectionReason == resource.data.kycRejectionReason
+        && unchangedExcept(['kycDocType', 'kycDocRef', 'kycDocBackRef', 'livenessSelfieRef', 'kycSubmittedAt', 'livenessSubmittedAt']);
+
+      // system_admin decides (replaces verifyDonor/rejectDonorKyc). Porting R4's evidence
+      // gate directly into the rule: cannot set kycStatus == 'verified' unless both the
+      // identity document and the liveness selfie are actually on file.
+      allow update: if isSystemAdmin()
+        && unchangedExcept(['kycStatus', 'kycRejectionReason'])
+        && (request.resource.data.kycStatus != 'verified'
+            || (resource.data.kycDocRef != null && resource.data.livenessSelfieRef != null));
     }
 
     // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------

@@ -19,15 +19,25 @@ service firebase.storage {
     function isSystemAdmin() {
       return signedIn() && request.auth.token.get('role', null) == 'system_admin';
     }
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
 
     // ---------- KYC identity documents ----------
-    // Written ONLY by submitKYC (functions/src/kyc.ts) via the Admin SDK, which bypasses
-    // Storage rules entirely — no client, including the owning donor, ever writes here
-    // directly (C3.6: "never direct client Storage write"). Reads are system_admin-only,
-    // for the KYC review queue. No public access, ever.
+    // SPARK PLAN MIGRATION (vitalpulse_app/docs/SPARK_PLAN_MIGRATION.md §7, Security Lead
+    // decision 2026-08-05): previously written ONLY by submitKYC/submitLivenessSelfie
+    // (functions/src/kyc.ts) via the Admin SDK — no client ever wrote here directly (C3.6).
+    // Now the owning donor uploads directly. DELIBERATE, DOCUMENTED REGRESSION (plan §4,
+    // risks R2/R3): the old Cloud Function decoded and measured the actual file bytes
+    // server-side and hard-locked liveness selfies to image/jpeg specifically; rules can
+    // only check declared size/content-type metadata, not inspect real file contents, and
+    // this single rule now covers both identity docs (jpeg/png/pdf) and liveness selfies
+    // (should be jpeg-only) since they share one path pattern. Reads stay owner-or-admin.
     match /kyc/{uid}/{fileName} {
-      allow read: if isSystemAdmin();
-      allow write: if false;
+      allow read: if isOwner(uid) || isSystemAdmin();
+      allow write: if isOwner(uid)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/jpeg|image/png|application/pdf');
     }
 
     // ---------- Deny by default ----------

@@ -6,6 +6,10 @@
   "scripts": {
     "bootstrap-admin": "tsx bootstrap-admin.ts",
     "backfill-hospital-ids": "tsx backfill-hospital-ids.ts",
+    "grant-role": "tsx grant-role.ts",
+    "revoke-role": "tsx revoke-role.ts",
+    "suspend-user": "tsx suspend-user.ts",
+    "reactivate-user": "tsx reactivate-user.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
