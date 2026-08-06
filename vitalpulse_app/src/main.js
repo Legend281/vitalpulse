@@ -17,6 +17,7 @@ import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from '.
 import Chart from 'chart.js/auto';
 import { initReceptionDashboard, loadReceptionOverview } from './dashboards/reception/receptionDashboard.js';
 import { initNurseDashboard, loadNurseOverview } from './dashboards/nurse/nurseDashboard.js';
+import { initLabDashboard, loadLabPipeline } from './dashboards/lab/labDashboard.js';
 
 // Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
 // https, so this rejects javascript:/data: and other dangerous schemes without breaking
@@ -1040,34 +1041,51 @@ export function updateHospitalNavVisibility() {
     const nurseHero = document.getElementById('nurseControlHero');
     const labTechHero = document.getElementById('labTechControlHero');
 
+    const labSec = document.getElementById('labTechDashboardSection');
+
     if (isReception && !isAdmin) {
         if (receptionSec) receptionSec.classList.remove('hidden');
         if (nurseSec) nurseSec.classList.add('hidden');
+        if (labSec) labSec.classList.add('hidden');
         if (adminSec) adminSec.classList.add('hidden');
         initReceptionDashboard();
         loadReceptionOverview();
     } else if (isNurse && !isAdmin) {
         if (nurseSec) nurseSec.classList.remove('hidden');
         if (receptionSec) receptionSec.classList.add('hidden');
+        if (labSec) labSec.classList.add('hidden');
         if (adminSec) adminSec.classList.add('hidden');
         initNurseDashboard();
         loadNurseOverview();
+    } else if (isLabTech && !isAdmin) {
+        if (labSec) labSec.classList.remove('hidden');
+        if (nurseSec) nurseSec.classList.add('hidden');
+        if (receptionSec) receptionSec.classList.add('hidden');
+        if (adminSec) adminSec.classList.add('hidden');
+        initLabDashboard();
+        loadLabPipeline();
     } else if (isNurse && isAdmin) {
         if (nurseSec) nurseSec.classList.remove('hidden');
         if (adminSec) adminSec.classList.remove('hidden');
         initNurseDashboard();
         loadNurseOverview();
     } else if (isReception && isAdmin) {
-        // Admin user testing reception
         if (receptionSec) receptionSec.classList.remove('hidden');
         if (nurseSec) nurseSec.classList.add('hidden');
         if (adminSec) adminSec.classList.remove('hidden');
         initReceptionDashboard();
         loadReceptionOverview();
+    } else if (isLabTech && isAdmin) {
+        if (labSec) labSec.classList.remove('hidden');
+        if (adminSec) adminSec.classList.remove('hidden');
+        initLabDashboard();
+        loadLabPipeline();
     } else {
         if (receptionSec) receptionSec.classList.add('hidden');
         if (nurseSec) nurseSec.classList.add('hidden');
+        if (labSec) labSec.classList.add('hidden');
         if (adminSec) adminSec.classList.remove('hidden');
+        initLabDashboard();
     }
 
     const donorReactionLogSec = document.getElementById('donorReactionLogSection');
