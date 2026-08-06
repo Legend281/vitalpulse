@@ -527,6 +527,99 @@
           </div>
         </div>
       </div>
+
+      <!-- LAB TECH DASHBOARD SECTION (Visible ONLY for Lab Tech role) -->
+      <div id="labTechDashboardSection" class="hidden space-y-6">
+        <!-- LAB TECH DIAGNOSTICS CONTROL HERO -->
+        <div id="labTechControlHero" class="bg-gradient-to-r from-indigo-900 via-slate-950 to-indigo-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
+          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex items-start lg:items-center gap-4">
+              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
+                <span class="material-symbols-outlined text-3xl text-indigo-300" style="font-variation-settings:'FILL' 1">science</span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+                    Laboratory Diagnostics Station
+                  </span>
+                </div>
+                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">TTI Screening & Tested Stock Control</h3>
+                <p class="text-xs text-indigo-100 font-medium mt-0.5">Run viral marker screening (HIV, Hep B/C, Syphilis), clear quarantine units, and log refrigeration cold-chain</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <button onclick="window.openLabTestModal('', '', 'Whole Blood', 1)" class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+                <span class="material-symbols-outlined text-sm">science</span>
+                + Record Lab Screening
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- LAB TECH CLINICAL KPIS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Pending TTI Screening</p>
+              <p class="text-3xl font-black text-amber-600 mt-1 tracking-tight" id="labPendingCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">science</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Units Cleared</p>
+              <p class="text-3xl font-black text-emerald-600 mt-1 tracking-tight" id="labClearedCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">verified</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Rejected / Biohazard</p>
+              <p class="text-3xl font-black text-rose-600 mt-1 tracking-tight" id="labRejectedCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">do_not_disturb_on</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total Batches</p>
+              <p class="text-3xl font-black text-indigo-600 mt-1 tracking-tight" id="labTotalBatchesCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">inventory_2</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- QUARANTINE & TESTING LAB QUEUE TABLE -->
+        <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">biotech</span>
+              </div>
+              <div>
+                <h3 class="font-black text-base text-slate-900 tracking-tight">Quarantine TTI Screening Queue</h3>
+                <p class="text-[11px] text-slate-400 font-semibold">Collected blood units awaiting mandatory viral diagnostics before entering issuable inventory</p>
+              </div>
+            </div>
+            <span class="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-black uppercase tracking-wider">Quarantine Room</span>
+          </div>
+          <div id="labPendingTestsList" class="p-6 space-y-3">
+            <div class="flex items-center justify-center py-10 text-slate-400">
+              <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+              <span class="text-sm font-medium">Loading quarantine queue...</span>
+            </div>
+          </div>
+        </div>
+      </div>
       <div id="adminDashboardSection" class="space-y-6">
         <!-- NURSE PATIENT CARE CONTROL HERO -->
         <div id="nurseControlHero" class="hidden bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50 relative">
