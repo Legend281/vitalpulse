@@ -801,7 +801,7 @@ export function initDonorNavigation() {
   initDonorRequestFilters();
 
   // Restore view from URL hash on reload
-  const donorViews = ['dashboard', 'requests', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
+  const donorViews = ['dashboard', 'requests', 'centers', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
   const hashView = window.location.hash.replace('#', '');
   if (hashView && donorViews.includes(hashView)) switchDonorView(hashView);
 

@@ -1377,13 +1377,40 @@ function initHospitalNavigation() {
         dashInvBtn.addEventListener('click', () => switchView('inventory'));
     }
 
-    // Restore view from URL hash on reload
-    const hospHash = window.location.hash.replace('#', '');
-    if (hospHash && navIds.includes(hospHash)) switchView(hospHash);
+    // Centralized Permission Engine: Re-evaluates permissions and views whenever role or hash changes
+    window.enforceCurrentViewPermission = function(explicitTarget = null) {
+        hydrateSessionIdentity();
+        updateHospitalNavVisibility();
+        const currentUser = getCurrentUser();
+
+        let targetView = explicitTarget || window.location.hash.replace('#', '') || 'dashboard';
+        if (!viewIds.includes(targetView)) targetView = 'dashboard';
+
+        if (!canAccessView(currentUser, targetView, HOSPITAL_VIEW_PERMISSIONS)) {
+            console.warn(`[Permission Engine] Access denied to view '${targetView}' for active session.`);
+            const fallbackView = getFirstAccessibleView(currentUser, viewIds, HOSPITAL_VIEW_PERMISSIONS);
+            const activeRoles = getActiveRoles(currentUser);
+
+            showToast(`Access Denied: You do not have permission to view ${targetView.replace('-', ' ')}`, 'error');
+
+            logAuditTrail('UNAUTHORIZED_VIEW_ATTEMPT', `Unauthorized attempt to access view '${targetView}' by session with roles [${activeRoles.join(', ')}]`, {
+                attemptedView: targetView,
+                fallbackView,
+                activeRoles,
+                userEmail: currentUser?.email || 'sub_account'
+            });
+
+            targetView = fallbackView;
+        }
+
+        switchView(targetView);
+    };
+
+    // Restore view from URL hash on reload with full permission check
+    window.enforceCurrentViewPermission();
 
     window.addEventListener('hashchange', () => {
-        const v = window.location.hash.replace('#', '');
-        if (v && navIds.includes(v)) switchView(v);
+        window.enforceCurrentViewPermission();
     });
 
     hospitalNavigationInitialized = true;
@@ -2519,21 +2546,16 @@ window.rejectBookingAction = async (id, bloodType) => {
 };
 
 window.completeBookingAction = async (id) => {
-    if (!confirm('Mark this donor as having completed their walk-in donation? This records the unit(s) they booked and sends it to lab quarantine.')) return;
     try {
         const currentUser = getCurrentUser();
         const hospitalName = currentUser?.name || 'General Hospital';
-        // Re-fetch to get full donor/blood-type context — the button only carries the booking ID.
         const bookings = await fetchDonationRequestsForHospital(hospitalName);
         const booking = bookings.find(b => b.id === id);
         if (!booking) throw new Error('Booking not found');
-        await completeDonationRequest(id, booking, { hospital: hospitalName });
-        showToast('Donation recorded — blood is now in lab quarantine.');
-        loadScheduledBookings();
-        loadHospitalDashboard();
+        window.openDonationIntakeModal(id, booking.donorId || booking.uid, booking.bloodType || 'O+', booking.donorName || booking.name || 'Donor', booking.donorOnFileType || booking.bloodType, false);
     } catch (err) {
-        console.error('Failed to complete booking:', err);
-        alert(err.message || 'Failed to complete booking.');
+        console.error('Failed to open intake modal for booking:', err);
+        alert(err.message || 'Failed to open intake modal.');
     }
 };
 
@@ -8149,10 +8171,15 @@ function initStaffModalHandlers() {
                 const badge = document.getElementById('activeStaffBadge');
                 if (badge) badge.textContent = `Staff: ${res.name}`;
 
-                // Save active staff session in sessionStorage, hydrate header, and update nav visibility
+                // Save active staff session in sessionStorage, hydrate header, nav visibility & enforce view permission
                 setActiveStaffSession({ uid: res.staffUid, name: res.name, roles: res.roles });
-                hydrateSessionIdentity();
-                updateHospitalNavVisibility();
+                if (typeof window.enforceCurrentViewPermission === 'function') {
+                    window.enforceCurrentViewPermission();
+                } else {
+                    hydrateSessionIdentity();
+                    updateHospitalNavVisibility();
+                    loadHospitalDashboard();
+                }
 
                 showToast(`Switched active session to ${res.name}!`);
                 window.closeStaffQuickSwitchModal();
@@ -8174,8 +8201,13 @@ function initStaffModalHandlers() {
     if (btnEndSession) {
         btnEndSession.addEventListener('click', () => {
             clearActiveStaffSession();
-            hydrateSessionIdentity();
-            updateHospitalNavVisibility();
+            if (typeof window.enforceCurrentViewPermission === 'function') {
+                window.enforceCurrentViewPermission();
+            } else {
+                hydrateSessionIdentity();
+                updateHospitalNavVisibility();
+                loadHospitalDashboard();
+            }
             showToast('Returned to Hospital Admin session');
             window.closeStaffQuickSwitchModal();
         });
