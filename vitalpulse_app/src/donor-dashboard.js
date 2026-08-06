@@ -641,6 +641,30 @@ export function initDonorNavigation() {
     });
   });
 
+  // Explicit handlers for navbar & tile center/reminder buttons
+  ['btnNavCenters', 'btnNavCentersMobile', 'btnQuickFindCenters'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', () => switchDonorView('centers'));
+  });
+  document.getElementById('nav-care-reminders')?.addEventListener('click', () => switchDonorView('care-reminders'));
+  document.getElementById('nav-certificates')?.addEventListener('click', () => switchDonorView('certificates'));
+  document.getElementById('nav-mythhub')?.addEventListener('click', () => switchDonorView('mythhub'));
+
+  // Donation booking modal cancel button
+  document.getElementById('donationCancelBtn')?.addEventListener('click', () => {
+    const modal = document.getElementById('donationBookingModal');
+    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+  });
+
+  // GPS Location button
+  document.getElementById('btnEnableGpsLocation')?.addEventListener('click', async () => {
+    try {
+      const loc = await captureUserLocation();
+      showToast(loc ? 'Location captured successfully' : 'Using default location');
+    } catch (e) {
+      console.warn('GPS location failed:', e);
+    }
+  });
+
   // Notification bell: show notification panel (uses cached data from 30s poll for instant open)
   const notifBtn = document.getElementById('btnDonorNotifications');
   if (notifBtn) {
