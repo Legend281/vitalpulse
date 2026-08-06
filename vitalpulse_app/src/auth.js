@@ -12,6 +12,7 @@ import {
 import { doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from './firebase';
+import { authenticateStaffDirectLoginCall, formatStaffAuthPassword, tryAutoHealStaffAccount } from './db';
 
 const checkDuplicateCniFn = httpsCallable(getFunctions(), 'checkDuplicateCni');
 
@@ -258,14 +259,60 @@ export async function setLoginPersistence(remember) {
 }
 
 export async function loginUser(email, password) {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    console.log('[Auth Debug] Starting loginUser for:', cleanEmail);
+    let userCredential;
+
+    // Attempt 1: Raw password
     try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        console.log('[Auth Debug] Attempt 1: signInWithEmailAndPassword (raw password)');
+        userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        console.log('[Auth Debug] Attempt 1 SUCCESS');
+    } catch (primaryErr) {
+        console.warn('[Auth Debug] Attempt 1 failed:', primaryErr?.code || primaryErr?.message);
+
+        // Attempt 2: Padded staff PIN password ('VP_PIN_' + password)
+        try {
+            const padded = formatStaffAuthPassword(password);
+            console.log('[Auth Debug] Attempt 2: signInWithEmailAndPassword with padded PIN:', padded);
+            userCredential = await signInWithEmailAndPassword(auth, cleanEmail, padded);
+            console.log('[Auth Debug] Attempt 2 SUCCESS');
+        } catch (secondaryErr) {
+            console.warn('[Auth Debug] Attempt 2 failed:', secondaryErr?.code || secondaryErr?.message);
+
+            // Attempt 3: Auto-heal staff account from local registry
+            console.log('[Auth Debug] Attempt 3: Invoking tryAutoHealStaffAccount...');
+            let healed = false;
+            try {
+                healed = await tryAutoHealStaffAccount(cleanEmail, password);
+                console.log('[Auth Debug] tryAutoHealStaffAccount returned:', healed);
+            } catch (healErr) {
+                console.warn('[Auth Debug] tryAutoHealStaffAccount error:', healErr?.message || healErr);
+            }
+
+            if (healed) {
+                try {
+                    const padded = formatStaffAuthPassword(password);
+                    console.log('[Auth Debug] Attempt 4 (post-heal): signInWithEmailAndPassword with:', padded);
+                    userCredential = await signInWithEmailAndPassword(auth, cleanEmail, padded);
+                    console.log('[Auth Debug] Attempt 4 SUCCESS');
+                } catch (retryErr) {
+                    console.error('[Auth Debug] Attempt 4 failed after heal:', retryErr);
+                    throw primaryErr;
+                }
+            } else {
+                console.error('[Auth Debug] All login attempts failed. Re-throwing primary error:', primaryErr);
+                throw primaryErr;
+            }
+        }
+    }
+    try {
         const user = userCredential.user;
 
         let role = 'donor';
         let userData = {};
 
-        // Gracefully handle Firestore permission errors
+        // Gracefully handle Firestore permission errors & self-provision staff user docs
         try {
             const userDocRef = doc(db, 'users', user.uid);
             const userDoc = await getDoc(userDocRef);
@@ -273,6 +320,38 @@ export async function loginUser(email, password) {
             if (userDoc.exists()) {
                 userData = userDoc.data();
                 role = userData.role || role;
+            } else {
+                // User doc does not exist — check if this authenticated user matches a staff account
+                const staffRegRaw = localStorage.getItem('vitalpulse_staff_registry');
+                let staffRecord = null;
+                if (staffRegRaw) {
+                    try {
+                        const reg = JSON.parse(staffRegRaw);
+                        staffRecord = reg[cleanEmail];
+                    } catch (e) { /* ignore */ }
+                }
+
+                if (staffRecord) {
+                    console.log('[Auth Debug] Resolving staff user profile for:', cleanEmail, staffRecord);
+                    userData = {
+                        uid: user.uid,
+                        email: cleanEmail,
+                        name: staffRecord.name || cleanEmail.split('@')[0],
+                        role: staffRecord.roles ? staffRecord.roles[0] : (staffRecord.role || 'reception'),
+                        roles: staffRecord.roles || [staffRecord.role || 'reception'],
+                        hospitalId: staffRecord.hospitalId,
+                        isStaffAccount: true,
+                        createdAt: new Date().toISOString()
+                    };
+                    role = userData.role;
+                    // Self-provision users/{uid} document now that client is authenticated as user.uid
+                    try {
+                        await setDoc(userDocRef, userData);
+                        console.log('[Auth Debug] Successfully self-provisioned users/' + user.uid + ' profile doc');
+                    } catch (writeErr) {
+                        console.warn('[Auth Debug] Failed to self-provision users doc:', writeErr);
+                    }
+                }
             }
         } catch (firestoreError) {
             console.warn("Firestore read failed (rules may be locked), defaulting to donor role:", firestoreError);
@@ -293,17 +372,31 @@ export async function loginUser(email, password) {
         const fullUser = {
             uid: user.uid,
             email: user.email,
-            name: user.displayName || email.split('@')[0],
+            name: user.displayName || userData.name || cleanEmail.split('@')[0],
             ...userData,
             // Deliberately placed AFTER the ...userData spread so the token claim always
             // wins if a field ever collides — role here overrides userData.role.
-            role: claims.role || role,
+            role: claims.role || userData.role || role,
             // Multi-role array from custom claims (set by grantRole/createStaffAccount).
             // Frontend roleGating.js reads this for hasAnyRole evaluation.
-            roles: Array.isArray(claims.roles) ? claims.roles : undefined,
+            roles: Array.isArray(claims.roles) ? claims.roles : (Array.isArray(userData.roles) ? userData.roles : undefined),
             kycStatus: claims.kycStatus || null,
             suspended: claims.suspended === true,
         };
+
+        if (userData.isStaffAccount || userData.hospitalId || ['nurse', 'reception', 'receptionist', 'lab_tech'].includes(fullUser.role)) {
+            const staffRoles = fullUser.roles || [fullUser.role || 'reception'];
+            fullUser.isStaffDirectLogin = true;
+            try {
+                sessionStorage.setItem('vitalpulse_active_staff', JSON.stringify({
+                    uid: user.uid,
+                    name: fullUser.name,
+                    roles: staffRoles,
+                    switchedAt: new Date().toISOString(),
+                    isDirectLogin: true,
+                }));
+            } catch (e) { /* ignore */ }
+        }
         // Strip sensitive PII from localStorage
         delete fullUser.phone;
         delete fullUser.city;
@@ -319,6 +412,34 @@ export async function loginUser(email, password) {
         }
         return fullUser;
     } catch (error) {
+        try {
+            const staffRes = await authenticateStaffDirectLoginCall({ email, pin: password });
+            if (staffRes && staffRes.success) {
+                const staffUser = {
+                    uid: staffRes.staffUid,
+                    email: staffRes.email,
+                    name: staffRes.name,
+                    role: staffRes.roles[0],
+                    roles: staffRes.roles,
+                    hospitalId: staffRes.hospitalId,
+                    isStaffDirectLogin: true,
+                };
+                localStorage.setItem('vitalpulse_user', JSON.stringify(staffUser));
+                sessionStorage.setItem('vitalpulse_active_staff', JSON.stringify({
+                    uid: staffRes.staffUid,
+                    name: staffRes.name,
+                    roles: staffRes.roles,
+                    switchedAt: new Date().toISOString(),
+                    isDirectLogin: true,
+                }));
+                return staffUser;
+            }
+        } catch (staffErr) {
+            console.warn('Staff login attempt result:', staffErr?.message);
+            if (staffErr?.message && !staffErr.message.includes('No staff account found')) {
+                throw staffErr;
+            }
+        }
         console.error("Login error:", error);
         throw error;
     }

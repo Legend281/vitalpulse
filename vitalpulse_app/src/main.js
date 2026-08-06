@@ -14,7 +14,7 @@ import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchD
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
 import Chart from 'chart.js/auto';
-import { hasAnyRole, isLegacyAccount, getActiveRoles, canAccessView, setActiveStaffSession } from './roleGating';
+import { hasAnyRole, isLegacyAccount, getActiveRoles, canAccessView, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession } from './roleGating';
 
 // Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
 // https, so this rejects javascript:/data: and other dangerous schemes without breaking
@@ -242,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // not built yet, so both land on donor.html for now; Stream D reads the
                 // same kycStatus claim live once it exists.
                 if (user.role === 'system_admin' || user.role === 'admin' || user.role === 'nbtp_viewer') window.location.href = '/admin.html';
-                else if ((user.role && user.role.startsWith('hospital')) || user.role === 'lab_tech') window.location.href = '/hospital.html';
+                else if ((user.role && user.role.startsWith('hospital')) || user.role === 'lab_tech' || user.role === 'nurse' || user.role === 'reception' || user.role === 'receptionist' || user.isStaffDirectLogin || user.hospitalId) window.location.href = '/hospital.html';
                 else window.location.href = '/donor.html';
 
             } catch (error) {
@@ -685,6 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
     logoutBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
+            clearActiveStaffSession();
             logoutUser();
         });
     });
@@ -889,12 +890,62 @@ const HOSPITAL_VIEW_PERMISSIONS = {
     forecasting: ['hospital_admin'],
     mythbusting: ['hospital_admin'],
     certificates: ['hospital_admin'],
-    // Phase 3 Moderate Pages
+    inventory: ['nurse', 'lab_tech', 'hospital_admin'],
     lab: ['lab_tech', 'hospital_admin'],
     requests: ['nurse', 'hospital_admin'],
     hemovigilance: ['nurse', 'lab_tech', 'hospital_admin'],
     donors: ['reception', 'nurse', 'hospital_admin'],
 };
+
+export function hydrateSessionIdentity() {
+    const currentUser = getCurrentUser();
+    const staffSession = getActiveStaffSession();
+
+    const hHeaderName = document.getElementById('hospitalHeaderName');
+    const hHeaderRole = document.getElementById('hospitalHeaderRole');
+    const hHeaderRoleSep = document.getElementById('hospitalHeaderRoleSeparator');
+    const activeBadge = document.getElementById('activeStaffBadge');
+    const dashGreeting = document.getElementById('dashHospitalGreeting');
+    const endStaffWrapper = document.getElementById('wrapperEndStaffSession');
+
+    const quickSwitchBtn = document.getElementById('btnStaffQuickSwitch');
+    const isDirectStaffLogin = currentUser?.isStaffDirectLogin === true || staffSession?.isDirectLogin === true;
+
+    if (quickSwitchBtn) {
+        if (isDirectStaffLogin) {
+            quickSwitchBtn.classList.add('hidden');
+        } else {
+            quickSwitchBtn.classList.remove('hidden');
+        }
+    }
+
+    if (staffSession) {
+        const staffName = staffSession.name || 'Staff Member';
+        const roleLabel = (staffSession.roles || []).map(r => r.replace('_', ' ')).join(', ').toUpperCase() || 'STAFF';
+        const firstName = staffName.split(' ')[0];
+
+        if (hHeaderName) hHeaderName.textContent = staffName;
+        if (hHeaderRole) {
+            hHeaderRole.textContent = roleLabel;
+            hHeaderRole.classList.remove('hidden');
+        }
+        if (hHeaderRoleSep) hHeaderRoleSep.classList.remove('hidden');
+        if (activeBadge) activeBadge.textContent = `Staff: ${firstName}`;
+        if (dashGreeting) dashGreeting.textContent = isDirectStaffLogin ? staffName : `${firstName} (${roleLabel})`;
+        if (endStaffWrapper) endStaffWrapper.classList.remove('hidden');
+    } else {
+        const hospName = currentUser?.name || 'General Hospital';
+        if (hHeaderName) hHeaderName.textContent = hospName;
+        if (hHeaderRole) {
+            hHeaderRole.textContent = 'HOSPITAL ADMIN';
+            hHeaderRole.classList.remove('hidden');
+        }
+        if (hHeaderRoleSep) hHeaderRoleSep.classList.remove('hidden');
+        if (activeBadge) activeBadge.textContent = 'Admin Session';
+        if (dashGreeting) dashGreeting.textContent = hospName;
+        if (endStaffWrapper) endStaffWrapper.classList.add('hidden');
+    }
+}
 
 export function updateHospitalNavVisibility() {
     const user = getCurrentUser();
@@ -931,6 +982,68 @@ export function updateHospitalNavVisibility() {
             }
         }
     });
+
+    // Urgent Emergency Request Card (Hide completely for reception and lab_tech)
+    const urgentBanner = document.getElementById('dashUrgentBanner');
+    if (urgentBanner) {
+        if (canRequestEmergency) {
+            urgentBanner.classList.remove('hidden');
+        } else {
+            urgentBanner.classList.add('hidden');
+        }
+    }
+
+    // Inventory Tip Card (Hide for reception since reception cannot access inventory)
+    const inventoryTip = document.getElementById('dashInventoryTip');
+    if (inventoryTip) {
+        const canAccessInventory = canAccessView(user, 'inventory', HOSPITAL_VIEW_PERMISSIONS);
+        if (canAccessInventory) {
+            inventoryTip.classList.remove('hidden');
+        } else {
+            inventoryTip.classList.add('hidden');
+        }
+    }
+
+    // Phase 3 Tools section header toggle (hide if all phase 3 items are hidden)
+    const phase3Ids = ['hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    const hasAnyPhase3 = phase3Ids.some(id => canAccessView(user, id, HOSPITAL_VIEW_PERMISSIONS));
+    ['hdrPhase3Desktop', 'hdrPhase3Mobile'].forEach(hdrId => {
+        const hdr = document.getElementById(hdrId);
+        if (hdr) {
+            if (hasAnyPhase3) {
+                hdr.classList.remove('hidden');
+            } else {
+                hdr.classList.add('hidden');
+            }
+        }
+    });
+
+    // Sub-account Dashboard Control Heroes
+    const staffSession = getActiveStaffSession();
+    const isStaffSessionActive = !!staffSession;
+    const activeRoles = staffSession?.roles || (user?.roles ? user.roles : [user?.role || 'hospital_admin']);
+
+    const isReception = activeRoles.includes('reception');
+    const isNurse = activeRoles.includes('nurse');
+    const isLabTech = activeRoles.includes('lab_tech');
+    const isAdmin = isLegacyAccount(user) || activeRoles.includes('hospital_admin') || !isStaffSessionActive;
+
+    const receptionHero = document.getElementById('receptionControlHero');
+    const nurseHero = document.getElementById('nurseControlHero');
+    const labTechHero = document.getElementById('labTechControlHero');
+
+    if (receptionHero) {
+        if (isReception || isAdmin) receptionHero.classList.remove('hidden');
+        else receptionHero.classList.add('hidden');
+    }
+    if (nurseHero) {
+        if (isNurse) nurseHero.classList.remove('hidden');
+        else nurseHero.classList.add('hidden');
+    }
+    if (labTechHero) {
+        if (isLabTech) labTechHero.classList.remove('hidden');
+        else labTechHero.classList.add('hidden');
+    }
 }
 
 function initHospitalNavigation() {
@@ -960,10 +1073,26 @@ function initHospitalNavigation() {
     const activeClass = 'bg-red-50 text-red-700 font-bold shadow-sm';
     const inactiveClass = 'text-slate-500 hover:bg-red-50 hover:text-red-700';
 
+    hydrateSessionIdentity();
     updateHospitalNavVisibility();
+
+let hospitalLiveFeedUnsubscribe = null;
+
+function cleanupHospitalLiveFeed() {
+    if (hospitalLiveFeedUnsubscribe) {
+        try {
+            hospitalLiveFeedUnsubscribe();
+            console.log('[Live Feed] Unsubscribed from hospital live feed to conserve free-tier reads.');
+        } catch (e) {}
+        hospitalLiveFeedUnsubscribe = null;
+    }
+}
 
     const switchView = (target) => {
         const currentUser = getCurrentUser();
+        if (target !== 'dashboard') {
+            cleanupHospitalLiveFeed();
+        }
         if (!canAccessView(currentUser, target, HOSPITAL_VIEW_PERMISSIONS)) {
             console.warn(`[Route Guard] Access denied to view '${target}' for active session.`);
             target = 'dashboard';
@@ -979,7 +1108,8 @@ function initHospitalNavigation() {
         navIds.forEach(id => {
             const nav = document.getElementById('nav-' + id);
             if (nav) {
-                nav.className = `flex items-center gap-3 px-4 py-2.5 rounded-xl ${inactiveClass} transition-all duration-200 cursor-pointer`;
+                const isHidden = nav.classList.contains('hidden');
+                nav.className = `flex items-center gap-3 px-4 py-2.5 rounded-xl ${inactiveClass} transition-all duration-200 cursor-pointer${isHidden ? ' hidden' : ''}`;
             }
         });
 
@@ -990,7 +1120,8 @@ function initHospitalNavigation() {
         }
         const activeNav = document.getElementById('nav-' + target);
         if (activeNav) {
-            activeNav.className = `flex items-center gap-3 px-4 py-2.5 rounded-xl ${activeClass} transition-all duration-200 cursor-pointer`;
+            const isHidden = activeNav.classList.contains('hidden');
+            activeNav.className = `flex items-center gap-3 px-4 py-2.5 rounded-xl ${activeClass} transition-all duration-200 cursor-pointer${isHidden ? ' hidden' : ''}`;
         }
 
         // Sync mobile drawer active state
@@ -1047,6 +1178,19 @@ function initHospitalNavigation() {
         });
     }
 
+    // Wire up hero quick action buttons for sub-accounts
+    const btnNurseNewRequest = document.getElementById('btnNurseNewRequest');
+    if (btnNurseNewRequest) btnNurseNewRequest.addEventListener('click', () => { window.openNewRequestModal?.(); });
+
+    const btnNurseIssueBlood = document.getElementById('btnNurseIssueBlood');
+    if (btnNurseIssueBlood) btnNurseIssueBlood.addEventListener('click', () => { window.openIssueBloodModal?.(); });
+
+    const btnLabTechRunTests = document.getElementById('btnLabTechRunTests');
+    if (btnLabTechRunTests) btnLabTechRunTests.addEventListener('click', () => { switchView('lab'); });
+
+    const btnLabTechAddStock = document.getElementById('btnLabTechAddStock');
+    if (btnLabTechAddStock) btnLabTechAddStock.addEventListener('click', () => { window.openAddStockModal?.(); });
+
     // Wire up new request modal
     initNewRequestModal();
     initUrgentRequestModal();
@@ -1075,6 +1219,26 @@ function initHospitalNavigation() {
     if (hamburger) hamburger.addEventListener('click', openDrawer);
     if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
     if (overlay) overlay.addEventListener('click', closeDrawer);
+
+    // Wire mobile search toggle
+    const btnMobileSearch = document.getElementById('btnMobileSearch');
+    const mobileSearchOverlay = document.getElementById('mobileSearchOverlay');
+    const btnCloseMobileSearch = document.getElementById('btnCloseMobileSearch');
+    const inputMobileSearch = document.getElementById('inputMobileSearch');
+
+    if (btnMobileSearch && mobileSearchOverlay) {
+        btnMobileSearch.addEventListener('click', () => {
+            mobileSearchOverlay.classList.toggle('hidden');
+            if (!mobileSearchOverlay.classList.contains('hidden') && inputMobileSearch) {
+                inputMobileSearch.focus();
+            }
+        });
+    }
+    if (btnCloseMobileSearch && mobileSearchOverlay) {
+        btnCloseMobileSearch.addEventListener('click', () => {
+            mobileSearchOverlay.classList.add('hidden');
+        });
+    }
 
     // Wire mobile drawer nav buttons
     document.querySelectorAll('.mobile-drawer-btn').forEach(btn => {
@@ -1151,13 +1315,14 @@ function initHospitalNavigation() {
 }
 
 async function loadHospitalDashboard() {
+    hydrateSessionIdentity();
     const currentUser = getCurrentUser();
     const hospitalName = currentUser?.name || 'General Hospital';
 
-    const greetingEl = document.getElementById('dashHospitalGreeting');
-    if (greetingEl) greetingEl.textContent = hospitalName;
     const dateEl = document.getElementById('dashDate');
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+    cleanupHospitalLiveFeed();
 
     try {
         const [allRequests, inventory, recentLogs] = await Promise.all([
@@ -1166,43 +1331,70 @@ async function loadHospitalDashboard() {
             fetchRecentLogs(5)
         ]);
 
-        const myRequests = allRequests.filter(r => r.hospital === hospitalName);
-        const totalUnits = Object.values(inventory).reduce((s, i) => s + (i.unitsAvailable || 0), 0);
-        const lowStockTypes = Object.values(inventory).filter(i => (i.unitsAvailable || 0) <= (i.minimumThreshold || 5));
+        const isMyHospitalRequest = (r) => {
+            if (!r) return false;
+            return r.hospital === hospitalName ||
+                   r.hospitalName === hospitalName ||
+                   (currentUser?.uid && r.hospitalId === currentUser.uid) ||
+                   (currentUser?.email && r.hospitalEmail === currentUser.email);
+        };
 
-        document.getElementById('dashActiveRequests').textContent = myRequests.length;
-        document.getElementById('dashLowStock').textContent = lowStockTypes.length;
-        document.getElementById('dashIncomingDonors').textContent = myRequests.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
-        document.getElementById('dashTotalUnits').textContent = totalUnits;
+        const renderFeedAndStats = (requestsList) => {
+            const myReqs = requestsList.filter(isMyHospitalRequest);
+            const totalUnits = Object.values(inventory).reduce((s, i) => s + (i.unitsAvailable || 0), 0);
+            const lowStockTypes = Object.values(inventory).filter(i => (i.unitsAvailable || 0) <= (i.minimumThreshold || 5));
 
-        // Requests feed — show only this hospital's requests
-        const feedEl = document.getElementById('dashRequestsFeed');
-        if (feedEl) {
-            const myActiveRequests = allRequests.filter(r => r.hospital === hospitalName);
-            if (myActiveRequests.length === 0) {
-                feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests from your hospital</p></div>';
-            } else {
-                feedEl.innerHTML = myActiveRequests.slice(0, 8).map(req => {
-                    const isMine = true;
-                    const statusColor = req.status === 'Donor Assigned' || req.status === 'Donor En Route' ? 'bg-amber-500' : 'bg-blue-500';
-                    const statusLabel = ['Donor Assigned', 'Donor En Route'].includes(req.status) ? req.status : 'Open';
-                    return `
-                    <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors ${isMine ? 'ring-2 ring-red-200' : ''}">
-                        <div class="flex items-center gap-3 min-w-0">
-                            <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm shrink-0">${req.type || req.bloodType || '?'}</span>
-                            <div class="min-w-0">
-                                <p class="text-sm font-bold text-on-surface truncate">${req.hospital}</p>
-                                <p class="text-xs text-slate-500">${req.units || 1} unit${(req.units || 1) > 1 ? 's' : ''} needed</p>
+            const activeEl = document.getElementById('dashActiveRequests');
+            const lowEl = document.getElementById('dashLowStock');
+            const incEl = document.getElementById('dashIncomingDonors');
+            const totalEl = document.getElementById('dashTotalUnits');
+
+            if (activeEl) activeEl.textContent = myReqs.length;
+            if (lowEl) lowEl.textContent = lowStockTypes.length;
+            if (incEl) incEl.textContent = myReqs.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
+            if (totalEl) totalEl.textContent = totalUnits;
+
+            const feedEl = document.getElementById('dashRequestsFeed');
+            if (feedEl) {
+                if (myReqs.length === 0) {
+                    feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests from your hospital</p></div>';
+                } else {
+                    feedEl.innerHTML = myReqs.slice(0, 8).map(req => {
+                        const statusColor = req.status === 'Donor Assigned' || req.status === 'Donor En Route' ? 'bg-amber-500' : 'bg-blue-500';
+                        const statusLabel = ['Donor Assigned', 'Donor En Route'].includes(req.status) ? req.status : 'Open';
+                        return `
+                        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors ring-2 ring-red-200">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm shrink-0">${req.type || req.bloodType || '?'}</span>
+                                <div class="min-w-0">
+                                    <p class="text-sm font-bold text-on-surface truncate">${req.hospital || req.hospitalName || hospitalName}</p>
+                                    <p class="text-xs text-slate-500">${req.units || 1} unit${(req.units || 1) > 1 ? 's' : ''} needed</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <span class="w-2 h-2 rounded-full ${statusColor} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
+                                <span class="text-[10px] font-bold text-slate-500 uppercase">${statusLabel}</span>
                             </div>
                         </div>
-                        <div class="flex items-center gap-2 shrink-0">
-                            <span class="w-2 h-2 rounded-full ${statusColor} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
-                            <span class="text-[10px] font-bold text-slate-500 uppercase">${statusLabel}</span>
-                        </div>
-                    </div>
-                    `;
-                }).join('');
+                        `;
+                    }).join('');
+                }
             }
+        };
+
+        renderFeedAndStats(allRequests);
+
+        // Attach live onSnapshot listener for real-time emergency feed updates
+        try {
+            const reqRef = collection(db, 'requests');
+            hospitalLiveFeedUnsubscribe = onSnapshot(reqRef, (snapshot) => {
+                const liveList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                renderFeedAndStats(liveList);
+            }, (err) => {
+                console.warn('[Live Feed] Listener warning (falling back to static feed):', err?.message || err);
+            });
+        } catch (subErr) {
+            console.warn('[Live Feed] Subscription setup warning:', subErr);
         }
 
         // Activity feed
@@ -1264,39 +1456,39 @@ async function loadHospitalRequests() {
 
         tableBody.innerHTML = requests.map(req => {
             const statusColors = {
-                'Open': { bg: 'bg-blue-100', text: 'text-blue-700', dot: 'bg-blue-500' },
-                'Matching': { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
-                'Donor Assigned': { bg: 'bg-amber-100', text: 'text-amber-700', dot: 'bg-amber-500' },
-                'Donor En Route': { bg: 'bg-indigo-100', text: 'text-indigo-700', dot: 'bg-indigo-500' },
-                'Resolved': { bg: 'bg-emerald-100', text: 'text-emerald-700', dot: 'bg-emerald-500' }
+                'Open': { bg: 'bg-blue-50 border-blue-200', text: 'text-blue-700', dot: 'bg-blue-500' },
+                'Matching': { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
+                'Donor Assigned': { bg: 'bg-amber-50 border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
+                'Donor En Route': { bg: 'bg-indigo-50 border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' },
+                'Resolved': { bg: 'bg-emerald-50 border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' }
             };
-            const sc = statusColors[req.status] || { bg: 'bg-slate-100', text: 'text-slate-700', dot: 'bg-slate-500' };
-            const urgencyColor = req.urgency === 'critical' ? 'text-red-600 bg-red-50' : req.urgency === 'urgent' ? 'text-amber-600 bg-amber-50' : 'text-slate-600 bg-slate-50';
+            const sc = statusColors[req.status] || { bg: 'bg-slate-50 border-slate-200', text: 'text-slate-700', dot: 'bg-slate-500' };
+            const urgencyColor = req.urgency === 'critical' ? 'text-red-700 bg-red-50 border-red-200/80' : req.urgency === 'urgent' ? 'text-amber-700 bg-amber-50 border-amber-200/80' : 'text-slate-700 bg-slate-100 border-slate-200';
             return `
-            <tr class="hover:bg-slate-50 transition-colors">
-                <td class="px-6 py-4"><span class="text-xs font-mono font-bold text-slate-700">#${req.id.slice(0, 8).toUpperCase()}</span></td>
-                <td class="px-6 py-4"><span class="font-black text-red-700 bg-red-50 px-2 py-1 rounded text-xs">${req.type || req.bloodType || '?'}</span></td>
-                <td class="px-6 py-4 text-sm font-semibold">${req.units || 1}</td>
-                <td class="px-6 py-4"><span class="text-[10px] font-bold uppercase ${urgencyColor} px-2 py-1 rounded-lg">${req.urgency || 'standard'}</span></td>
+            <tr class="hover:bg-slate-50/80 transition-colors">
+                <td class="px-6 py-4"><span class="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">#${req.id.slice(0, 8).toUpperCase()}</span></td>
+                <td class="px-6 py-4"><span class="font-black text-red-700 bg-red-50 border border-red-200/60 px-2.5 py-1 rounded-lg text-xs tracking-tight shadow-2xs">${req.type || req.bloodType || '?'}</span></td>
+                <td class="px-6 py-4 text-sm font-black text-slate-800">${req.units || 1} <span class="text-[10px] font-bold text-slate-400">units</span></td>
+                <td class="px-6 py-4"><span class="text-[10px] font-black uppercase ${urgencyColor} border px-2.5 py-1 rounded-lg tracking-wider">${req.urgency || 'standard'}</span></td>
                 <td class="px-6 py-4">
-                    <div class="flex items-center gap-2">
+                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border ${sc.bg}">
                         <span class="w-2 h-2 rounded-full ${sc.dot} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
-                        <span class="text-xs font-bold ${sc.text} ${sc.bg} px-2 py-1 rounded-md">${req.status}</span>
+                        <span class="text-xs font-bold ${sc.text}">${req.status}</span>
                     </div>
                 </td>
-                <td class="px-6 py-4 text-xs text-slate-500">${new Date(req.requestedAt || req.createdAt).toLocaleDateString()}</td>
+                <td class="px-6 py-4 text-xs font-medium text-slate-500">${new Date(req.requestedAt || req.createdAt).toLocaleDateString()}</td>
                 <td class="px-6 py-4 text-right">
-                    <div class="flex items-center justify-end gap-1">
-                        <button onclick="window.openRequestTimeline('${req.id}')" class="text-[9px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors" title="View Timeline">
-                            <span class="material-symbols-outlined text-xs">timeline</span>
+                    <div class="flex items-center justify-end gap-1.5">
+                        <button onclick="window.openRequestTimeline('${req.id}')" class="text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-2.5 py-1.5 rounded-lg transition-all shadow-2xs flex items-center gap-1" title="View Timeline">
+                            <span class="material-symbols-outlined text-xs">timeline</span> Timeline
                         </button>
-                        <button onclick="window.printRequestSlip('${req.id}')" class="text-[9px] font-bold text-slate-500 bg-slate-50 hover:bg-slate-100 px-2 py-1 rounded-lg transition-colors" title="Print Slip">
+                        <button onclick="window.printRequestSlip('${req.id}')" class="text-xs font-bold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-2 py-1.5 rounded-lg transition-all shadow-2xs" title="Print Slip">
                             <span class="material-symbols-outlined text-xs">print</span>
                         </button>
-                        ${['Open', 'Matching'].includes(req.status) ? `<button onclick="window.cancelHospitalRequestAction('${req.id}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2 py-1 rounded-lg transition-colors" title="Cancel Request">
+                        ${['Open', 'Matching'].includes(req.status) ? `<button onclick="window.cancelHospitalRequestAction('${req.id}')" class="text-xs font-bold text-red-600 bg-red-50 border border-red-200/60 hover:bg-red-100 px-2 py-1.5 rounded-lg transition-all shadow-2xs" title="Cancel Request">
                             <span class="material-symbols-outlined text-xs">cancel</span>
                         </button>` : ''}
-                        ${req.status === 'Resolved' ? '<span class="text-xs text-emerald-600 font-medium ml-1">Done</span>' : req.status === 'Donor En Route' ? '<span class="text-xs text-indigo-600 font-medium ml-1 animate-pulse">🔄 En Route</span>' : req.status === 'Cancelled' ? '<span class="text-xs text-red-600 font-medium ml-1">Cancelled</span>' : '<span class="text-xs text-slate-400 ml-1">Open</span>'}
+                        ${req.status === 'Resolved' ? '<span class="text-xs text-emerald-600 font-bold ml-1">✓ Done</span>' : req.status === 'Donor En Route' ? '<span class="text-xs text-indigo-600 font-bold ml-1 animate-pulse">🚗 En Route</span>' : req.status === 'Cancelled' ? '<span class="text-xs text-red-600 font-bold ml-1">Cancelled</span>' : '<span class="text-xs text-slate-400 ml-1">Open</span>'}
                     </div>
                 </td>
             </tr>
@@ -1328,7 +1520,7 @@ async function loadChronicPatients() {
         chronicPatientsCache = await fetchChronicPatients(hospitalName);
 
         if (chronicPatientsCache.length === 0) {
-            gridEl.innerHTML = '<div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">medical_services</span><p class="text-sm">No chronic patients registered yet.</p></div>';
+            gridEl.innerHTML = '<div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">medical_services</span><p class="text-sm font-semibold">No chronic patients registered yet.</p></div>';
             return;
         }
 
@@ -1337,21 +1529,25 @@ async function loadChronicPatients() {
             const nextDue = p.nextDueDate ? new Date(p.nextDueDate) : null;
             const isOverdue = nextDue && nextDue < today;
             return `
-            <div class="bg-slate-50/70 rounded-2xl border ${isOverdue ? 'border-red-200' : 'border-slate-200/50'} p-4">
-                <div class="flex items-start justify-between gap-2 mb-2">
-                    <div class="flex items-center gap-2 min-w-0">
-                        <span class="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-black text-xs shrink-0">${p.bloodType}</span>
+            <div class="bg-white rounded-2xl border ${isOverdue ? 'border-red-300 ring-2 ring-red-100' : 'border-slate-200/80'} p-5 shadow-xs hover:shadow-md transition-all">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="w-10 h-10 rounded-xl bg-purple-50 border border-purple-200/60 text-purple-700 flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">${p.bloodType}</span>
                         <div class="min-w-0">
-                            <p class="text-sm font-bold text-on-surface truncate">${p.patientName}</p>
-                            <p class="text-[10px] text-slate-500 truncate">${p.condition}</p>
+                            <p class="text-sm font-extrabold text-slate-900 truncate">${p.patientName}</p>
+                            <p class="text-xs text-slate-500 font-medium truncate">${p.condition}</p>
                         </div>
                     </div>
-                    ${isOverdue ? '<span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full text-red-600 bg-red-100 shrink-0">Overdue</span>' : ''}
+                    ${isOverdue ? '<span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-red-700 bg-red-50 border border-red-200 shrink-0">Overdue</span>' : ''}
                 </div>
-                <p class="text-[10px] text-slate-500 mb-3">Every ${p.recurrenceWeeks} week${p.recurrenceWeeks > 1 ? 's' : ''} · Last: ${p.lastTransfusionDate ? new Date(p.lastTransfusionDate).toLocaleDateString() : '—'}</p>
-                <div class="grid grid-cols-2 gap-1.5">
-                    <button onclick="window.requestChronicPatientTransfusion('${p.id}')" class="text-[10px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 py-1.5 rounded-lg transition-colors">Request Now</button>
-                    <button onclick="window.deleteChronicPatientAction('${p.id}', '${p.patientName.replace(/'/g, "\\'")}')" class="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Remove</button>
+                <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100 mb-4 text-xs text-slate-600 font-medium">
+                    Every ${p.recurrenceWeeks} week${p.recurrenceWeeks > 1 ? 's' : ''} · Last: ${p.lastTransfusionDate ? new Date(p.lastTransfusionDate).toLocaleDateString() : '—'}
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="window.requestChronicPatientTransfusion('${p.id}')" class="text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 py-2 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1 cursor-pointer">
+                        <span class="material-symbols-outlined text-sm">add_circle</span> Request Now
+                    </button>
+                    <button onclick="window.deleteChronicPatientAction('${p.id}', '${p.patientName.replace(/'/g, "\\'")}')" class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200/60 hover:bg-rose-100 py-2 rounded-xl transition-all cursor-pointer">Remove</button>
                 </div>
             </div>
             `;
@@ -1467,8 +1663,18 @@ async function loadHospitalInventoryData() {
         let totalUnits = 0;
         let lowStockCount = 0;
         let healthyCount = 0;
-
         let totalExpiring = 0;
+
+        const canAdd = isLegacyAccount(currentUser) || hasAnyRole(currentUser, ['lab_tech', 'hospital_admin']);
+        const canIssue = isLegacyAccount(currentUser) || hasAnyRole(currentUser, ['lab_tech', 'hospital_admin']);
+        const canRemove = isLegacyAccount(currentUser) || hasAnyRole(currentUser, ['hospital_admin']);
+        const canThresh = isLegacyAccount(currentUser) || hasAnyRole(currentUser, ['hospital_admin']);
+
+        const btnAddStock = document.getElementById('btnAddStock');
+        if (btnAddStock) {
+            if (canAdd) btnAddStock.classList.remove('hidden');
+            else btnAddStock.classList.add('hidden');
+        }
 
         gridEl.innerHTML = allTypes.map(type => {
             const inv = inventory[type] || { unitsAvailable: 0, minimumThreshold: 5, batches: [], componentTotals: {}, expiringSoon: 0, expiredUnits: 0 };
@@ -1497,37 +1703,37 @@ async function loadHospitalInventoryData() {
                   ).join('')
                 : '';
 
-            const addBtn = canAdd ? `<button onclick="window.openHospitalAddStock('${type}')" class="text-[9px] font-bold text-red-600 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Add</button>` : '';
-            const issueBtn = canIssue ? `<button onclick="window.openHospitalIssueBlood('${type}', ${inv.unitsAvailable || 0})" class="text-[9px] font-bold text-amber-600 bg-amber-50 hover:bg-amber-100 py-1.5 rounded-lg transition-colors">Issue</button>` : '';
-            const removeBtn = canRemove ? `<button onclick="window.openHospitalRemoveStock('${type}')" class="text-[9px] font-bold text-red-700 bg-red-50 hover:bg-red-100 py-1.5 rounded-lg transition-colors">Remove</button>` : '';
-            const threshBtn = canThresh ? `<button onclick="window.openHospitalSetThreshold('${type}')" class="text-[9px] font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 py-1.5 rounded-lg transition-colors">Thresh</button>` : '';
+            const addBtn = canAdd ? `<button onclick="window.openHospitalAddStock('${type}')" class="text-xs font-extrabold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200/60 py-2 rounded-xl transition-all shadow-2xs cursor-pointer">Add</button>` : '';
+            const issueBtn = canIssue ? `<button onclick="window.openHospitalIssueBlood('${type}', ${inv.unitsAvailable || 0})" class="text-xs font-extrabold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/60 py-2 rounded-xl transition-all shadow-2xs cursor-pointer">Issue</button>` : '';
+            const removeBtn = canRemove ? `<button onclick="window.openHospitalRemoveStock('${type}')" class="text-xs font-extrabold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200/60 py-2 rounded-xl transition-all shadow-2xs cursor-pointer">Remove</button>` : '';
+            const threshBtn = canThresh ? `<button onclick="window.openHospitalSetThreshold('${type}')" class="text-xs font-extrabold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 py-2 rounded-xl transition-all shadow-2xs cursor-pointer">Thresh</button>` : '';
 
             return `
-            <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${borderColor} hover:shadow-md transition-all group">
+            <div class="${bgCard} rounded-2xl p-5 shadow-xs border ${borderColor} hover:shadow-md transition-all group">
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl flex items-center justify-center font-black text-lg" style="background-color: ${info.color}15; color: ${info.color}">${type}</div>
+                        <div class="w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl border shadow-2xs" style="background-color: ${info.color}15; color: ${info.color}; border-color: ${info.color}30">${type}</div>
                         <div>
-                            <p class="text-2xl font-black text-on-surface">${inv.unitsAvailable || 0}</p>
-                            <p class="text-[10px] text-slate-500 font-medium">units available</p>
+                            <p class="text-3xl font-black text-slate-900 tracking-tight">${inv.unitsAvailable || 0}</p>
+                            <p class="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">units available</p>
                         </div>
                     </div>
                     ${badge}
                 </div>
-                ${comps ? `<div class="flex flex-wrap gap-1 mb-2">${comps}</div>` : ''}
+                ${comps ? `<div class="flex flex-wrap gap-1 mb-3">${comps}</div>` : ''}
                 <div class="space-y-2">
-                    <div class="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div class="${barColor} h-full rounded-full" style="width: ${pct}%"></div>
+                    <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden p-0.5 border border-slate-200/40">
+                        <div class="${barColor} h-full rounded-full transition-all duration-300" style="width: ${pct}%"></div>
                     </div>
-                    <div class="flex justify-between text-[10px] text-slate-500">
-                        <span>Threshold: ${inv.minimumThreshold || 5}</span>
-                        <span class="font-bold">${pct}%</span>
+                    <div class="flex justify-between text-[11px] font-bold text-slate-500">
+                        <span>Min Threshold: ${inv.minimumThreshold || 5}</span>
+                        <span class="font-extrabold text-slate-800">${pct}%</span>
                     </div>
                 </div>
-                ${expSoonCount > 0 ? `<div class="mt-2 text-[9px] font-bold text-amber-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">schedule</span>${expSoonCount} unit(s) expiring in < 5 days</div>` : ''}
-                ${expCount > 0 ? `<div class="mt-2 text-[9px] font-bold text-red-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs">dangerous</span>${expCount} unit(s) EXPIRED — action required</div>` : ''}
+                ${expSoonCount > 0 ? `<div class="mt-3 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200/60 p-2 rounded-xl flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">schedule</span>${expSoonCount} unit(s) expiring in < 5 days</div>` : ''}
+                ${expCount > 0 ? `<div class="mt-3 text-xs font-bold text-red-700 bg-red-50 border border-red-200/60 p-2 rounded-xl flex items-center gap-1.5"><span class="material-symbols-outlined text-sm">dangerous</span>${expCount} unit(s) EXPIRED — action required</div>` : ''}
                 ${(canAdd || canIssue || canRemove || canThresh) ? `
-                <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-4 gap-1">
+                <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-4 gap-1.5">
                     ${addBtn}
                     ${issueBtn}
                     ${removeBtn}
@@ -1557,10 +1763,10 @@ async function loadHospitalInventoryData() {
                         ${lowItems.map(type => {
                             const inv = inventory[type] || {};
                             const addStockBtn = canAdd ? `<button onclick="window.openHospitalAddStock('${type}')" class="text-xs font-bold text-red-600 hover:underline">Add Stock</button>` : '';
-                            return `<div class="flex items-center justify-between p-3 bg-white rounded-xl">
+                            return `<div class="flex items-center justify-between p-3 bg-white rounded-xl border border-red-100">
                                 <div class="flex items-center gap-3">
                                     <span class="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm">${type}</span>
-                                    <div><p class="text-sm font-bold text-on-surface">${inv.unitsAvailable || 0} units available</p><p class="text-[10px] text-slate-500">Min threshold: ${inv.minimumThreshold || 5}</p></div>
+                                    <div><p class="text-sm font-bold text-slate-800">${inv.unitsAvailable || 0} units available</p><p class="text-[10px] text-slate-500">Min threshold: ${inv.minimumThreshold || 5}</p></div>
                                 </div>
                                 ${addStockBtn}
                             </div>`;
@@ -1596,15 +1802,15 @@ async function loadHospitalTransfers() {
         const transfers = await fetchHospitalTransfers(hospitalName);
 
         if (transfers.length === 0) {
-            gridEl.innerHTML = '<div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">sync_alt</span><p class="text-sm">No transfers yet. Use "Request Transfer" to pull stock from a partner hospital.</p></div>';
+            gridEl.innerHTML = '<div class="col-span-full flex flex-col items-center justify-center py-12 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">sync_alt</span><p class="text-sm font-semibold">No transfers yet. Use "Request Transfer" to pull stock from a partner hospital.</p></div>';
             return;
         }
 
         const statusStyle = {
-            'Requested': 'text-amber-600 bg-amber-50',
-            'In Transit': 'text-blue-600 bg-blue-50',
-            'Completed': 'text-emerald-600 bg-emerald-50',
-            'Cancelled': 'text-slate-500 bg-slate-100'
+            'Requested': 'text-amber-700 bg-amber-50 border-amber-200',
+            'In Transit': 'text-indigo-700 bg-indigo-50 border-indigo-200',
+            'Completed': 'text-emerald-700 bg-emerald-50 border-emerald-200',
+            'Cancelled': 'text-slate-600 bg-slate-100 border-slate-200'
         };
 
         gridEl.innerHTML = transfers.map(t => {
@@ -1615,29 +1821,29 @@ async function loadHospitalTransfers() {
             let actions = '';
             if (t.status === 'Requested' && !outgoing) {
                 // This hospital is the source — it's the one that has the stock to send.
-                actions = `<button onclick="window.dispatchTransferAction('${t.id}')" class="text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg transition-colors">Dispatch</button>`;
+                actions = `<button onclick="window.dispatchTransferAction('${t.id}')" class="text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">local_shipping</span> Dispatch</button>`;
             } else if (t.status === 'In Transit' && outgoing) {
                 // This hospital requested it and it's on the way — confirm receipt to move the stock.
-                actions = `<button onclick="window.receiveTransferAction('${t.id}')" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 rounded-lg transition-colors">Confirm Received</button>`;
+                actions = `<button onclick="window.receiveTransferAction('${t.id}')" class="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">task_alt</span> Confirm Received</button>`;
             }
             if (t.status === 'Requested') {
-                actions += `<button onclick="window.cancelTransferAction('${t.id}')" class="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-2.5 py-1.5 rounded-lg transition-colors ml-1.5">Cancel</button>`;
+                actions += `<button onclick="window.cancelTransferAction('${t.id}')" class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 px-3 py-1.5 rounded-xl transition-all cursor-pointer ml-2">Cancel</button>`;
             }
 
             return `
-            <div class="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4">
-                <div class="flex items-start justify-between gap-2 mb-2">
-                    <div class="flex items-center gap-2 min-w-0">
-                        <span class="w-9 h-9 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center font-black text-xs shrink-0">${t.bloodType}</span>
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-700 flex items-center justify-center font-black text-xs shrink-0 shadow-2xs">${t.bloodType}</span>
                         <div class="min-w-0">
-                            <p class="text-sm font-bold text-on-surface truncate">${t.units} unit${t.units > 1 ? 's' : ''} · ${t.componentType}</p>
-                            <p class="text-[10px] text-slate-500 truncate">${partnerLabel}</p>
+                            <p class="text-sm font-extrabold text-slate-900 truncate">${t.units} unit${t.units > 1 ? 's' : ''} · ${t.componentType}</p>
+                            <p class="text-xs text-slate-500 font-medium truncate">${partnerLabel}</p>
                         </div>
                     </div>
-                    <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${statusStyle[t.status] || 'text-slate-500 bg-slate-100'} shrink-0">${t.status}</span>
+                    <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full border ${statusStyle[t.status] || 'text-slate-500 bg-slate-100 border-slate-200'} shrink-0">${t.status}</span>
                 </div>
-                <p class="text-[10px] text-slate-400 mb-3">${roleLabel} · ${t.createdAt ? new Date(t.createdAt).toLocaleDateString() : ''}</p>
-                ${actions ? `<div class="flex">${actions}</div>` : ''}
+                <p class="text-xs text-slate-400 font-medium mb-3">${roleLabel} · ${t.createdAt ? new Date(t.createdAt).toLocaleDateString() : ''}</p>
+                ${actions ? `<div class="flex items-center pt-2 border-t border-slate-100">${actions}</div>` : ''}
             </div>
             `;
         }).join('');
@@ -2065,100 +2271,105 @@ function initScheduledBookingsControls() {
 // donor was given at match time instead of relying on the donor's own "Check In" button.
 // ============================================
 function initDonorCheckInTokenLookup() {
-    const input = document.getElementById('donorCheckInTokenInput');
-    const btn = document.getElementById('btnVerifyCheckInToken');
-    if (!input || !btn) return;
+    const pairs = [
+        { input: document.getElementById('donorCheckInTokenInput'), btn: document.getElementById('btnVerifyCheckInToken') },
+        { input: document.getElementById('dashReceptionCheckInInput'), btn: document.getElementById('dashBtnReceptionCheckIn') }
+    ];
 
-    const doLookup = async () => {
-        const token = input.value.trim();
-        if (!token) { alert('Enter a check-in code first'); return; }
-        const currentUser = getCurrentUser();
-        const hospitalName = currentUser?.name || 'General Hospital';
-        btn.disabled = true;
+    pairs.forEach(({ input, btn }) => {
+        if (!input || !btn) return;
 
-        try {
-            let match = await findRequestByCheckInToken(token, 'requests');
-            if (match && match.hospital !== hospitalName) match = null; // not this hospital's donor
-            if (!match) {
-                const publicMatch = await findRequestByCheckInToken(token, 'public_requests');
-                if (publicMatch && publicMatch.hospitalName === hospitalName) match = publicMatch;
-            }
-            if (!match) { alert('No donor found with that code at your hospital.'); return; }
-            if (match.status !== 'Donor En Route') {
-                alert(`This donor's status is "${match.status}" — check-in requires "Donor En Route".`);
-                return;
-            }
+        const doLookup = async () => {
+            const token = input.value.trim();
+            if (!token) { alert('Enter a check-in code first'); return; }
+            const currentUser = getCurrentUser();
+            const hospitalName = currentUser?.name || 'General Hospital';
+            btn.disabled = true;
 
-            // Look up donor identity info for verification
-            let donorIdentity = { name: 'Unknown', cniLast4: null, phone: 'N/A', bloodType: 'N/A', lastDonationDate: null, eligible: true };
-            if (match.matchedDonor) {
-                try {
-                    const donorSnap = await getDoc(doc(db, 'users', match.matchedDonor));
-                    if (donorSnap.exists()) {
-                        const d = donorSnap.data();
-                        const lastDate = d.lastDonationDate || d.lastDonatedAt || null;
-                        let eligible = true;
-                        let daysAgo = 0;
-                        if (lastDate) {
-                            daysAgo = Math.floor((new Date().getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24));
-                            eligible = daysAgo >= 56;
-                        }
-                        donorIdentity = {
-                            name: d.name || 'Unknown',
-                            cniLast4: d.cniLast4 || null,
-                            phone: d.phone || 'N/A',
-                            bloodType: d.bloodType || match.type || match.bloodType || 'N/A',
-                            lastDonationDate: lastDate,
-                            eligible,
-                            daysAgo,
-                        };
-                    }
-                } catch (e) {
-                    console.warn('Could not fetch donor identity:', e);
+            try {
+                let match = await findRequestByCheckInToken(token, 'requests');
+                if (match && match.hospital !== hospitalName) match = null; // not this hospital's donor
+                if (!match) {
+                    const publicMatch = await findRequestByCheckInToken(token, 'public_requests');
+                    if (publicMatch && publicMatch.hospitalName === hospitalName) match = publicMatch;
                 }
+                if (!match) { alert('No donor found with that code at your hospital.'); return; }
+                if (match.status !== 'Donor En Route') {
+                    alert(`This donor's status is "${match.status}" — check-in requires "Donor En Route".`);
+                    return;
+                }
+
+                // Look up donor identity info for verification
+                let donorIdentity = { name: 'Unknown', cniLast4: null, phone: 'N/A', bloodType: 'N/A', lastDonationDate: null, eligible: true };
+                if (match.matchedDonor) {
+                    try {
+                        const donorSnap = await getDoc(doc(db, 'users', match.matchedDonor));
+                        if (donorSnap.exists()) {
+                            const d = donorSnap.data();
+                            const lastDate = d.lastDonationDate || d.lastDonatedAt || null;
+                            let eligible = true;
+                            let daysAgo = 0;
+                            if (lastDate) {
+                                daysAgo = Math.floor((new Date().getTime() - new Date(lastDate).getTime()) / (1000 * 60 * 60 * 24));
+                                eligible = daysAgo >= 56;
+                            }
+                            donorIdentity = {
+                                name: d.name || 'Unknown',
+                                cniLast4: d.cniLast4 || null,
+                                phone: d.phone || 'N/A',
+                                bloodType: d.bloodType || match.type || match.bloodType || 'N/A',
+                                lastDonationDate: lastDate,
+                                eligible,
+                                daysAgo,
+                            };
+                        }
+                    } catch (e) {
+                        console.warn('Could not fetch donor identity:', e);
+                    }
+                }
+
+                const lastDonationDisplay = donorIdentity.lastDonationDate
+                    ? `${donorIdentity.daysAgo} days ago (${new Date(donorIdentity.lastDonationDate).toLocaleDateString()})`
+                    : 'No prior donation';
+                const cniDisplay = donorIdentity.cniLast4
+                    ? `••••••${donorIdentity.cniLast4}`
+                    : '<span style="color:#94a3b8">Not on file</span>';
+                const eligibleBadge = donorIdentity.eligible
+                    ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:#ecfdf5;color:#059669;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;border:1px solid #a7f3d0">✓ ELIGIBLE</span>'
+                    : '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:#fef2f2;color:#dc2626;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;border:1px solid #fecaca">✗ NOT ELIGIBLE</span>';
+
+                const confirmed = await window.vpConfirm(`
+                    <div style="text-align:left">
+                        <p style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1e293b">Verify donor identity before check-in</p>
+                        <table style="width:100%;font-size:12px;border-collapse:collapse">
+                            <tr><td style="padding:4px 8px;color:#64748b">Name</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(donorIdentity.name)}</td></tr>
+                            <tr><td style="padding:4px 8px;color:#64748b">CNI (last 4)</td><td style="padding:4px 8px;font-weight:700;font-family:monospace;color:#1e293b">${cniDisplay}</td></tr>
+                            <tr><td style="padding:4px 8px;color:#64748b">Blood Type</td><td style="padding:4px 8px;font-weight:700;color:#dc2626">${esc(donorIdentity.bloodType)}</td></tr>
+                            <tr><td style="padding:4px 8px;color:#64748b">Phone</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(donorIdentity.phone)}</td></tr>
+                            <tr><td style="padding:4px 8px;color:#64748b">Last Donation</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(lastDonationDisplay)}</td></tr>
+                            <tr><td style="padding:4px 8px;color:#64748b">Eligibility</td><td style="padding:4px 8px">${eligibleBadge}</td></tr>
+                        </table>
+                        <p style="font-size:11px;color:#94a3b8;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0">Ask the donor to present their physical CNI card. Verify the last 4 digits match.</p>
+                    </div>
+                `, { title: 'Identity Check', confirmText: '✓ Verify & Check In', danger: false });
+
+                if (!confirmed) return;
+
+                await checkInDonor(match.id);
+                showToast('Donor checked in successfully!');
+                input.value = '';
+                loadHospitalDonors();
+            } catch (err) {
+                console.error('Check-in lookup failed:', err);
+                alert(err.message || 'Check-in failed.');
+            } finally {
+                btn.disabled = false;
             }
+        };
 
-            const lastDonationDisplay = donorIdentity.lastDonationDate
-                ? `${donorIdentity.daysAgo} days ago (${new Date(donorIdentity.lastDonationDate).toLocaleDateString()})`
-                : 'No prior donation';
-            const cniDisplay = donorIdentity.cniLast4
-                ? `••••••${donorIdentity.cniLast4}`
-                : '<span style="color:#94a3b8">Not on file</span>';
-            const eligibleBadge = donorIdentity.eligible
-                ? '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:#ecfdf5;color:#059669;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;border:1px solid #a7f3d0">✓ ELIGIBLE</span>'
-                : '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 10px;border-radius:999px;background:#fef2f2;color:#dc2626;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.05em;border:1px solid #fecaca">✗ NOT ELIGIBLE</span>';
-
-            const confirmed = await window.vpConfirm(`
-                <div style="text-align:left">
-                    <p style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1e293b">Verify donor identity before check-in</p>
-                    <table style="width:100%;font-size:12px;border-collapse:collapse">
-                        <tr><td style="padding:4px 8px;color:#64748b">Name</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(donorIdentity.name)}</td></tr>
-                        <tr><td style="padding:4px 8px;color:#64748b">CNI (last 4)</td><td style="padding:4px 8px;font-weight:700;font-family:monospace;color:#1e293b">${cniDisplay}</td></tr>
-                        <tr><td style="padding:4px 8px;color:#64748b">Blood Type</td><td style="padding:4px 8px;font-weight:700;color:#dc2626">${esc(donorIdentity.bloodType)}</td></tr>
-                        <tr><td style="padding:4px 8px;color:#64748b">Phone</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(donorIdentity.phone)}</td></tr>
-                        <tr><td style="padding:4px 8px;color:#64748b">Last Donation</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(lastDonationDisplay)}</td></tr>
-                        <tr><td style="padding:4px 8px;color:#64748b">Eligibility</td><td style="padding:4px 8px">${eligibleBadge}</td></tr>
-                    </table>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:12px;padding-top:10px;border-top:1px solid #e2e8f0">Ask the donor to present their physical CNI card. Verify the last 4 digits match.</p>
-                </div>
-            `, { title: 'Identity Check', confirmText: '✓ Verify & Check In', danger: false });
-
-            if (!confirmed) return;
-
-            await checkInDonor(match.id);
-            showToast('Donor checked in successfully!');
-            input.value = '';
-            loadHospitalDonors();
-        } catch (err) {
-            console.error('Check-in lookup failed:', err);
-            alert(err.message || 'Check-in failed.');
-        } finally {
-            btn.disabled = false;
-        }
-    };
-
-    btn.addEventListener('click', doLookup);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
+        btn.addEventListener('click', doLookup);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLookup(); } });
+    });
 }
 
 window.cancelHospitalRequestAction = async (id) => {
@@ -2395,9 +2606,6 @@ async function loadLabPipeline() {
                 const entry = { ...b, bloodType: inv.bloodType };
                 const status = b.testStatus || 'Cleared';
                 if (status === 'Waiting for Lab Test') pending.push(entry);
-                // Only batches that actually went through this pipeline (have a resolvedAt)
-                // count as lab logs — stock a hospital declared pre-cleared on intake never
-                // ran through here, so it doesn't belong in "Cleared Logs".
                 else if (status === 'Cleared' && b.resolvedAt) cleared.push(entry);
                 else if (status === 'Rejected, Not Safe') rejected.push(entry);
             });
@@ -2435,48 +2643,48 @@ function renderLabPipelineGrid() {
             cleared: 'No cleared batches logged yet.',
             rejected: 'No rejected batches on record.'
         };
-        gridEl.innerHTML = `<div class="col-span-full text-center text-slate-400 py-12">${emptyCopy[labPipelineActiveFilter]}</div>`;
+        gridEl.innerHTML = `<div class="col-span-full text-center text-slate-400 py-12 font-medium">${emptyCopy[labPipelineActiveFilter]}</div>`;
         return;
     }
 
     if (labPipelineActiveFilter === 'pending') {
         gridEl.innerHTML = list.map(b => `
-            <div class="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4">
-                <div class="flex items-start justify-between gap-2 mb-2">
-                    <span class="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-black text-sm shrink-0">${b.bloodType}</span>
-                    <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full text-amber-600 bg-amber-100">Awaiting Test</span>
+            <div class="bg-white rounded-2xl border border-amber-200/80 border-l-4 border-l-amber-500 p-5 shadow-xs hover:shadow-md transition-all">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <span class="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/60 text-amber-700 flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">${b.bloodType}</span>
+                    <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-amber-700 bg-amber-50 border border-amber-200">Awaiting Test</span>
                 </div>
-                <p class="text-sm font-bold text-slate-800">${b.units} unit${b.units > 1 ? 's' : ''} · ${b.componentType || 'Whole Blood'}</p>
-                <p class="text-[10px] text-slate-500 mt-0.5">Batch ${b.id ? b.id.slice(-8) : '—'} · Collected ${b.addedAt ? new Date(b.addedAt).toLocaleDateString() : '—'}</p>
-                <button onclick="window.openLabTestModal('${b.id}', '${b.bloodType}')" class="mt-3 w-full text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
-                    <span class="material-symbols-outlined text-sm">science</span> Run Test
+                <p class="text-base font-extrabold text-slate-900">${b.units} unit${b.units > 1 ? 's' : ''} · ${b.componentType || 'Whole Blood'}</p>
+                <p class="text-xs text-slate-500 font-medium mt-1">Batch ${b.id ? b.id.slice(-8) : '—'} · Collected ${b.addedAt ? new Date(b.addedAt).toLocaleDateString() : '—'}</p>
+                <button onclick="window.openLabTestModal('${b.id}', '${b.bloodType}')" class="mt-4 w-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 py-2.5 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
+                    <span class="material-symbols-outlined text-sm">science</span> Run TTI Diagnostics
                 </button>
             </div>
         `).join('');
     } else if (labPipelineActiveFilter === 'cleared') {
         gridEl.innerHTML = list.map(b => `
-            <div class="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4">
-                <div class="flex items-start justify-between gap-2 mb-2">
-                    <span class="w-10 h-10 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-black text-sm shrink-0">${b.bloodType}</span>
-                    <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full text-emerald-600 bg-emerald-100">Cleared</span>
+            <div class="bg-white rounded-2xl border border-emerald-200/80 border-l-4 border-l-emerald-500 p-5 shadow-xs hover:shadow-md transition-all">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <span class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 text-emerald-700 flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">${b.bloodType}</span>
+                    <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200">Cleared</span>
                 </div>
-                <p class="text-sm font-bold text-slate-800">${b.units} unit${b.units > 1 ? 's' : ''} · ${b.componentType || 'Whole Blood'}</p>
-                <p class="text-[10px] text-slate-500 mt-0.5">Released ${b.resolvedAt ? new Date(b.resolvedAt).toLocaleString() : '—'}${b.labTechName ? ' · ' + b.labTechName : ''}</p>
-                <button onclick="window.openLabCertModal('${b.id}', '${b.bloodType}')" class="mt-3 w-full text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
-                    <span class="material-symbols-outlined text-sm">verified</span> View Certificate
+                <p class="text-base font-extrabold text-slate-900">${b.units} unit${b.units > 1 ? 's' : ''} · ${b.componentType || 'Whole Blood'}</p>
+                <p class="text-xs text-slate-500 font-medium mt-1">Released ${b.resolvedAt ? new Date(b.resolvedAt).toLocaleString() : '—'}${b.labTechName ? ' · ' + b.labTechName : ''}</p>
+                <button onclick="window.openLabCertModal('${b.id}', '${b.bloodType}')" class="mt-4 w-full text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                    <span class="material-symbols-outlined text-sm">verified</span> View Safety Certificate
                 </button>
             </div>
         `).join('');
     } else {
         gridEl.innerHTML = list.map(b => `
-            <div class="bg-slate-50/70 rounded-2xl border border-red-200/50 p-4">
-                <div class="flex items-start justify-between gap-2 mb-2">
-                    <span class="w-10 h-10 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm shrink-0">${b.bloodType}</span>
-                    <span class="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full text-red-600 bg-red-100">Rejected</span>
+            <div class="bg-white rounded-2xl border border-rose-200/80 border-l-4 border-l-rose-500 p-5 shadow-xs hover:shadow-md transition-all">
+                <div class="flex items-start justify-between gap-2 mb-3">
+                    <span class="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200/60 text-rose-700 flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">${b.bloodType}</span>
+                    <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-rose-700 bg-rose-50 border border-rose-200">Rejected</span>
                 </div>
-                <p class="text-sm font-bold text-slate-800">${b.units} unit${b.units > 1 ? 's' : ''} · ${b.componentType || 'Whole Blood'}</p>
-                <p class="text-[10px] text-red-600 font-medium mt-0.5">${b.rejectionReason || 'Failed safety screening'}</p>
-                <p class="text-[10px] text-slate-500 mt-0.5">Rejected ${b.resolvedAt ? new Date(b.resolvedAt).toLocaleString() : '—'}${b.labTechName ? ' · ' + b.labTechName : ''}</p>
+                <p class="text-base font-extrabold text-slate-900">${b.units} unit${b.units > 1 ? 's' : ''} · ${b.componentType || 'Whole Blood'}</p>
+                <p class="text-xs font-bold text-rose-600 mt-1">${b.rejectionReason || 'Failed safety screening'}</p>
+                <p class="text-xs text-slate-400 font-medium mt-1">Rejected ${b.resolvedAt ? new Date(b.resolvedAt).toLocaleString() : '—'}${b.labTechName ? ' · ' + b.labTechName : ''}</p>
             </div>
         `).join('');
     }
@@ -6855,21 +7063,21 @@ async function loadInventoryMovements() {
             transfer_cancelled: { icon: 'cancel', color: 'text-slate-500 bg-slate-100', label: 'Transfer Cancelled' },
         };
         container.innerHTML = movements.map(m => {
-            const style = MOVEMENT_STYLE[m.type] || { icon: 'info', color: 'text-slate-600 bg-slate-50', label: 'Other' };
+            const style = MOVEMENT_STYLE[m.type] || { icon: 'info', color: 'text-slate-600 bg-slate-50 border-slate-200', label: 'Other' };
             const { icon, color, label } = style;
             return `
-            <div class="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                <div class="w-8 h-8 rounded-lg ${color} flex items-center justify-center shrink-0">
+            <div class="flex items-start gap-3.5 p-3.5 bg-slate-50/70 hover:bg-slate-100/80 rounded-2xl border border-slate-200/50 transition-all">
+                <div class="w-9 h-9 rounded-xl ${color} flex items-center justify-center shrink-0 border border-slate-200/40 shadow-2xs">
                     <span class="material-symbols-outlined text-sm">${icon}</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2">
-                        <p class="text-sm font-bold text-on-surface truncate">${m.bloodType || '—'}</p>
-                        <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${color}">${label}</span>
-                        ${m.units ? `<span class="text-xs font-bold text-slate-600">${m.units} unit${m.units > 1 ? 's' : ''}</span>` : ''}
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <p class="text-sm font-extrabold text-slate-900 truncate">${m.bloodType || '—'}</p>
+                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${color}">${label}</span>
+                        ${m.units ? `<span class="text-xs font-black text-slate-800">${m.units} unit${m.units > 1 ? 's' : ''}</span>` : ''}
                     </div>
-                    <p class="text-xs text-slate-500 truncate mt-0.5">${m.description}</p>
-                    <p class="text-[10px] text-slate-400 mt-0.5">${m.timestamp ? new Date(m.timestamp).toLocaleString() : '—'}</p>
+                    <p class="text-xs font-medium text-slate-600 truncate mt-0.5">${m.description}</p>
+                    <p class="text-[10px] font-medium text-slate-400 mt-0.5">${m.timestamp ? new Date(m.timestamp).toLocaleString() : '—'}</p>
                 </div>
             </div>
             `;
@@ -6915,32 +7123,32 @@ async function loadHemovigilanceView() {
             other: 'Other Reaction'
         };
         const severityStyle = {
-            mild: 'text-amber-600 bg-amber-50',
-            moderate: 'text-orange-600 bg-orange-50',
-            severe: 'text-red-600 bg-red-50',
-            life_threatening: 'text-red-700 bg-red-100',
-            fatal: 'text-red-800 bg-red-200'
+            mild: 'text-amber-700 bg-amber-50 border-amber-200',
+            moderate: 'text-orange-700 bg-orange-50 border-orange-200',
+            severe: 'text-red-700 bg-red-50 border-red-200',
+            life_threatening: 'text-rose-700 bg-rose-100 border-rose-300 font-black',
+            fatal: 'text-red-900 bg-red-200 border-red-400 font-black'
         };
 
         listEl.innerHTML = reports.map(r => `
-            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <div class="flex items-start justify-between gap-3 mb-2">
+            <div class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80 hover:shadow-md transition-all">
+                <div class="flex items-start justify-between gap-3 mb-3">
                     <div class="flex items-center gap-3">
-                        <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm shrink-0">${r.bloodType || '?'}</span>
+                        <span class="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200/60 text-rose-700 flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">${r.bloodType || '?'}</span>
                         <div>
-                            <p class="text-sm font-bold text-on-surface">${reactionLabels[r.reactionType] || r.reactionType || 'Unspecified Reaction'}</p>
-                            <p class="text-[10px] text-slate-400">${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</p>
+                            <p class="text-base font-extrabold text-slate-900">${reactionLabels[r.reactionType] || r.reactionType || 'Unspecified Reaction'}</p>
+                            <p class="text-xs font-medium text-slate-400 mt-0.5">${r.createdAt ? new Date(r.createdAt).toLocaleString() : ''}</p>
                         </div>
                     </div>
-                    <span class="text-[9px] font-bold uppercase px-2 py-1 rounded-full ${severityStyle[r.severity] || 'text-slate-600 bg-slate-50'}">${(r.severity || '').replace(/_/g, ' ')}</span>
+                    <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full border ${severityStyle[r.severity] || 'text-slate-600 bg-slate-50 border-slate-200'}">${(r.severity || '').replace(/_/g, ' ')}</span>
                 </div>
-                <p class="text-xs text-slate-600 mb-3">${r.description || ''}</p>
-                <div class="flex items-center justify-between">
-                    <span class="text-[10px] font-bold uppercase px-2 py-1 rounded-full ${r.status === 'resolved' ? 'text-emerald-600 bg-emerald-50' : r.status === 'reviewed' ? 'text-blue-600 bg-blue-50' : 'text-amber-600 bg-amber-50'}">${(r.status || 'pending_review').replace(/_/g, ' ')}</span>
+                <p class="text-xs text-slate-600 font-medium leading-relaxed mb-4 p-3 bg-slate-50 rounded-xl border border-slate-100">${r.description || 'No additional details provided.'}</p>
+                <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                    <span class="text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${r.status === 'resolved' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : r.status === 'reviewed' ? 'text-blue-700 bg-blue-50 border-blue-200' : 'text-amber-700 bg-amber-50 border-amber-200'}">${(r.status || 'pending_review').replace(/_/g, ' ')}</span>
                     ${r.status !== 'resolved' ? `
-                    <div class="flex gap-2">
-                        ${r.status !== 'reviewed' ? `<button onclick="window.updateHemoStatus('${r.id}', 'reviewed')" class="text-[10px] font-bold text-blue-600 hover:underline cursor-pointer">Mark Reviewed</button>` : ''}
-                        <button onclick="window.updateHemoStatus('${r.id}', 'resolved')" class="text-[10px] font-bold text-emerald-600 hover:underline cursor-pointer">Mark Resolved</button>
+                    <div class="flex items-center gap-2">
+                        ${r.status !== 'reviewed' ? `<button onclick="window.updateHemoStatus('${r.id}', 'reviewed')" class="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer">Mark Reviewed</button>` : ''}
+                        <button onclick="window.updateHemoStatus('${r.id}', 'resolved')" class="text-xs font-bold text-emerald-600 hover:text-emerald-800 cursor-pointer">Mark Resolved</button>
                     </div>` : ''}
                 </div>
             </div>
@@ -7012,29 +7220,29 @@ function renderForecastGrid(forecasts) {
     const gridEl = document.getElementById('forecastGrid');
     if (!gridEl) return;
     if (!forecasts || forecasts.length === 0) {
-        gridEl.innerHTML = '<div class="col-span-full text-center text-slate-400 py-12 text-sm">No forecast data available yet.</div>';
+        gridEl.innerHTML = '<div class="col-span-full text-center text-slate-400 py-12 text-sm font-medium">No forecast data available yet.</div>';
         return;
     }
     const trendStyle = {
-        critical: { color: 'text-red-600 bg-red-50', icon: 'warning' },
-        increasing: { color: 'text-amber-600 bg-amber-50', icon: 'trending_up' },
-        stable: { color: 'text-blue-600 bg-blue-50', icon: 'trending_flat' },
-        decreasing: { color: 'text-emerald-600 bg-emerald-50', icon: 'trending_down' }
+        critical: { color: 'text-red-700 bg-red-50 border-red-200', icon: 'warning' },
+        increasing: { color: 'text-amber-700 bg-amber-50 border-amber-200', icon: 'trending_up' },
+        stable: { color: 'text-blue-700 bg-blue-50 border-blue-200', icon: 'trending_flat' },
+        decreasing: { color: 'text-emerald-700 bg-emerald-50 border-emerald-200', icon: 'trending_down' }
     };
     gridEl.innerHTML = forecasts.map(f => {
         const style = trendStyle[f.trend] || trendStyle.stable;
         return `
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+        <div class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80 hover:shadow-md transition-all">
             <div class="flex items-center justify-between mb-3">
-                <span class="w-10 h-10 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-black">${f.bloodType}</span>
-                <span class="text-[9px] font-bold uppercase px-2 py-1 rounded-full ${style.color} flex items-center gap-1"><span class="material-symbols-outlined text-xs">${style.icon}</span>${f.trend}</span>
+                <span class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-700 flex items-center justify-center font-black text-sm shadow-2xs">${f.bloodType}</span>
+                <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full border ${style.color} flex items-center gap-1"><span class="material-symbols-outlined text-xs">${style.icon}</span>${f.trend}</span>
             </div>
-            <p class="text-2xl font-black text-slate-900">${f.predictedDemand}</p>
-            <p class="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-2">Predicted Demand (units)</p>
-            <div class="text-xs text-slate-500 space-y-0.5">
-                <p>Current stock: <span class="font-bold text-slate-700">${f.currentStock}</span></p>
-                <p>Active demand: <span class="font-bold text-slate-700">${f.activeDemand}</span></p>
-                <p>Confidence: <span class="font-bold text-slate-700">${f.confidence}%</span></p>
+            <p class="text-3xl font-black text-slate-900 tracking-tight">${f.predictedDemand}</p>
+            <p class="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider mb-3">Predicted Demand (units)</p>
+            <div class="text-xs text-slate-600 font-medium space-y-1 pt-2 border-t border-slate-100">
+                <div class="flex justify-between"><span>Current stock:</span><span class="font-extrabold text-slate-800">${f.currentStock}</span></div>
+                <div class="flex justify-between"><span>Active demand:</span><span class="font-extrabold text-slate-800">${f.activeDemand}</span></div>
+                <div class="flex justify-between"><span>Confidence index:</span><span class="font-extrabold text-blue-600">${f.confidence}%</span></div>
             </div>
         </div>
         `;
@@ -7057,16 +7265,16 @@ async function loadForecastingView() {
     try {
         const past = await fetchDemandForecasts(hospitalName);
         if (past.length === 0) {
-            pastListEl.innerHTML = '<div class="px-6 py-8 text-center text-slate-400 text-sm">No past forecasts yet. Click "Generate Forecast" above.</div>';
+            pastListEl.innerHTML = '<div class="px-6 py-8 text-center text-slate-400 text-sm font-medium">No past forecasts yet. Click "Generate Forecast" above.</div>';
             return;
         }
         pastListEl.innerHTML = past.map(f => `
-            <div class="px-6 py-4 flex items-center justify-between">
+            <div class="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
                 <div>
-                    <p class="text-sm font-bold text-on-surface">${(f.forecasts || []).length} blood types forecasted</p>
-                    <p class="text-[10px] text-slate-400">${f.generatedAt ? new Date(f.generatedAt).toLocaleString() : ''}</p>
+                    <p class="text-sm font-extrabold text-slate-900">${(f.forecasts || []).length} blood types forecasted</p>
+                    <p class="text-xs text-slate-400 font-medium mt-0.5">${f.generatedAt ? new Date(f.generatedAt).toLocaleString() : ''}</p>
                 </div>
-                <span class="text-[10px] font-bold text-slate-400 uppercase">${f.algorithm || 'Trend-based'}</span>
+                <span class="text-[10px] font-black text-slate-500 uppercase bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg">${f.algorithm || 'Trend-based'}</span>
             </div>
         `).join('');
     } catch (err) {
@@ -7107,29 +7315,31 @@ async function loadMythBustingView() {
     try {
         const articles = await fetchMythArticles();
         if (articles.length === 0) {
-            gridEl.innerHTML = '<div class="col-span-full text-center py-20 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2 block">psychology</span><p class="text-sm">No articles published yet</p></div>';
+            gridEl.innerHTML = '<div class="col-span-full text-center py-20 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2 block">psychology</span><p class="text-sm font-medium">No educational articles published yet</p></div>';
             return;
         }
         const categoryLabels = { health: 'Health & Safety', safety: 'Blood Safety', process: 'Donation Process', general: 'General' };
         gridEl.innerHTML = articles.map(a => `
-            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
-                <div class="flex items-center justify-between mb-3">
-                    <span class="text-[9px] font-bold uppercase px-2 py-1 rounded-full text-purple-600 bg-purple-50">${categoryLabels[a.category] || 'General'}</span>
-                    <button onclick="window.likeMythArticleAction('${a.id}')" class="flex items-center gap-1 text-slate-400 hover:text-red-500 transition-colors cursor-pointer">
-                        <span class="material-symbols-outlined text-sm">favorite</span>
-                        <span class="text-xs font-bold">${a.likes || 0}</span>
-                    </button>
+            <div class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80 hover:shadow-md transition-all flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-purple-700 bg-purple-50 border border-purple-200">${categoryLabels[a.category] || 'General'}</span>
+                        <button onclick="window.likeMythArticleAction('${a.id}')" class="flex items-center gap-1 text-slate-400 hover:text-red-500 transition-colors cursor-pointer bg-slate-50 hover:bg-red-50 border border-slate-200 hover:border-red-200 px-2.5 py-1 rounded-xl">
+                            <span class="material-symbols-outlined text-sm text-red-500">favorite</span>
+                            <span class="text-xs font-black text-slate-700">${a.likes || 0}</span>
+                        </button>
+                    </div>
+                    <h4 class="text-base font-extrabold text-slate-900 mb-3 tracking-tight">${a.title}</h4>
+                    <div class="bg-rose-50/80 border border-rose-200/80 rounded-xl p-3.5 mb-2.5">
+                        <p class="text-[9px] font-black text-rose-700 uppercase tracking-widest mb-1">Myth</p>
+                        <p class="text-xs text-slate-800 font-medium leading-relaxed">${a.myth}</p>
+                    </div>
+                    <div class="bg-emerald-50/80 border border-emerald-200/80 rounded-xl p-3.5">
+                        <p class="text-[9px] font-black text-emerald-700 uppercase tracking-widest mb-1">Fact</p>
+                        <p class="text-xs text-slate-800 font-medium leading-relaxed">${a.fact}</p>
+                    </div>
                 </div>
-                <h4 class="text-base font-extrabold text-slate-900 mb-2">${a.title}</h4>
-                <div class="bg-red-50 border border-red-100 rounded-xl p-3 mb-2">
-                    <p class="text-[9px] font-bold text-red-600 uppercase tracking-wider mb-1">Myth</p>
-                    <p class="text-xs text-slate-700">${a.myth}</p>
-                </div>
-                <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
-                    <p class="text-[9px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Fact</p>
-                    <p class="text-xs text-slate-700">${a.fact}</p>
-                </div>
-                <p class="text-[10px] text-slate-400 mt-3">By ${a.authorName || 'VitalPulse Team'} · ${a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''}</p>
+                <p class="text-[11px] text-slate-400 font-semibold mt-4 pt-3 border-t border-slate-100">By ${a.authorName || 'VitalPulse Team'} · ${a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''}</p>
             </div>
         `).join('');
     } catch (err) {
@@ -7203,21 +7413,21 @@ async function loadCertificatesView() {
         document.getElementById('certTotalLives').textContent = certs.reduce((sum, c) => sum + ((c.unitsDonated || 0) * 3), 0);
 
         if (certs.length === 0) {
-            listEl.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">workspace_premium</span><p class="text-sm">No certificates issued yet</p></div>';
+            listEl.innerHTML = '<div class="flex flex-col items-center justify-center py-20 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">workspace_premium</span><p class="text-sm font-medium">No certificates issued yet</p></div>';
             return;
         }
 
         listEl.innerHTML = certs.map(c => `
-            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center justify-between">
-                <div class="flex items-center gap-3 min-w-0">
-                    <span class="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center shrink-0"><span class="material-symbols-outlined">workspace_premium</span></span>
+            <div class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80 hover:shadow-md transition-all flex items-center justify-between">
+                <div class="flex items-center gap-3.5 min-w-0">
+                    <span class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/60 flex items-center justify-center shrink-0 shadow-2xs"><span class="material-symbols-outlined text-2xl">workspace_premium</span></span>
                     <div class="min-w-0">
-                        <p class="text-sm font-bold text-on-surface truncate">${c.donorName}</p>
-                        <p class="text-xs text-slate-500">${c.bloodType} · ${c.donationCount} donation${c.donationCount > 1 ? 's' : ''} · ${c.unitsDonated} unit${c.unitsDonated > 1 ? 's' : ''}</p>
-                        <p class="text-[10px] text-slate-400 mt-0.5">${c.certificateNumber}</p>
+                        <p class="text-base font-extrabold text-slate-900 truncate">${c.donorName}</p>
+                        <p class="text-xs text-slate-500 font-semibold mt-0.5">${c.bloodType} · ${c.donationCount} donation${c.donationCount > 1 ? 's' : ''} · ${c.unitsDonated} unit${c.unitsDonated > 1 ? 's' : ''}</p>
+                        <p class="text-[10px] font-mono text-slate-400 mt-0.5">${c.certificateNumber}</p>
                     </div>
                 </div>
-                <p class="text-[10px] text-slate-400 shrink-0">${c.issuedDate ? new Date(c.issuedDate).toLocaleDateString() : ''}</p>
+                <p class="text-xs font-medium text-slate-400 shrink-0 ml-2">${c.issuedDate ? new Date(c.issuedDate).toLocaleDateString() : ''}</p>
             </div>
         `).join('');
     } catch (err) {
@@ -7296,6 +7506,19 @@ async function loadDashboardChart() {
             counts.push(count);
         }
 
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx ? ctx.createLinearGradient(0, 0, 0, 250) : null;
+        if (gradient) {
+            gradient.addColorStop(0, 'rgba(220, 38, 38, 0.9)');
+            gradient.addColorStop(1, 'rgba(220, 38, 38, 0.2)');
+        }
+
+        const emptyGradient = ctx ? ctx.createLinearGradient(0, 0, 0, 250) : null;
+        if (emptyGradient) {
+            emptyGradient.addColorStop(0, 'rgba(226, 232, 240, 0.8)');
+            emptyGradient.addColorStop(1, 'rgba(241, 245, 249, 0.3)');
+        }
+
         if (dashChartInstance) dashChartInstance.destroy();
 
         dashChartInstance = new Chart(canvas, {
@@ -7303,11 +7526,12 @@ async function loadDashboardChart() {
             data: {
                 labels: days,
                 datasets: [{
-                    label: 'Requests',
+                    label: 'Emergency Requests',
                     data: counts,
-                    backgroundColor: counts.map(c => c > 0 ? '#dc2626' : '#fecaca'),
-                    borderRadius: 4,
-                    borderSkipped: false
+                    backgroundColor: counts.map(c => c > 0 ? (gradient || '#dc2626') : (emptyGradient || '#e2e8f0')),
+                    borderRadius: 8,
+                    borderSkipped: false,
+                    barThickness: 28
                 }]
             },
             options: {
@@ -7316,13 +7540,18 @@ async function loadDashboardChart() {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        backgroundColor: '#0f172a',
+                        titleFont: { family: 'Manrope', size: 12, weight: 'bold' },
+                        bodyFont: { family: 'Inter', size: 12 },
+                        padding: 12,
+                        cornerRadius: 12,
+                        displayColors: false,
                         callbacks: {
-                            label: (ctx) => `${ctx.parsed.y} request${ctx.parsed.y !== 1 ? 's' : ''}`
+                            label: (context) => ` ${context.parsed.y} request${context.parsed.y !== 1 ? 's' : ''}`
                         }
                     }
                 },
                 scales: {
-                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { stepSize: 1 } },
                     x: { grid: { display: false } }
                 }
             }
@@ -7558,50 +7787,48 @@ async function loadHospitalCampaignsView() {
         grid.innerHTML = campaigns.map(c => {
             const progress = c.targetUnits ? Math.round(((c.unitsCollected || 0) / c.targetUnits) * 100) : 0;
             const statusColors = {
-                'active': { bg: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-800' },
-                'planning': { bg: 'bg-blue-500', badge: 'bg-blue-100 text-blue-800' },
-                'completed': { bg: 'bg-slate-500', badge: 'bg-slate-100 text-slate-800' },
-                'cancelled': { bg: 'bg-red-500', badge: 'bg-red-100 text-red-800' }
+                'active': { bg: 'bg-emerald-500', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                'planning': { bg: 'bg-blue-500', badge: 'bg-blue-50 text-blue-700 border-blue-200' },
+                'completed': { bg: 'bg-slate-500', badge: 'bg-slate-100 text-slate-700 border-slate-200' },
+                'cancelled': { bg: 'bg-rose-500', badge: 'bg-rose-50 text-rose-700 border-rose-200' }
             };
             const colors = statusColors[c.status] || statusColors.planning;
             const startDate = c.startDate ? new Date(c.startDate).toLocaleDateString() : 'TBD';
 
             return `
-            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-all flex flex-col relative overflow-hidden">
+            <div class="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/80 hover:shadow-md transition-all flex flex-col relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-1 ${colors.bg}"></div>
                 <div class="flex justify-between items-start mb-4">
                     <div>
-                        <h3 class="font-extrabold text-base text-on-surface leading-tight">${c.title}</h3>
-                        <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                        <h3 class="font-extrabold text-base text-slate-900 leading-tight">${c.title}</h3>
+                        <p class="text-xs font-semibold text-slate-500 mt-1 flex items-center gap-1">
                             <span class="material-symbols-outlined text-xs">location_on</span>
                             ${c.location}
                         </p>
                     </div>
-                    <span class="${colors.badge} text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">${c.status}</span>
+                    <span class="${colors.badge} text-[9px] font-black border px-2.5 py-0.5 rounded-full uppercase">${c.status}</span>
                 </div>
                 <div class="space-y-2 mb-4">
-                    <div class="flex justify-between text-xs font-bold text-on-surface">
+                    <div class="flex justify-between text-xs font-bold text-slate-800">
                         <span>${c.unitsCollected || 0} / ${c.targetUnits || 0} units</span>
-                        <span>${progress}%</span>
+                        <span class="font-black text-slate-900">${progress}%</span>
                     </div>
-                    <div class="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                        <div class="${colors.bg} h-full rounded-full" style="width: ${progress}%"></div>
+                    <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden p-0.5 border border-slate-200/40">
+                        <div class="${colors.bg} h-full rounded-full transition-all" style="width: ${progress}%"></div>
                     </div>
                 </div>
-                <div class="text-xs text-slate-500 mb-4">
-                    <span class="font-medium">Start:</span> ${startDate}
-                    ${c.participantCount > 0 ? ` • <span class="font-medium">${c.participantCount}</span> hospital${c.participantCount > 1 ? 's' : ''} participating` : ''}
+                <div class="text-xs font-medium text-slate-500 mb-4">
+                    <span>Start: ${startDate}</span>
+                    ${c.participantCount > 0 ? ` • <span class="font-bold text-slate-700">${c.participantCount}</span> hospital${c.participantCount > 1 ? 's' : ''} participating` : ''}
                 </div>
                 <div class="mt-auto pt-3 border-t border-slate-100">
                     ${c.hasJoined
-                        ? `<button onclick="window.handleLeaveCampaign('${c.id}', '${hospitalName}')" class="w-full text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 py-2 rounded-lg transition-colors flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-xs">logout</span>
-                            Leave Campaign
+                        ? `<button onclick="window.handleLeaveCampaign('${c.id}', '${hospitalName}')" class="w-full text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200/60 hover:bg-rose-100 py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                            <span class="material-symbols-outlined text-xs">logout</span> Leave Campaign
                         </button>`
                         : (c.status === 'active' || c.status === 'planning')
-                        ? `<button onclick="window.handleJoinCampaign('${c.id}', '${hospitalName}', '${hospitalCity}')" class="w-full text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 py-2 rounded-lg transition-colors flex items-center justify-center gap-1">
-                            <span class="material-symbols-outlined text-xs">add_circle</span>
-                            Join Campaign
+                        ? `<button onclick="window.handleJoinCampaign('${c.id}', '${hospitalName}', '${hospitalCity}')" class="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 py-2.5 rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer">
+                            <span class="material-symbols-outlined text-xs">add_circle</span> Join Campaign
                         </button>`
                         : `<span class="block text-center text-xs text-slate-400 font-medium py-2">Campaign ${c.status}</span>`
                     }
@@ -7652,27 +7879,27 @@ async function loadNotificationHistory() {
         const logs = await fetchNotificationLog(hospitalName);
 
         if (logs.length === 0) {
-            container.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">notifications_off</span><p class="text-sm">No notifications sent yet</p><p class="text-xs text-slate-400 mt-1">Enable SMS/WhatsApp and perform actions to trigger notifications</p></div>';
+            container.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">notifications_off</span><p class="text-sm font-medium">No notifications sent yet</p><p class="text-xs text-slate-400 mt-1">Enable SMS/WhatsApp and perform actions to trigger notifications</p></div>';
             return;
         }
 
         container.innerHTML = logs.map(log => {
             const icon = log.channel === 'sms' ? 'sms' : log.channel === 'whatsapp' ? 'chat' : 'notifications';
-            const color = log.status === 'pending' ? 'text-amber-600 bg-amber-50' : log.status === 'sent' ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50';
+            const color = log.status === 'pending' ? 'text-amber-700 bg-amber-50 border-amber-200' : log.status === 'sent' ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-rose-700 bg-rose-50 border-rose-200';
             const statusText = log.status === 'pending' ? 'Tap to Send' : log.status;
             return `
-            <div class="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-                <div class="w-8 h-8 rounded-lg ${color} flex items-center justify-center shrink-0">
+            <div class="flex items-start gap-3.5 p-3.5 bg-slate-50/70 hover:bg-slate-100/80 rounded-2xl border border-slate-200/50 transition-all">
+                <div class="w-9 h-9 rounded-xl ${color} flex items-center justify-center shrink-0 border shadow-2xs">
                     <span class="material-symbols-outlined text-sm">${icon}</span>
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
-                        <span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${color}">${statusText}</span>
-                        <span class="text-[9px] text-slate-400">${new Date(log.sentAt).toLocaleString()}</span>
+                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${color}">${statusText}</span>
+                        <span class="text-[10px] text-slate-400 font-medium">${new Date(log.sentAt).toLocaleString()}</span>
                     </div>
-                    <p class="text-xs text-slate-600 mt-1 line-clamp-2">${log.message}</p>
+                    <p class="text-xs font-medium text-slate-700 mt-1 line-clamp-2 leading-relaxed">${log.message}</p>
                     <div class="flex gap-2 mt-2">
-                        ${log.link ? `<a href="${log.link}" target="_blank" class="inline-flex items-center gap-1 text-[10px] font-bold ${log.channel === 'whatsapp' ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'} px-2.5 py-1 rounded-lg transition-colors">
+                        ${log.link ? `<a href="${log.link}" target="_blank" class="inline-flex items-center gap-1 text-[10px] font-bold ${log.channel === 'whatsapp' ? 'text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100' : 'text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100'} px-2.5 py-1.5 rounded-xl transition-all">
                             <span class="material-symbols-outlined text-xs">${log.channel === 'whatsapp' ? 'chat' : 'sms'}</span>
                             Open ${log.channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
                         </a>` : ''}
@@ -7742,10 +7969,10 @@ export async function loadHospitalStaffView() {
         const staffList = await fetchHospitalStaff(hospitalId).catch(() => []);
         if (staffList.length === 0) {
             container.innerHTML = `
-                <div class="col-span-full py-12 text-center text-slate-400">
-                    <span class="material-symbols-outlined text-4xl mb-2">badge</span>
-                    <p class="text-sm font-bold text-slate-600">No Staff Accounts Created Yet</p>
-                    <p class="text-xs text-slate-400 mt-1">Click "+ Add Staff Account" above to set up individual staff logins for Reception, Nurses, and Lab Techs.</p>
+                <div class="col-span-full py-16 text-center text-slate-400">
+                    <span class="material-symbols-outlined text-4xl mb-2 text-red-500">badge</span>
+                    <p class="text-sm font-black text-slate-700">No Staff Accounts Created Yet</p>
+                    <p class="text-xs text-slate-400 mt-1 font-medium">Click "+ Add Staff Account" above to set up individual logins for Reception, Nurses, and Lab Techs.</p>
                 </div>
             `;
             return;
@@ -7753,20 +7980,20 @@ export async function loadHospitalStaffView() {
 
         container.innerHTML = staffList.map(s => {
             const roleBadges = (s.roles || [s.role || 'staff']).map(r => {
-                const color = r === 'lab_tech' ? 'bg-purple-100 text-purple-700' : r === 'nurse' ? 'bg-emerald-100 text-emerald-700' : r === 'reception' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700';
-                return `<span class="text-[10px] font-bold ${color} px-2 py-0.5 rounded-full uppercase tracking-wider">${r.replace('_', ' ')}</span>`;
+                const color = r === 'lab_tech' ? 'bg-purple-50 text-purple-700 border-purple-200' : r === 'nurse' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : r === 'reception' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-700 border-slate-200';
+                return `<span class="text-[9px] font-black border ${color} px-2 py-0.5 rounded-full uppercase tracking-wider">${r.replace('_', ' ')}</span>`;
             }).join(' ');
 
             return `
-            <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200 flex flex-col justify-between space-y-4">
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4">
                 <div class="flex items-start justify-between">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-black text-slate-700 shadow-sm">
+                        <div class="w-11 h-11 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center font-black text-red-600 shadow-2xs text-base">
                             ${s.name ? s.name.charAt(0).toUpperCase() : 'S'}
                         </div>
                         <div>
                             <h4 class="font-extrabold text-sm text-slate-900">${s.name || 'Staff Member'}</h4>
-                            <p class="text-[11px] text-slate-500 font-mono">${s.email || ''}</p>
+                            <p class="text-xs text-slate-500 font-mono">${s.email || ''}</p>
                         </div>
                     </div>
                     <span class="w-2.5 h-2.5 rounded-full ${s.active !== false ? 'bg-emerald-500' : 'bg-red-500'}" title="${s.active !== false ? 'Active Account' : 'Inactive'}"></span>
@@ -7774,7 +8001,7 @@ export async function loadHospitalStaffView() {
                 <div class="flex flex-wrap gap-1">
                     ${roleBadges}
                 </div>
-                <div class="pt-3 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-medium">
                     <span>PIN Access: ${s.pinHash ? '•••• (Set)' : 'Not Set'}</span>
                     <span class="text-[10px] text-slate-400">Added: ${new Date(s.createdAt || Date.now()).toLocaleDateString()}</span>
                 </div>
@@ -7888,8 +8115,9 @@ function initStaffModalHandlers() {
                 const badge = document.getElementById('activeStaffBadge');
                 if (badge) badge.textContent = `Staff: ${res.name}`;
 
-                // Save active staff session in sessionStorage and update nav visibility
+                // Save active staff session in sessionStorage, hydrate header, and update nav visibility
                 setActiveStaffSession({ uid: res.staffUid, name: res.name, roles: res.roles });
+                hydrateSessionIdentity();
                 updateHospitalNavVisibility();
 
                 showToast(`Switched active session to ${res.name}!`);
@@ -7907,14 +8135,24 @@ function initStaffModalHandlers() {
             }
         });
     }
+
+    const btnEndSession = document.getElementById('btnEndStaffSession');
+    if (btnEndSession) {
+        btnEndSession.addEventListener('click', () => {
+            clearActiveStaffSession();
+            hydrateSessionIdentity();
+            updateHospitalNavVisibility();
+            showToast('Returned to Hospital Admin session');
+            window.closeStaffQuickSwitchModal();
+        });
+    }
 }
 
-// Call initStaffModalHandlers during hospital dashboard init
+// Call initStaffModalHandlers once on DOMContentLoaded
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
         initStaffModalHandlers();
     });
-    initStaffModalHandlers();
 }
 
 

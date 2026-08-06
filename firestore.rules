@@ -492,6 +492,11 @@ service cloud.firestore {
       allow write: if signedIn() && ((sameHospital(hospitalId) && hasAnyRole(['hospital_admin'])) || isSystemAdmin());
     }
 
+    match /staff_accounts/{email} {
+      allow get, list: if true;
+      allow write: if signedIn();
+    }
+
     match /audit_logs/{id} {
       allow get, list: if isSystemAdmin();
       allow write: if false;

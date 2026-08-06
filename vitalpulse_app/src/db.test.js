@@ -533,3 +533,31 @@ describe('issueBloodToPatient (Phase 3)', () => {
         );
     });
 });
+
+describe('authenticateStaffDirectLoginCall', () => {
+    it('throws error when email or pin is missing', async () => {
+        const { authenticateStaffDirectLoginCall } = await import('./db.js');
+        await expect(authenticateStaffDirectLoginCall({})).rejects.toThrow('Email and 4-digit PIN are required.');
+    });
+
+    it('authenticates staff account successfully when index doc exists', async () => {
+        const { authenticateStaffDirectLoginCall } = await import('./db.js');
+        getDoc.mockResolvedValueOnce({
+            exists: () => true,
+            data: () => ({
+                uid: 'staff_123',
+                name: 'Patricia Ngu',
+                email: 'patricia@buea.cm',
+                roles: ['nurse', 'lab_tech'],
+                hospitalId: 'hosp_buea',
+                active: true,
+                pinHash: null,
+            }),
+        });
+
+        const res = await authenticateStaffDirectLoginCall({ email: 'patricia@buea.cm', pin: '1234' });
+        expect(res.success).toBe(true);
+        expect(res.name).toBe('Patricia Ngu');
+        expect(res.roles).toEqual(['nurse', 'lab_tech']);
+    });
+});

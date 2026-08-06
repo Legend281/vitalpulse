@@ -16,6 +16,10 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
+// Secondary app instance for creating staff Auth users without logging out the active admin
+export const secondaryApp = initializeApp(firebaseConfig, "SecondaryApp");
+export const secondaryAuth = getAuth(secondaryApp);
+
 // Offline-first: reads are served from a local cache when there's no connection, and writes
 // made while offline are queued on-device and automatically synced once it returns — this is
 // the Firestore SDK's own behavior, enabled by using a persistent local cache instead of the

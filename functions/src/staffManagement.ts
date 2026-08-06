@@ -93,7 +93,7 @@ export async function createStaffAccountHandler(request: CallableRequest) {
     targetUid: staffUid,
     details: {
       staffName: name,
-      roles,
+      roles: roles.join(', '),
       hospitalId,
     },
   });

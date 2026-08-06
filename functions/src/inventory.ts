@@ -36,6 +36,7 @@ type BatchLike = {
   units: number;
   componentType?: string | null;
   testStatus?: string | null;
+  expiresAt?: string | null;
   [key: string]: unknown;
 };
 
