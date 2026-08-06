@@ -1,10 +1,12 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { getCurrentUser } from '../../auth.js';
 import { resolveLabTest } from '../../db.js';
 import { showToast } from '../../main.js';
 
 let isLabInitialized = false;
+let activeLabFilter = 'pending';
+let cachedBatches = { pending: [], cleared: [], rejected: [] };
 
 /**
  * initLabDashboard - Main lifecycle initialization for Lab Tech Dashboard
@@ -15,17 +17,21 @@ export function initLabDashboard() {
 
   bindLabModalForm();
   bindGlobalLabActions();
+  bindLabTabFilters();
 }
 
 /**
- * fetchPendingLabTests - Retrieves all quarantine batches waiting for lab testing for a hospital
+ * fetchAllLabBatches - Retrieves all quarantine, cleared, and rejected batches for a hospital
  */
-export async function fetchPendingLabTests(hospitalName) {
-  if (!hospitalName) return [];
+export async function fetchAllLabBatches(hospitalName) {
+  if (!hospitalName) return { pending: [], cleared: [], rejected: [] };
   try {
     const q = query(collection(db, 'inventory'));
     const snapshot = await getDocs(q);
-    const pendingBatches = [];
+
+    const pending = [];
+    const cleared = [];
+    const rejected = [];
 
     snapshot.docs.forEach(docSnap => {
       const data = docSnap.data();
@@ -36,54 +42,34 @@ export async function fetchPendingLabTests(hospitalName) {
       const batches = Array.isArray(data.batches) ? data.batches : [];
 
       batches.forEach(b => {
-        if (b.testStatus === 'Waiting for Lab Test') {
-          pendingBatches.push({
-            ...b,
-            bloodType,
-            hospital: hospitalName
-          });
+        const item = { ...b, bloodType, hospital: hospitalName };
+        const status = b.testStatus || 'Cleared';
+
+        if (status === 'Waiting for Lab Test') {
+          pending.push(item);
+        } else if (status === 'Cleared') {
+          cleared.push(item);
+        } else if (status === 'Rejected, Not Safe') {
+          rejected.push(item);
         }
       });
     });
 
-    return pendingBatches.sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
+    pending.sort((a, b) => new Date(b.addedAt || 0) - new Date(a.addedAt || 0));
+    cleared.sort((a, b) => new Date(b.resolvedAt || b.addedAt || 0) - new Date(a.resolvedAt || a.addedAt || 0));
+    rejected.sort((a, b) => new Date(b.resolvedAt || b.addedAt || 0) - new Date(a.resolvedAt || a.addedAt || 0));
+
+    return { pending, cleared, rejected };
   } catch (err) {
-    console.warn('fetchPendingLabTests failed:', err);
-    return [];
+    console.warn('fetchAllLabBatches failed:', err);
+    return { pending: [], cleared: [], rejected: [] };
   }
 }
 
-/**
- * fetchLabClearedBatches - Fetches cleared & rejected statistics for KPIs
- */
-export async function fetchLabStatistics(hospitalName) {
-  if (!hospitalName) return { clearedCount: 0, rejectedCount: 0, totalBatches: 0 };
-  try {
-    const q = query(collection(db, 'inventory'));
-    const snapshot = await getDocs(q);
-    let clearedCount = 0;
-    let rejectedCount = 0;
-    let totalBatches = 0;
-
-    snapshot.docs.forEach(docSnap => {
-      const data = docSnap.data();
-      const matchHospital = data.hospital === hospitalName || data.hospitalName === hospitalName;
-      if (!matchHospital) return;
-
-      const batches = Array.isArray(data.batches) ? data.batches : [];
-      batches.forEach(b => {
-        totalBatches++;
-        if (b.testStatus === 'Cleared') clearedCount += (b.units || 1);
-        if (b.testStatus === 'Rejected, Not Safe') rejectedCount += (b.units || 1);
-      });
-    });
-
-    return { clearedCount, rejectedCount, totalBatches };
-  } catch (err) {
-    console.warn('fetchLabStatistics failed:', err);
-    return { clearedCount: 0, rejectedCount: 0, totalBatches: 0 };
-  }
-}
+export const fetchPendingLabTests = async (hospitalName) => {
+  const result = await fetchAllLabBatches(hospitalName);
+  return result.pending;
+};
 
 /**
  * loadLabOverview / loadLabPipeline - Renders Lab Tech KPIs and Quarantine Screening Queue
@@ -93,22 +79,32 @@ export async function loadLabOverview() {
   const hospitalName = currentUser?.name || 'General Hospital';
 
   try {
-    const pendingBatches = await fetchPendingLabTests(hospitalName);
-    const stats = await fetchLabStatistics(hospitalName);
+    const batches = await fetchAllLabBatches(hospitalName);
+    cachedBatches = batches;
 
-    // Update KPI Tiles
-    const pendingEl = document.getElementById('labPendingCount');
-    const clearedEl = document.getElementById('labClearedCount');
-    const rejectedEl = document.getElementById('labRejectedCount');
+    const pendingUnits = batches.pending.reduce((sum, b) => sum + (b.units || 1), 0);
+    const clearedUnits = batches.cleared.reduce((sum, b) => sum + (b.units || 1), 0);
+    const rejectedUnits = batches.rejected.reduce((sum, b) => sum + (b.units || 1), 0);
+    const totalResolved = clearedUnits + rejectedUnits;
+    const passRate = totalResolved > 0 ? Math.round((clearedUnits / totalResolved) * 100) + '%' : '100%';
+
+    // Update KPI Tiles in Hero and #view-lab
+    const pendingEls = document.querySelectorAll('#labPendingCount');
+    const clearedEls = document.querySelectorAll('#labClearedCount');
+    const rejectedEls = document.querySelectorAll('#labRejectedCount');
     const totalEl = document.getElementById('labTotalBatchesCount');
+    const passRateEl = document.getElementById('labPassRate');
 
-    if (pendingEl) pendingEl.textContent = pendingBatches.length;
-    if (clearedEl) clearedEl.textContent = stats.clearedCount;
-    if (rejectedEl) rejectedEl.textContent = stats.rejectedCount;
-    if (totalEl) totalEl.textContent = stats.totalBatches;
+    pendingEls.forEach(el => { el.textContent = batches.pending.length; });
+    clearedEls.forEach(el => { el.textContent = clearedUnits; });
+    rejectedEls.forEach(el => { el.textContent = rejectedUnits; });
 
-    // Render Queue
-    renderPendingLabTestsQueue(pendingBatches);
+    if (totalEl) totalEl.textContent = batches.pending.length + batches.cleared.length + batches.rejected.length;
+    if (passRateEl) passRateEl.textContent = passRate;
+
+    // Render Queues
+    renderPendingLabTestsQueue(batches.pending);
+    renderLabPipelineGrid(batches);
   } catch (e) {
     console.warn('loadLabOverview failed:', e);
   }
@@ -117,7 +113,7 @@ export async function loadLabOverview() {
 export const loadLabPipeline = loadLabOverview;
 
 /**
- * renderPendingLabTestsQueue - Renders scannable quarantine list of blood units needing TTI screening
+ * renderPendingLabTestsQueue - Renders scannable quarantine list inside #labPendingTestsList
  */
 function renderPendingLabTestsQueue(pendingBatches = []) {
   const container = document.getElementById('labPendingTestsList');
@@ -134,13 +130,41 @@ function renderPendingLabTestsQueue(pendingBatches = []) {
     return;
   }
 
-  container.innerHTML = pendingBatches.map(b => {
-    const batchId = b.id || 'N/A';
-    const bloodType = b.bloodType || 'O+';
-    const units = b.units || 1;
-    const component = b.componentType || 'Whole Blood';
-    const collectedAt = b.addedAt ? new Date(b.addedAt).toLocaleDateString() : 'Recent';
+  container.innerHTML = pendingBatches.map(b => renderLabCardHTML(b, 'pending')).join('');
+}
 
+/**
+ * renderLabPipelineGrid - Renders tabbed view inside #labPipelineGrid
+ */
+function renderLabPipelineGrid(batches = cachedBatches) {
+  const gridEl = document.getElementById('labPipelineGrid');
+  if (!gridEl) return;
+
+  const currentList = batches[activeLabFilter] || [];
+  if (currentList.length === 0) {
+    const emptyCopy = {
+      pending: 'No blood units currently awaiting TTI lab testing.',
+      cleared: 'No cleared blood batches logged yet.',
+      rejected: 'No rejected/quarantined batches on record.'
+    };
+    gridEl.innerHTML = `<div class="col-span-full text-center text-slate-400 py-12 font-medium">${emptyCopy[activeLabFilter]}</div>`;
+    return;
+  }
+
+  gridEl.innerHTML = currentList.map(b => renderLabCardHTML(b, activeLabFilter)).join('');
+}
+
+/**
+ * Helper to render individual lab batch cards
+ */
+function renderLabCardHTML(b, filterType) {
+  const batchId = b.id || 'N/A';
+  const bloodType = b.bloodType || 'O+';
+  const units = b.units || 1;
+  const component = b.componentType || 'Whole Blood';
+  const dateStr = b.addedAt ? new Date(b.addedAt).toLocaleDateString() : 'Recent';
+
+  if (filterType === 'pending') {
     return `
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs hover:border-indigo-300 transition-all">
         <div class="flex items-center gap-4">
@@ -155,7 +179,7 @@ function renderPendingLabTestsQueue(pendingBatches = []) {
               </span>
             </div>
             <p class="text-xs font-semibold text-slate-600 mt-1">
-              ${units} unit(s) · <span class="text-indigo-600 font-bold">${component}</span> · Collected: ${collectedAt}
+              ${units} unit(s) · <span class="text-indigo-600 font-bold">${component}</span> · Collected: ${dateStr}
             </p>
             <p class="text-[11px] text-slate-400 font-medium mt-0.5 flex items-center gap-1">
               <span class="material-symbols-outlined text-xs text-amber-500">warning</span>
@@ -172,7 +196,61 @@ function renderPendingLabTestsQueue(pendingBatches = []) {
         </div>
       </div>
     `;
-  }).join('');
+  } else if (filterType === 'cleared') {
+    return `
+      <div class="bg-white rounded-2xl border border-emerald-200/80 border-l-4 border-l-emerald-500 p-5 shadow-xs hover:shadow-md transition-all">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <span class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200/60 text-emerald-700 flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">${bloodType}</span>
+          <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-emerald-700 bg-emerald-50 border border-emerald-200">Cleared & Issuable</span>
+        </div>
+        <p class="text-base font-extrabold text-slate-900">${units} unit(s) · ${component}</p>
+        <p class="text-xs text-slate-500 font-medium mt-1">Batch ${batchId.slice(-8)} · Released ${b.resolvedAt ? new Date(b.resolvedAt).toLocaleDateString() : dateStr}</p>
+        <p class="text-[11px] text-emerald-600 font-bold mt-2 flex items-center gap-1">
+          <span class="material-symbols-outlined text-xs">verified</span>
+          Viral Diagnostics Non-Reactive
+        </p>
+      </div>
+    `;
+  } else {
+    return `
+      <div class="bg-white rounded-2xl border border-rose-200/80 border-l-4 border-l-rose-500 p-5 shadow-xs hover:shadow-md transition-all">
+        <div class="flex items-start justify-between gap-2 mb-2">
+          <span class="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200/60 text-rose-700 flex items-center justify-center font-black text-sm shrink-0 shadow-2xs">${bloodType}</span>
+          <span class="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full text-rose-700 bg-rose-50 border border-rose-200">Rejected & Quarantined</span>
+        </div>
+        <p class="text-base font-extrabold text-slate-900">${units} unit(s) · ${component}</p>
+        <p class="text-xs font-bold text-rose-600 mt-1">${b.rejectionReason || 'Failed TTI viral screening'}</p>
+        <p class="text-xs text-slate-400 font-medium mt-1">Flagged ${b.resolvedAt ? new Date(b.resolvedAt).toLocaleDateString() : dateStr}</p>
+      </div>
+    `;
+  }
+}
+
+/**
+ * bindLabTabFilters - Binds Pending / Cleared / Rejections tabs inside #view-lab
+ */
+function bindLabTabFilters() {
+  const tabsContainer = document.getElementById('labFilterTabs');
+  if (!tabsContainer) return;
+
+  tabsContainer.querySelectorAll('.lab-tab-btn').forEach(btn => {
+    btn.onclick = () => {
+      tabsContainer.querySelectorAll('.lab-tab-btn').forEach(b => {
+        b.classList.remove('active', 'bg-white', 'text-slate-900', 'shadow-xs');
+        b.classList.add('text-slate-600');
+      });
+      btn.classList.add('active', 'bg-white', 'text-slate-900', 'shadow-xs');
+      btn.classList.remove('text-slate-600');
+
+      activeLabFilter = btn.dataset.filter || 'pending';
+      renderLabPipelineGrid(cachedBatches);
+    };
+  });
+
+  const refreshBtn = document.getElementById('btnRefreshLabPipeline');
+  if (refreshBtn) {
+    refreshBtn.onclick = () => loadLabOverview();
+  }
 }
 
 /**
