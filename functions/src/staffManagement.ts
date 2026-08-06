@@ -45,8 +45,9 @@ export async function createStaffAccountHandler(request: CallableRequest) {
       displayName: name,
       emailVerified: true,
     });
-  } catch (e: any) {
-    throw new HttpsError('already-exists', e.message || 'Failed to create user account.');
+  } catch (e: unknown) {
+    const err = e as Error;
+    throw new HttpsError('already-exists', err.message || 'Failed to create user account.');
   }
 
   const staffUid = userRecord.uid;

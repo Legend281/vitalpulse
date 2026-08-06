@@ -1046,6 +1046,20 @@ export function updateHospitalNavVisibility() {
     }
 }
 
+let hospitalLiveFeedUnsubscribe = null;
+
+function cleanupHospitalLiveFeed() {
+    if (hospitalLiveFeedUnsubscribe) {
+        try {
+            hospitalLiveFeedUnsubscribe();
+            console.log('[Live Feed] Unsubscribed from hospital live feed to conserve free-tier reads.');
+        } catch (e) {
+            console.warn('[Live Feed] Error during unsubscribe:', e?.message || e);
+        }
+        hospitalLiveFeedUnsubscribe = null;
+    }
+}
+
 function initHospitalNavigation() {
     if (hospitalNavigationInitialized) return;
 
@@ -1056,17 +1070,17 @@ function initHospitalNavigation() {
     const globalSubtitle = document.getElementById('globalHeaderSubtitle');
 
     const titles = {
-        dashboard: { title: 'Dashboard', sub: 'Hospital Control Center' },
-        lab: { title: 'Lab & Testing', sub: 'Blood Testing Queue' },
-        requests: { title: 'My Requests', sub: 'Blood Request Management' },
-        inventory: { title: 'Inventory', sub: 'Blood Stock Management' },
-        donors: { title: 'Incoming Donors', sub: 'Donor Coordination' },
-        settings: { title: 'Settings', sub: 'Hospital Profile & Preferences' },
-        staff: { title: 'Staff Roster', sub: 'Individual Staff Logins, Roles & PIN Access' },
-        campaigns: { title: 'Campaigns', sub: 'Donation Drives' },
-        hemovigilance: { title: 'Hemovigilance', sub: 'Adverse Transfusion Reaction Tracking' },
-        forecasting: { title: 'Forecasting', sub: 'Blood Demand Forecasting' },
-        mythbusting: { title: 'Myth-Busting', sub: 'Donor Education Articles' },
+        dashboard: { title: 'Hospital Control Hub', sub: 'Regional Blood Management' },
+        lab: { title: 'Quarantine & Testing Lab', sub: 'TTI Diagnostics & Safety Clearance' },
+        requests: { title: 'Blood Requests Hub', sub: 'Clinical Demand & Dispatch' },
+        inventory: { title: 'Blood Bank Inventory', sub: 'Stock Reserves & Cold Chain Logs' },
+        donors: { title: 'Incoming Donor Queue', sub: 'Match Verification & Walk-In Intake' },
+        campaigns: { title: 'Donation Drives & Campaigns', sub: 'Community Engagement & Drives' },
+        settings: { title: 'Hospital Settings', sub: 'Profile & Operating Parameters' },
+        staff: { title: 'Staff Roster & Access Control', sub: 'Team Roles & PIN Security' },
+        hemovigilance: { title: 'Transfusion Reaction Surveillance', sub: 'Adverse Event Monitoring' },
+        forecasting: { title: 'Demand Forecasting', sub: 'Predictive Stock Analytics' },
+        mythbusting: { title: 'Myth-Busting Hub', sub: 'Community Donor Education' },
         certificates: { title: 'Certificates', sub: 'Life Saver Recognition' }
     };
 
@@ -1075,18 +1089,6 @@ function initHospitalNavigation() {
 
     hydrateSessionIdentity();
     updateHospitalNavVisibility();
-
-let hospitalLiveFeedUnsubscribe = null;
-
-function cleanupHospitalLiveFeed() {
-    if (hospitalLiveFeedUnsubscribe) {
-        try {
-            hospitalLiveFeedUnsubscribe();
-            console.log('[Live Feed] Unsubscribed from hospital live feed to conserve free-tier reads.');
-        } catch (e) {}
-        hospitalLiveFeedUnsubscribe = null;
-    }
-}
 
     const switchView = (target) => {
         const currentUser = getCurrentUser();

@@ -49,7 +49,7 @@ function req(authData?: { uid: string; token?: Record<string, unknown> }, data?:
     auth: authData
       ? {
           uid: authData.uid,
-          token: (authData.token ?? {}) as any,
+          token: (authData.token ?? {}) as unknown as CallableRequest['auth'],
         }
       : undefined,
     data: data ?? {},
