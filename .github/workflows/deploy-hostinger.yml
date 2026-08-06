@@ -1,0 +1,43 @@
+name: Deploy VitalPulse to Hostinger
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 3. Install dependencies
+        run: |
+          cd vitalpulse_app
+          npm ci
+
+      - name: 4. Run Vitest Unit Tests
+        run: |
+          cd vitalpulse_app
+          npm test
+
+      - name: 5. Build production bundle (with .htaccess)
+        run: |
+          cd vitalpulse_app
+          npm run build
+
+      - name: 6. Deploy compiled dist/ to Hostinger via FTP
+        uses: SamKirsch/ftp-deploy-action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: ./vitalpulse_app/dist/
+          server-dir: ./public_html/
+          dangerous-clean-slate: false
