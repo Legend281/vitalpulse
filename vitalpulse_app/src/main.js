@@ -7428,38 +7428,6 @@ window.closeMythArticleModal = () => {
     if (form) form.reset();
 };
 
-async function loadHospitalCampaignsView() {
-    const grid = document.getElementById('campaignsGrid');
-    if (!grid) return;
-    try {
-        const campaigns = await fetchAllCampaigns();
-        if (campaigns.length === 0) {
-            grid.innerHTML = '<div class="col-span-full py-16 text-center text-slate-400 font-medium text-sm">No campaigns scheduled at this time.</div>';
-            return;
-        }
-        grid.innerHTML = campaigns.map(c => `
-            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase border ${c.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-700 border-slate-200'}">${c.status || 'Active'}</span>
-                        <span class="text-xs font-mono text-slate-400 font-bold">${c.city || 'Cameroon'}</span>
-                    </div>
-                    <h4 class="font-extrabold text-slate-900 text-base mb-1">${c.title || c.name || 'Blood Drive'}</h4>
-                    <p class="text-xs text-slate-500 font-medium leading-relaxed mb-3">${c.description || c.target || ''}</p>
-                    <div class="text-xs text-slate-600 font-semibold space-y-1 p-3 bg-slate-50 rounded-xl border border-slate-100 mb-3">
-                        <div class="flex justify-between"><span>Location:</span><span class="font-bold text-slate-800">${c.location || 'Hospital Main Hall'}</span></div>
-                        <div class="flex justify-between"><span>Date:</span><span class="font-bold text-slate-800">${c.date || c.startDate || 'Upcoming'}</span></div>
-                        <div class="flex justify-between"><span>Target Units:</span><span class="font-bold text-red-600">${c.targetUnits || c.goal || 50} units</span></div>
-                    </div>
-                </div>
-            </div>
-        `).join('');
-    } catch (err) {
-        console.error('Failed to load campaigns:', err);
-        grid.innerHTML = '<div class="col-span-full py-8 text-center text-red-500 text-sm">Failed to load campaigns.</div>';
-    }
-}
-
 // ============================================
 // PHASE 3: LIFE SAVER CERTIFICATES
 // ============================================
