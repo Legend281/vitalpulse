@@ -4,12 +4,12 @@ import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBWJIygZ5moqqgNvEv_v-oba0MvKllvPLg",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "vitalpulse-fa458.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "vitalpulse-fa458",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "vitalpulse-fa458.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "501893877118",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:501893877118:web:259f04174e4258108a372f"
 };
 
 export const app = initializeApp(firebaseConfig);
