@@ -82,8 +82,14 @@ async function main() {
     process.exit(1);
   }
 
-  const existingClaims = (user.customClaims ?? {}) as { role?: Role; hospitalId?: string; suspended?: boolean };
-  const newClaims: Record<string, unknown> = { role: targetRole };
+  const existingClaims = (user.customClaims ?? {}) as { role?: Role; roles?: Role[]; hospitalId?: string; suspended?: boolean };
+  const existingRoles = existingClaims.roles && existingClaims.roles.length > 0
+    ? existingClaims.roles
+    : existingClaims.role
+      ? [existingClaims.role]
+      : [];
+  const updatedRoles = Array.from(new Set([...existingRoles, targetRole]));
+  const newClaims: Record<string, unknown> = { role: targetRole, roles: updatedRoles };
   if (isHospitalScoped) newClaims.hospitalId = hospitalId;
   if (existingClaims.suspended === true) {
     // A role grant never lifts a suspension — that's revoke-role.ts/reactivate-user.ts's job.
@@ -100,6 +106,9 @@ async function main() {
   }
 
   await auth.setCustomUserClaims(user.uid, newClaims);
+  const userDocUpdate: Record<string, unknown> = { role: targetRole, updatedAt: FieldValue.serverTimestamp() };
+  if (isHospitalScoped && hospitalId) userDocUpdate.hospitalId = hospitalId;
+  await db.collection('users').doc(user.uid).set(userDocUpdate, { merge: true });
   await auth.revokeRefreshTokens(user.uid);
   await db.collection('auditLogs').add({
     actorUid: `grant-role-script:${process.env.USERNAME || process.env.USER || 'unknown-operator'}`,

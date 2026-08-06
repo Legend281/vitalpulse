@@ -237,8 +237,17 @@ async function deductInventoryStockHandler(request: CallableRequest) {
     }
 
     let toDeduct = input.units;
-    const batches: BatchLike[] = (data.batches || []).filter((b: BatchLike) => {
+    // Enforce FEFO (First-Expired, First-Out): sort cleared batches by expiration date ascending
+    const allBatches: BatchLike[] = (data.batches || []).sort((a: BatchLike, b: BatchLike) => {
+      const expA = a.expiresAt ? new Date(a.expiresAt).getTime() : Infinity;
+      const expB = b.expiresAt ? new Date(b.expiresAt).getTime() : Infinity;
+      return expA - expB;
+    });
+
+    const batches: BatchLike[] = allBatches.filter((b: BatchLike) => {
       if (toDeduct <= 0) return true;
+      // Only deduct from Cleared stock
+      if ((b.testStatus || 'Cleared') !== 'Cleared') return true;
       if (b.units <= toDeduct) {
         toDeduct -= b.units;
         return false;

@@ -1,5 +1,6 @@
 import './style.css'
 import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser, resolveSignInEmail, setLoginPersistence, verifyResetCode, confirmReset } from './auth';
+import { getActiveRoles, hasAnyRole, isLegacyAccount, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession, canAccessView } from './roleGating';
 import { readLoginFailureState, recordLoginFailure, clearLoginFailures, isLockedOut, shouldShowAttemptsWarning, lockoutSecondsRemaining, recordAttemptedIdentifier, hasAttemptedIdentifier } from './loginAttempts';
 import { evaluatePasswordCriteria, passwordStrengthScore, isPasswordValid, suggestStrongPassword } from './passwordPolicy';
 import { normalizeCameroonPhone, formatCameroonNationalNumber } from './phone';
@@ -14,7 +15,8 @@ import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchD
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
 import Chart from 'chart.js/auto';
-import { hasAnyRole, isLegacyAccount, getActiveRoles, canAccessView, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession } from './roleGating';
+import { initReceptionDashboard, loadReceptionOverview } from './dashboards/reception/receptionDashboard.js';
+import { initNurseDashboard, loadNurseOverview } from './dashboards/nurse/nurseDashboard.js';
 
 // Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
 // https, so this rejects javascript:/data: and other dangerous schemes without breaking
@@ -895,6 +897,10 @@ const HOSPITAL_VIEW_PERMISSIONS = {
     requests: ['nurse', 'hospital_admin'],
     hemovigilance: ['nurse', 'lab_tech', 'hospital_admin'],
     donors: ['reception', 'nurse', 'hospital_admin'],
+    'reception-stock': ['reception', 'hospital_admin'],
+    'reception-activity': ['reception', 'hospital_admin'],
+    'nurse-issued': ['nurse', 'hospital_admin'],
+    'nurse-reactions': ['nurse', 'hospital_admin'],
 };
 
 export function hydrateSessionIdentity() {
@@ -949,7 +955,7 @@ export function hydrateSessionIdentity() {
 
 export function updateHospitalNavVisibility() {
     const user = getCurrentUser();
-    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'reception-stock', 'reception-activity', 'nurse-issued', 'nurse-reactions', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
     navIds.forEach(id => {
         const canAccess = canAccessView(user, id, HOSPITAL_VIEW_PERMISSIONS);
         const nav = document.getElementById('nav-' + id);
@@ -1028,14 +1034,52 @@ export function updateHospitalNavVisibility() {
     const isLabTech = activeRoles.includes('lab_tech');
     const isAdmin = isLegacyAccount(user) || activeRoles.includes('hospital_admin') || !isStaffSessionActive;
 
-    const receptionHero = document.getElementById('receptionControlHero');
+    const receptionSec = document.getElementById('receptionDashboardSection');
+    const nurseSec = document.getElementById('nurseDashboardSection');
+    const adminSec = document.getElementById('adminDashboardSection');
     const nurseHero = document.getElementById('nurseControlHero');
     const labTechHero = document.getElementById('labTechControlHero');
 
-    if (receptionHero) {
-        if (isReception || isAdmin) receptionHero.classList.remove('hidden');
-        else receptionHero.classList.add('hidden');
+    if (isReception && !isAdmin) {
+        if (receptionSec) receptionSec.classList.remove('hidden');
+        if (nurseSec) nurseSec.classList.add('hidden');
+        if (adminSec) adminSec.classList.add('hidden');
+        initReceptionDashboard();
+        loadReceptionOverview();
+    } else if (isNurse && !isAdmin) {
+        if (nurseSec) nurseSec.classList.remove('hidden');
+        if (receptionSec) receptionSec.classList.add('hidden');
+        if (adminSec) adminSec.classList.add('hidden');
+        initNurseDashboard();
+        loadNurseOverview();
+    } else if (isNurse && isAdmin) {
+        if (nurseSec) nurseSec.classList.remove('hidden');
+        if (adminSec) adminSec.classList.remove('hidden');
+        initNurseDashboard();
+        loadNurseOverview();
+    } else if (isReception && isAdmin) {
+        // Admin user testing reception
+        if (receptionSec) receptionSec.classList.remove('hidden');
+        if (nurseSec) nurseSec.classList.add('hidden');
+        if (adminSec) adminSec.classList.remove('hidden');
+        initReceptionDashboard();
+        loadReceptionOverview();
+    } else {
+        if (receptionSec) receptionSec.classList.add('hidden');
+        if (nurseSec) nurseSec.classList.add('hidden');
+        if (adminSec) adminSec.classList.remove('hidden');
     }
+
+    const donorReactionLogSec = document.getElementById('donorReactionLogSection');
+    const donorReactionHeaderBtn = document.getElementById('btnReportDonorReactionHeader');
+    if (isReception && !isAdmin) {
+        if (donorReactionLogSec) donorReactionLogSec.classList.add('hidden');
+        if (donorReactionHeaderBtn) donorReactionHeaderBtn.classList.add('hidden');
+    } else {
+        if (donorReactionLogSec) donorReactionLogSec.classList.remove('hidden');
+        if (donorReactionHeaderBtn) donorReactionHeaderBtn.classList.remove('hidden');
+    }
+
     if (nurseHero) {
         if (isNurse) nurseHero.classList.remove('hidden');
         else nurseHero.classList.add('hidden');
@@ -1063,8 +1107,8 @@ function cleanupHospitalLiveFeed() {
 function initHospitalNavigation() {
     if (hospitalNavigationInitialized) return;
 
-    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
-    const viewIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'reception-stock', 'reception-activity', 'nurse-issued', 'nurse-reactions', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
+    const viewIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'reception-stock', 'reception-activity', 'nurse-issued', 'nurse-reactions', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
 
     const globalTitle = document.getElementById('globalHeaderTitle');
     const globalSubtitle = document.getElementById('globalHeaderSubtitle');
@@ -1075,6 +1119,10 @@ function initHospitalNavigation() {
         requests: { title: 'Blood Requests Hub', sub: 'Clinical Demand & Dispatch' },
         inventory: { title: 'Blood Bank Inventory', sub: 'Stock Reserves & Cold Chain Logs' },
         donors: { title: 'Incoming Donor Queue', sub: 'Match Verification & Walk-In Intake' },
+        'reception-stock': { title: 'Front-Desk Stock & Ward Requisitions', sub: 'Read-Only Inventory Availability & Ward Requests' },
+        'reception-activity': { title: 'Reception Activity Stream', sub: 'Front-Desk Events & Check-In History' },
+        'nurse-issued': { title: 'Issued Blood & Active Transfusions', sub: 'Live Bedside Monitoring & 15-Minute Vital Checks' },
+        'nurse-reactions': { title: 'Adverse Reaction Logs', sub: 'Stop-Transfusion & Hemovigilance Alert Reports' },
         campaigns: { title: 'Donation Drives & Campaigns', sub: 'Community Engagement & Drives' },
         settings: { title: 'Hospital Settings', sub: 'Profile & Operating Parameters' },
         staff: { title: 'Staff Roster & Access Control', sub: 'Team Roles & PIN Security' },
@@ -1140,8 +1188,8 @@ function initHospitalNavigation() {
             }
         });
 
-        if (globalTitle) globalTitle.textContent = titles[target].title;
-        if (globalSubtitle) globalSubtitle.textContent = titles[target].sub;
+        if (globalTitle && titles[target]) globalTitle.textContent = titles[target].title;
+        if (globalSubtitle && titles[target]) globalSubtitle.textContent = titles[target].sub;
 
         // Lazy load data
         switch (target) {
@@ -1150,6 +1198,10 @@ function initHospitalNavigation() {
             case 'requests': loadHospitalRequests(); break;
             case 'inventory': loadHospitalInventoryData(); break;
             case 'donors': loadHospitalDonors(); break;
+            case 'reception-stock': loadReceptionOverview(); break;
+            case 'reception-activity': loadReceptionOverview(); break;
+            case 'nurse-issued': loadNurseOverview(); break;
+            case 'nurse-reactions': loadNurseOverview(); break;
             case 'settings': loadHospitalSettings(); break;
             case 'staff': loadHospitalStaffView(); break;
             case 'campaigns': loadHospitalCampaignsView(); break;
@@ -3151,19 +3203,47 @@ window.openHospitalAddStock = (type) => {
     }
 };
 
-function showToast(message) {
+export function showToast(message, type = 'info') {
     const toast = document.getElementById('successToast');
     const msgEl = document.getElementById('toastMessage');
+    const iconEl = document.getElementById('toastIcon');
     if (!toast || !msgEl) return;
+
     msgEl.textContent = message;
-    toast.classList.remove('opacity-0', 'translate-y-20');
-    toast.classList.add('opacity-100', 'translate-y-0');
+    if (iconEl) {
+        iconEl.textContent = type === 'error' ? 'error' : type === 'warning' ? 'warning' : type === 'success' ? 'check_circle' : 'info';
+    }
+
+    if (type === 'error') {
+        toast.className = 'fixed bottom-6 right-6 z-50 bg-red-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0';
+    } else if (type === 'warning') {
+        toast.className = 'fixed bottom-6 right-6 z-50 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0';
+    } else {
+        toast.className = 'fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0';
+    }
+
     setTimeout(() => {
         toast.classList.remove('opacity-100', 'translate-y-0');
         toast.classList.add('opacity-0', 'translate-y-20');
-    }, 3000);
+    }, 3500);
 }
 window.showToast = showToast;
+
+window.openModal = function(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+};
+
+window.closeModal = function(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('flex');
+        modal.classList.add('hidden');
+    }
+};
 
 function renderAdminActivityFeed(logs) {
     const activityFeed = document.getElementById('adminActivityFeed');

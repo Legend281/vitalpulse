@@ -883,10 +883,27 @@ export async function autoMatchDonors(requestId, requestData) {
         }
     }
 
-    // Trusted, proven donors are notified first — donationCount is refreshed on the user doc
-    // after every completed donation (see recordDonationIntake), so this is just a cheap sort
-    // over fields already fetched above, not an extra query per candidate.
-    matchingDonors.sort((a, b) => (b.donationCount || 0) - (a.donationCount || 0));
+    // Trusted, proven regular donors (Platinum/Gold/Silver tier) are notified first,
+    // weighted by proximity (distance in km).
+    const getTierWeight = (d) => {
+        const count = d.donationCount || 0;
+        if (count >= 20) return 400; // Platinum
+        if (count >= 10) return 300; // Gold
+        if (count >= 5)  return 200; // Silver
+        return 100;                 // Bronze
+    };
+
+    matchingDonors.sort((a, b) => {
+        const tierDiff = getTierWeight(b) - getTierWeight(a);
+        if (tierDiff !== 0) return tierDiff;
+
+        const countDiff = (b.donationCount || 0) - (a.donationCount || 0);
+        if (countDiff !== 0) return countDiff;
+
+        const distA = a.matchedDistanceKm !== null ? a.matchedDistanceKm : 9999;
+        const distB = b.matchedDistanceKm !== null ? b.matchedDistanceKm : 9999;
+        return distA - distB;
+    });
 
     for (const donor of matchingDonors) {
         const dist = donor.matchedDistanceKm;

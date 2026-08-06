@@ -57,6 +57,20 @@ const translations = {
     profile: 'Profile',
     'donation centers': 'Donation Centers',
     'impact & badges': 'Impact & Badges',
+    'maternal hemorrhage': 'Maternal Hemorrhage',
+    'lab tech': 'Lab Technician',
+    nurse: 'Nurse',
+    reception: 'Receptionist',
+    'hospital admin': 'Hospital Admin',
+    'pending review': 'Pending Review',
+    broadcasting: 'Broadcasting',
+    'track a': 'Track A (Fast-Track)',
+    'track b': 'Track B (Standard)',
+    'screening passed': 'Screening Passed',
+    'screening flagged': 'Screening Flagged',
+    'untested blood': 'Awaiting Lab Testing',
+    'cleared blood': 'Lab Cleared',
+    'rejected blood': 'Lab Rejected'
   },
   fr: {
     dashboard: 'Tableau de Bord',
@@ -116,6 +130,20 @@ const translations = {
     profile: 'Profil',
     'donation centers': 'Centres de Don',
     'impact & badges': 'Impact et Badges',
+    'maternal hemorrhage': 'Hémorragie Maternelle',
+    'lab tech': 'Technicien de Laboratoire',
+    nurse: 'Infirmier / Infirmière',
+    reception: 'Réceptionniste',
+    'hospital admin': 'Administrateur d\'Hôpital',
+    'pending review': 'Examen en Attente',
+    broadcasting: 'Diffusion en Cours',
+    'track a': 'Voie A (Prioritaire)',
+    'track b': 'Voie B (Standard)',
+    'screening passed': 'Dépistage Réussi',
+    'screening flagged': 'Signalement au Dépistage',
+    'untested blood': 'En Attente de Test',
+    'cleared blood': 'Test Approuvé',
+    'rejected blood': 'Test Rejeté'
   }
 };
 

@@ -84,6 +84,22 @@
         <span class="material-symbols-outlined text-lg text-slate-400 group-hover:text-red-600" data-icon="groups">groups</span>
         <span>Incoming Donors</span>
       </a>
+      <a id="nav-reception-stock" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold text-sm transition-all duration-200 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-lg text-slate-400 group-hover:text-red-600" data-icon="inventory_2">inventory_2</span>
+        <span>Stock & Requisitions</span>
+      </a>
+      <a id="nav-reception-activity" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold text-sm transition-all duration-200 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-lg text-slate-400 group-hover:text-red-600" data-icon="history">history</span>
+        <span>Reception Activity</span>
+      </a>
+      <a id="nav-nurse-issued" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold text-sm transition-all duration-200 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-lg text-slate-400 group-hover:text-red-600" data-icon="bloodtype">bloodtype</span>
+        <span>Issued & Transfusions</span>
+      </a>
+      <a id="nav-nurse-reactions" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold text-sm transition-all duration-200 cursor-pointer" href="#">
+        <span class="material-symbols-outlined text-lg text-slate-400 group-hover:text-red-600" data-icon="report_problem">report_problem</span>
+        <span>Adverse Reaction Logs</span>
+      </a>
       <a id="nav-campaigns" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold text-sm transition-all duration-200 cursor-pointer" href="#">
         <span class="material-symbols-outlined text-lg text-slate-400 group-hover:text-red-600" data-icon="campaign">campaign</span>
         <span>Campaigns</span>
@@ -168,6 +184,22 @@
     <button data-nav="donors" class="mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
       <span class="material-symbols-outlined text-lg">groups</span>
       <span>Incoming Donors</span>
+    </button>
+    <button data-nav="reception-stock" class="mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg">inventory_2</span>
+      <span>Stock & Requisitions</span>
+    </button>
+    <button data-nav="reception-activity" class="mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg">history</span>
+      <span>Reception Activity</span>
+    </button>
+    <button data-nav="nurse-issued" class="mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg">bloodtype</span>
+      <span>Issued & Transfusions</span>
+    </button>
+    <button data-nav="nurse-reactions" class="mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg">report_problem</span>
+      <span>Adverse Reaction Logs</span>
     </button>
     <button data-nav="campaigns" class="mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
       <span class="material-symbols-outlined text-lg">campaign</span>
@@ -297,100 +329,268 @@
         </div>
       </div>
 
-      <!-- RECEPTION FRONT-DESK CONTROL HERO -->
-      <div id="receptionControlHero" class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
-        <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div class="flex items-start lg:items-center gap-4">
-            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-              <span class="material-symbols-outlined text-3xl text-emerald-400" style="font-variation-settings:'FILL' 1">how_to_reg</span>
-            </div>
-            <div>
-              <div class="flex items-center gap-2 mb-1">
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
-                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Front-Desk Reception Station
-                </span>
+      <!-- RECEPTIONIST DASHBOARD SECTION (Visible ONLY for Reception role) -->
+      <div id="receptionDashboardSection" class="space-y-6">
+        <!-- RECEPTION FRONT-DESK CONTROL HERO -->
+        <div id="receptionControlHero" class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
+          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex items-start lg:items-center gap-4">
+              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
+                <span class="material-symbols-outlined text-3xl text-emerald-400" style="font-variation-settings:'FILL' 1">how_to_reg</span>
               </div>
-              <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">Donor Check-In & Verification Desk</h3>
-              <p class="text-xs text-slate-300 font-medium mt-0.5">Enter donor pass codes (e.g. VP-9482) or verify physical CNI card details for arrival intake</p>
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Front-Desk Reception Station
+                  </span>
+                </div>
+                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">Donor Check-In & Lobby Control</h3>
+                <p class="text-xs text-slate-300 font-medium mt-0.5">Enter donor passcodes (e.g. VP-9482) or manage walk-in arrival check-ins</p>
+              </div>
+            </div>
+
+            <!-- Quick Token Check-In & Front Desk Actions -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+              <input id="dashReceptionCheckInInput" type="text" placeholder="Enter Pass Code (e.g. VP-9482)" class="w-full sm:w-64 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 text-xs font-mono font-bold text-white placeholder:font-sans placeholder:text-slate-400 focus:bg-white/20 focus:ring-2 focus:ring-emerald-400/50 outline-none uppercase tracking-wider"/>
+              <button id="dashBtnReceptionCheckIn" class="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-500/25 cursor-pointer flex items-center justify-center gap-2 shrink-0">
+                <span class="material-symbols-outlined text-sm">qr_code_scanner</span>
+                Check In
+              </button>
+              <button onclick="window.openModal('patientRequisitionModal')" class="px-4 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0">
+                <span class="material-symbols-outlined text-sm">assignment_add</span>
+                + Requisition
+              </button>
             </div>
           </div>
+        </div>
 
-          <!-- Quick Token Check-In Bar -->
-          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
-            <input id="dashReceptionCheckInInput" type="text" placeholder="Enter Pass Code (e.g. VP-9482)" class="w-full sm:w-64 bg-white/10 backdrop-blur-md border border-white/20 rounded-xl px-4 py-3 text-xs font-mono font-bold text-white placeholder:font-sans placeholder:text-slate-400 focus:bg-white/20 focus:ring-2 focus:ring-emerald-400/50 outline-none uppercase tracking-wider"/>
-            <button id="dashBtnReceptionCheckIn" class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs rounded-xl transition-all shadow-md shadow-emerald-500/25 cursor-pointer flex items-center justify-center gap-2 shrink-0">
-              <span class="material-symbols-outlined text-sm">qr_code_scanner</span>
-              Verify & Check In
-            </button>
+        <!-- RECEPTION KPI CARDS (Role Specific) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Checked-In Today</p>
+              <p class="text-3xl font-black text-emerald-600 mt-1 tracking-tight" id="recCheckedInCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">how_to_reg</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Waiting in Lobby</p>
+              <p class="text-3xl font-black text-amber-600 mt-1 tracking-tight" id="recLobbyCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">deck</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Donors En Route</p>
+              <p class="text-3xl font-black text-sky-600 mt-1 tracking-tight" id="recEnRouteCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">directions_run</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Ward Requisitions</p>
+              <p class="text-3xl font-black text-indigo-600 mt-1 tracking-tight" id="recReqCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">receipt_long</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- LIVE LOBBY WAITING QUEUE -->
+        <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">deck</span>
+              </div>
+              <div>
+                <h3 class="font-black text-base text-slate-900 tracking-tight">Live Lobby Waiting Queue</h3>
+                <p class="text-[11px] text-slate-400 font-semibold">Donors currently arrived & waiting in the lobby for screening</p>
+              </div>
+            </div>
+            <span class="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-black uppercase tracking-wider">Lobby Active</span>
+          </div>
+          <div id="receptionLobbyQueue" class="p-6 space-y-3">
+            <div class="flex items-center justify-center py-10 text-slate-400">
+              <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+              <span class="text-sm font-medium">Loading lobby queue...</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- NURSE PATIENT CARE CONTROL HERO -->
-      <div id="nurseControlHero" class="hidden bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50 relative">
-        <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div class="flex items-start lg:items-center gap-4">
-            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-              <span class="material-symbols-outlined text-3xl text-rose-300" style="font-variation-settings:'FILL' 1">medical_services</span>
-            </div>
-            <div>
-              <div class="flex items-center gap-2 mb-1">
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/20 text-rose-200 border border-rose-500/30 flex items-center gap-1.5">
-                  <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
-                  Nurse Patient Care Station
-                </span>
+      <!-- NURSE DASHBOARD SECTION (Visible ONLY for Nurse role) -->
+      <div id="nurseDashboardSection" class="hidden space-y-6">
+        <!-- NURSE PATIENT CARE CONTROL HERO -->
+        <div id="nurseControlHero" class="bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50 relative">
+          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex items-start lg:items-center gap-4">
+              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
+                <span class="material-symbols-outlined text-3xl text-rose-300" style="font-variation-settings:'FILL' 1">medical_services</span>
               </div>
-              <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">Clinical Requests & Patient Intakes</h3>
-              <p class="text-xs text-rose-100 font-medium mt-0.5">Manage active patient blood requests, issue blood bags, and report adverse transfusion reactions</p>
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/20 text-rose-200 border border-rose-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                    Nurse Patient Care Station
+                  </span>
+                </div>
+                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">Clinical Requests & Bedside Intakes</h3>
+                <p class="text-xs text-rose-100 font-medium mt-0.5">Manage active patient blood requests, Track A emergency release, bedside 2-person checks & vital monitoring</p>
+              </div>
             </div>
-          </div>
-          <div class="flex items-center gap-3 shrink-0">
-            <button id="btnNurseNewRequest" class="px-5 py-2.5 bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
-              <span class="material-symbols-outlined text-sm">add_circle</span>
-              New Patient Request
-            </button>
-            <button id="btnNurseIssueBlood" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer border border-rose-400/40">
-              <span class="material-symbols-outlined text-sm">bloodtype</span>
-              Issue Blood Bag
-            </button>
+            <div class="flex items-center gap-3 shrink-0">
+              <button onclick="window.openModal('nurseNewRequestModal')" class="px-5 py-2.5 bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+                <span class="material-symbols-outlined text-sm">add_circle</span>
+                + New Patient Request
+              </button>
+              <button onclick="window.openNurseBedsideModal('', '', '', 'O+')" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer border border-rose-400/40">
+                <span class="material-symbols-outlined text-sm">bloodtype</span>
+                Bedside Issue Bag
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- LAB TECH DIAGNOSTICS CONTROL HERO -->
-      <div id="labTechControlHero" class="hidden bg-gradient-to-r from-indigo-900 via-slate-950 to-indigo-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
-        <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div class="flex items-start lg:items-center gap-4">
-            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-              <span class="material-symbols-outlined text-3xl text-indigo-300" style="font-variation-settings:'FILL' 1">science</span>
-            </div>
+        <!-- NURSE CLINICAL KPIS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
             <div>
-              <div class="flex items-center gap-2 mb-1">
-                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 flex items-center gap-1.5">
-                  <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-                  Laboratory Diagnostics Station
-                </span>
-              </div>
-              <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">TTI Screening & Tested Stock Control</h3>
-              <p class="text-xs text-indigo-100 font-medium mt-0.5">Run viral marker screening (HIV, Hep B/C, Syphilis), clear quarantine units, and log refrigeration cold-chain</p>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Active Requests</p>
+              <p class="text-3xl font-black text-rose-600 mt-1 tracking-tight" id="nurseActiveReqCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">medical_services</span>
             </div>
           </div>
-          <div class="flex items-center gap-3 shrink-0">
-            <button id="btnLabTechRunTests" class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
-              <span class="material-symbols-outlined text-sm">biotech</span>
-              Go to Lab Queue
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Units Issued Today</p>
+              <p class="text-3xl font-black text-emerald-600 mt-1 tracking-tight" id="nurseIssuedCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">bloodtype</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Awaiting Crossmatch</p>
+              <p class="text-3xl font-black text-sky-600 mt-1 tracking-tight" id="nursePendingCrossCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">science</span>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Adverse Reactions</p>
+              <p class="text-3xl font-black text-amber-600 mt-1 tracking-tight" id="nurseReactionCount">0</p>
+            </div>
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+              <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">report_problem</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTIVE CLINICAL PATIENT REQUESTS TABLE -->
+        <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+          <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">assignment</span>
+              </div>
+              <div>
+                <h3 class="font-black text-base text-slate-900 tracking-tight">Active Clinical Patient Requests</h3>
+                <p class="text-[11px] text-slate-400 font-semibold">Patients in ICU, Surgery, or Wards needing blood transfusion</p>
+              </div>
+            </div>
+            <button onclick="window.openModal('nurseNewRequestModal')" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1">
+              <span class="material-symbols-outlined text-sm">add</span> + Request
             </button>
-            <button id="btnLabTechAddStock" class="px-5 py-2.5 bg-white text-indigo-900 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
-              <span class="material-symbols-outlined text-sm">add_box</span>
-              + Add Tested Stock
-            </button>
+          </div>
+          <div id="nurseActiveRequestsList" class="p-6 space-y-3">
+            <div class="flex items-center justify-center py-10 text-slate-400">
+              <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+              <span class="text-sm font-medium">Loading active clinical requests...</span>
+            </div>
           </div>
         </div>
       </div>
+      <div id="adminDashboardSection" class="space-y-6">
+        <!-- NURSE PATIENT CARE CONTROL HERO -->
+        <div id="nurseControlHero" class="hidden bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50 relative">
+          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex items-start lg:items-center gap-4">
+              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
+                <span class="material-symbols-outlined text-3xl text-rose-300" style="font-variation-settings:'FILL' 1">medical_services</span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/20 text-rose-200 border border-rose-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
+                    Nurse Patient Care Station
+                  </span>
+                </div>
+                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">Clinical Requests & Patient Intakes</h3>
+                <p class="text-xs text-rose-100 font-medium mt-0.5">Manage active patient blood requests, issue blood bags, and report adverse transfusion reactions</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <button id="btnNurseNewRequest" class="px-5 py-2.5 bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+                <span class="material-symbols-outlined text-sm">add_circle</span>
+                New Patient Request
+              </button>
+              <button id="btnNurseIssueBlood" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer border border-rose-400/40">
+                <span class="material-symbols-outlined text-sm">bloodtype</span>
+                Issue Blood Bag
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- LAB TECH DIAGNOSTICS CONTROL HERO -->
+        <div id="labTechControlHero" class="hidden bg-gradient-to-r from-indigo-900 via-slate-950 to-indigo-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
+          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex items-start lg:items-center gap-4">
+              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
+                <span class="material-symbols-outlined text-3xl text-indigo-300" style="font-variation-settings:'FILL' 1">science</span>
+              </div>
+              <div>
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+                    Laboratory Diagnostics Station
+                  </span>
+                </div>
+                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">TTI Screening & Tested Stock Control</h3>
+                <p class="text-xs text-indigo-100 font-medium mt-0.5">Run viral marker screening (HIV, Hep B/C, Syphilis), clear quarantine units, and log refrigeration cold-chain</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+              <button id="btnLabTechRunTests" class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+                <span class="material-symbols-outlined text-sm">biotech</span>
+                Go to Lab Queue
+              </button>
+              <button id="btnLabTechAddStock" class="px-5 py-2.5 bg-white text-indigo-900 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
+                <span class="material-symbols-outlined text-sm">add_box</span>
+                + Add Tested Stock
+              </button>
+            </div>
+          </div>
+        </div>
 
       <!-- 10X Elevated Stat Cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -573,6 +773,7 @@
             <p class="text-sm leading-relaxed opacity-95">One blood donation can save up to three lives. Regular donations help maintain a stable blood supply for emergencies.</p>
           </div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -1033,7 +1234,7 @@
               <p class="text-sm text-slate-500 font-medium mt-0.5">Donors matched to your blood requests and en route to your facility</p>
             </div>
           </div>
-          <button onclick="window.openDonorReactionModal()" class="inline-flex items-center gap-2 bg-gradient-to-r from-rose-600 to-pink-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs hover:opacity-95 transition-all cursor-pointer shrink-0">
+          <button id="btnReportDonorReactionHeader" onclick="window.openDonorReactionModal()" class="inline-flex items-center gap-2 bg-gradient-to-r from-rose-600 to-pink-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs hover:opacity-95 transition-all cursor-pointer shrink-0">
             <span class="material-symbols-outlined text-sm">health_and_safety</span> Report Donor Reaction
           </button>
         </div>
@@ -1117,8 +1318,8 @@
         </div>
       </div>
 
-      <!-- Donor Reaction Log -->
-      <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+      <!-- Donor Reaction Log (Clinical Nurse & Lab Tech Only) -->
+      <div id="donorReactionLogSection" class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
         <div class="px-6 py-5 border-b border-slate-100">
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
@@ -1139,8 +1340,155 @@
       </div>
     </div>
 
-    <!-- ============================== -->
-    <!-- VIEW: SETTINGS                 -->
+    <!-- ============================================== -->
+    <!-- VIEW: RECEPTION STOCK LOOKUP & REQUISITIONS   -->
+    <!-- ============================================== -->
+    <div id="view-reception-stock" class="hidden space-y-6">
+      <div class="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50">
+        <div class="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-emerald-400 shrink-0">
+              <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">inventory_2</span>
+            </div>
+            <div>
+              <h2 class="text-xl md:text-2xl font-black text-white tracking-tight">Front-Desk Stock Lookup & Ward Requisitions</h2>
+              <p class="text-xs text-slate-300 font-medium mt-0.5">Read-only blood stock availability check for patient families & ward requisition logging</p>
+            </div>
+          </div>
+          <button onclick="window.openModal('patientRequisitionModal')" class="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-2 shrink-0">
+            <span class="material-symbols-outlined text-sm">assignment_add</span>
+            + Log Ward Requisition
+          </button>
+        </div>
+      </div>
+
+      <!-- READ-ONLY BLOOD STOCK CARDS GRID -->
+      <div class="bg-white rounded-3xl p-6 shadow-xs border border-slate-100 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="font-black text-base text-slate-900 tracking-tight flex items-center gap-2">
+              <span class="material-symbols-outlined text-emerald-600 text-lg">check_circle</span>
+              Cleared Tested Stock Availability (Read-Only)
+            </h3>
+            <p class="text-xs text-slate-400 font-medium">Use this to immediately answer patient families asking about blood availability at the desk</p>
+          </div>
+        </div>
+        <div id="receptionStockSummaryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Populated dynamically by receptionStockLookup.js -->
+        </div>
+      </div>
+
+      <!-- ACTIVE PATIENT WARD REQUISITIONS TABLE -->
+      <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+        <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center border border-sky-100">
+              <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">receipt_long</span>
+            </div>
+            <div>
+              <h3 class="font-black text-base text-slate-900 tracking-tight">Active Patient Ward Requisitions</h3>
+              <p class="text-[11px] text-slate-400 font-semibold">Paper slips brought to front desk by patient family members</p>
+            </div>
+          </div>
+          <button onclick="window.openModal('patientRequisitionModal')" class="text-xs font-extrabold text-sky-600 hover:text-sky-700 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-xl border border-sky-200 transition-colors cursor-pointer flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">add</span> Add Requisition
+          </button>
+        </div>
+        <div id="receptionPatientRequisitionsList" class="p-6 space-y-3">
+          <!-- Populated dynamically by receptionStockLookup.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- VIEW: RECEPTION ACTIVITY & ARRIVAL STREAM     -->
+    <!-- ============================================== -->
+    <div id="view-reception-activity" class="hidden space-y-6">
+      <div class="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50">
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-sky-400 shrink-0">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">history</span>
+          </div>
+          <div>
+            <h2 class="text-xl md:text-2xl font-black text-white tracking-tight">Reception Activity Stream</h2>
+            <p class="text-xs text-slate-300 font-medium mt-0.5">Filtered front-desk event feed: donor arrivals, walk-in registrations, ETA phone notes, and lobby calls</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+        <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <h3 class="font-black text-base text-slate-900 tracking-tight">Front-Desk Events Feed</h3>
+          <span class="text-xs font-bold text-slate-400">Reception Log Only</span>
+        </div>
+        <div id="receptionActivityStream" class="p-6 space-y-3">
+          <div class="flex items-center justify-center py-12 text-slate-400">
+            <span class="material-symbols-outlined animate-spin mr-3">sync</span>
+            <span class="text-sm font-medium">Loading reception activity...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- VIEW: NURSE ISSUED BLOOD & TRANSFUSIONS       -->
+    <!-- ============================================== -->
+    <div id="view-nurse-issued" class="hidden space-y-6">
+      <div class="relative bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50">
+        <div class="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="flex items-center gap-4">
+            <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-rose-300 shrink-0">
+              <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">bloodtype</span>
+            </div>
+            <div>
+              <h2 class="text-xl md:text-2xl font-black text-white tracking-tight">Issued Blood & Active Transfusions</h2>
+              <p class="text-xs text-rose-100 font-medium mt-0.5">Live transfusion monitoring log, bedside verifications, and 15-minute vital sign checks</p>
+            </div>
+          </div>
+          <button onclick="window.openNurseBedsideModal('', '', '', 'O+')" class="px-5 py-3 bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs rounded-xl shadow-md cursor-pointer flex items-center justify-center gap-2 shrink-0">
+            <span class="material-symbols-outlined text-sm">bloodtype</span>
+            + Bedside Issue Bag
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+        <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <h3 class="font-black text-base text-slate-900 tracking-tight">Active Patient Transfusions</h3>
+          <span class="text-xs font-bold text-slate-400">Bedside Verified</span>
+        </div>
+        <div id="nurseTransfusionsList" class="p-6 space-y-3">
+          <!-- Populated dynamically by nurseDashboard.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- VIEW: NURSE ADVERSE REACTION LOGS              -->
+    <!-- ============================================== -->
+    <div id="view-nurse-reactions" class="hidden space-y-6">
+      <div class="relative bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50">
+        <div class="flex items-center gap-4">
+          <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-amber-300 shrink-0">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">report_problem</span>
+          </div>
+          <div>
+            <h2 class="text-xl md:text-2xl font-black text-white tracking-tight">Adverse Transfusion Reaction Logs</h2>
+            <p class="text-xs text-rose-100 font-medium mt-0.5">Stop-transfusion emergency reports, hemovigilance alerts, and lab investigation status</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-3xl shadow-xs border border-slate-100 overflow-hidden">
+        <div class="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <h3 class="font-black text-base text-slate-900 tracking-tight">Hemovigilance Reaction Stream</h3>
+          <span class="text-xs font-bold text-slate-400">Clinical Surveillance</span>
+        </div>
+        <div id="nurseReactionReportsList" class="p-6 space-y-3">
+          <!-- Populated dynamically by nurseDashboard.js -->
+        </div>
+      </div>
+    </div>
     <!-- ============================== -->
     <div id="view-settings" class="hidden space-y-6 max-w-4xl">
       <!-- Header -->
@@ -3035,6 +3383,360 @@
 </div>
 
 
+
+<!-- RECEPTION PATIENT WARD REQUISITION MODAL -->
+<div id="patientRequisitionModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('patientRequisitionModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-5 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-emerald-400 border border-white/20">
+            <span class="material-symbols-outlined text-xl">assignment_add</span>
+          </div>
+          <div>
+            <h3 class="text-base font-black tracking-tight text-white">Log Ward Requisition</h3>
+            <p class="text-[10px] text-slate-300 font-medium">Brought to front-desk by patient family</p>
+          </div>
+        </div>
+        <button onclick="window.closeModal('patientRequisitionModal')" class="text-slate-400 hover:text-white cursor-pointer"><span class="material-symbols-outlined">close</span></button>
+      </div>
+    </div>
+    <form id="formPatientRequisition" class="p-6 space-y-4">
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Patient Full Name</label>
+        <input id="reqPatientName" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200" placeholder="e.g. Samuel Eto'o" required/>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Ward / Room #</label>
+          <input id="reqWardNumber" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200" placeholder="e.g. Surgery Ward 3" required/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Attending Doctor</label>
+          <input id="reqAttendingDoctor" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200" placeholder="e.g. Dr. Mbida"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Blood Type Needed</label>
+          <select id="reqBloodType" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200">
+            <option value="O-">O- Negative (Universal)</option>
+            <option value="O+">O+ Positive</option>
+            <option value="A-">A- Negative</option>
+            <option value="A+">A+ Positive</option>
+            <option value="B-">B- Negative</option>
+            <option value="B+">B+ Positive</option>
+            <option value="AB-">AB- Negative</option>
+            <option value="AB+">AB+ Positive</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Units Needed</label>
+          <input id="reqUnits" type="number" min="1" max="10" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Requisition Slip # (Optional)</label>
+          <input id="reqSlipNumber" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200" placeholder="e.g. REQ-982"/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Notes / Urgency</label>
+          <input id="reqNotes" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-emerald-200" placeholder="e.g. Surgery at 2 PM"/>
+        </div>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-3 rounded-xl text-xs shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer">
+        <span class="material-symbols-outlined text-sm">task_alt</span> Log Front-Desk Requisition
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- RECEPTION DONOR ETA PHONE NOTE MODAL -->
+<div id="donorEtaModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('donorEtaModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+    <div class="bg-gradient-to-r from-slate-900 to-indigo-950 px-6 py-4 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="material-symbols-outlined text-sky-400 text-lg">call</span>
+          <h3 class="text-sm font-black text-white">Log Donor Phone Note</h3>
+        </div>
+        <button onclick="window.closeModal('donorEtaModal')" class="text-slate-400 hover:text-white cursor-pointer"><span class="material-symbols-outlined text-sm">close</span></button>
+      </div>
+    </div>
+    <div class="p-5 space-y-3">
+      <p class="text-xs font-bold text-slate-800">Donor: <span id="etaDonorName" class="text-indigo-600">Donor Name</span></p>
+      <input id="etaRequestId" type="hidden"/>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Phone Call / ETA Note</label>
+        <textarea id="etaNoteInput" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-sky-200 placeholder:text-slate-400" placeholder="e.g. Donor called reception: stuck in traffic at Akwa bridge, ETA 15 mins."></textarea>
+      </div>
+      <button onclick="window.submitReceptionEtaNote()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer">
+        Save Reception Note
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- NURSE NEW PATIENT REQUEST MODAL (TRACK A vs TRACK B) -->
+<div id="nurseNewRequestModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseNewRequestModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 px-6 py-5 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-rose-300 border border-white/20">
+            <span class="material-symbols-outlined text-xl">medical_services</span>
+          </div>
+          <div>
+            <h3 class="text-base font-black tracking-tight text-white">New Patient Blood Request</h3>
+            <p class="text-[10px] text-rose-200 font-medium">Clinical requisition for Ward, ICU, or Surgery</p>
+          </div>
+        </div>
+        <button onclick="window.closeModal('nurseNewRequestModal')" class="text-rose-200 hover:text-white cursor-pointer"><span class="material-symbols-outlined">close</span></button>
+      </div>
+    </div>
+    <form id="formNurseNewRequest" class="p-6 space-y-4 max-h-[70vh] overflow-y-auto slim-scroll">
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Patient Full Name</label>
+        <input id="nurseReqPatientName" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. Marie Eto'o" required/>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Patient ID / Wristband #</label>
+          <input id="nurseReqPatientId" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. PAT-8842"/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Ward / Room #</label>
+          <input id="nurseReqWard" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. ICU Bed 4" required/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Blood Type Needed</label>
+          <select id="nurseReqBloodType" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200">
+            <option value="O-">O- Negative (Universal Emergency)</option>
+            <option value="O+">O+ Positive</option>
+            <option value="A-">A- Negative</option>
+            <option value="A+">A+ Positive</option>
+            <option value="B-">B- Negative</option>
+            <option value="B+">B+ Positive</option>
+            <option value="AB-">AB- Negative</option>
+            <option value="AB+">AB+ Positive</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Units Needed</label>
+          <input id="nurseReqUnits" type="number" min="1" max="10" value="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200"/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Attending Physician</label>
+          <input id="nurseReqDoctor" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. Dr. Mbida, MD"/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Release Protocol Track</label>
+          <select id="nurseReqTrack" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200">
+            <option value="Track B">Track B: Standard Crossmatched</option>
+            <option value="Track A">Track A: Emergency Uncrossmatched (under 5 mins)</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Clinical Diagnosis / Reason</label>
+        <input id="nurseReqDiagnosis" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. Postpartum Hemorrhage / Acute Trauma"/>
+      </div>
+      <div class="p-3 bg-rose-50 rounded-xl border border-rose-200 flex items-start gap-2.5">
+        <input id="nurseReqWaiver" type="checkbox" class="mt-0.5 rounded text-rose-600 focus:ring-rose-500"/>
+        <label for="nurseReqWaiver" class="text-[11px] font-bold text-rose-900 cursor-pointer">Physician Emergency Waiver Signed (Required if Track A Uncrossmatched Release selected)</label>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-r from-rose-600 to-red-600 text-white font-bold py-3 rounded-xl text-xs shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer">
+        <span class="material-symbols-outlined text-sm">send</span> Submit Clinical Request
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- BEDSIDE 2-CLINICIAN SAFETY VERIFICATION MODAL -->
+<div id="nurseBedsideVerifyModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseBedsideVerifyModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 px-6 py-5 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-rose-400 border border-white/20">
+            <span class="material-symbols-outlined text-xl">verified_user</span>
+          </div>
+          <div>
+            <h3 class="text-base font-black tracking-tight text-white">Bedside 2-Person Verification</h3>
+            <p class="text-[10px] text-slate-300 font-medium">Dual clinician check before hanging blood bag</p>
+          </div>
+        </div>
+        <button onclick="window.closeModal('nurseBedsideVerifyModal')" class="text-slate-400 hover:text-white cursor-pointer"><span class="material-symbols-outlined">close</span></button>
+      </div>
+    </div>
+    <form id="formNurseBedsideVerify" class="p-6 space-y-4">
+      <input id="verifyRequestId" type="hidden"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Patient Name</label>
+          <input id="verifyPatientName" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none" required/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Ward / Room #</label>
+          <input id="verifyWardNumber" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none" required/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Verified Blood Type</label>
+          <input id="verifyBloodType" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-red-700 outline-none uppercase" required/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Units Issued</label>
+          <input id="verifyUnits" type="number" value="1" min="1" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none"/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Blood Bag Barcode #</label>
+        <input id="verifyBagBarcode" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-slate-900 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. BAG-8842-O+" required/>
+      </div>
+      <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+        <p class="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-rose-600 text-sm">badge</span>
+          Second Verifying Clinician
+        </p>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-[9px] font-extrabold uppercase text-slate-400 mb-1">Staff Name / PIN</label>
+            <input id="verifySecondStaffName" type="text" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" placeholder="e.g. Nurse Patricia" required/>
+          </div>
+          <div>
+            <label class="block text-[9px] font-extrabold uppercase text-slate-400 mb-1">Role</label>
+            <select id="verifySecondStaffRole" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none">
+              <option value="Clinical Nurse">Clinical Nurse</option>
+              <option value="Attending Doctor">Attending Doctor</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-r from-rose-600 to-red-600 text-white font-bold py-3 rounded-xl text-xs shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer">
+        <span class="material-symbols-outlined text-sm">verified</span> Confirm Bedside Check & Issue Blood
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- TRANSFUSION VITAL SIGNS MONITOR MODAL -->
+<div id="nurseVitalsModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseVitalsModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+    <div class="bg-gradient-to-r from-slate-900 to-sky-950 px-6 py-4 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="material-symbols-outlined text-sky-400 text-lg">monitor_heart</span>
+          <h3 class="text-sm font-black text-white">Log Transfusion Vitals</h3>
+        </div>
+        <button onclick="window.closeModal('nurseVitalsModal')" class="text-slate-400 hover:text-white cursor-pointer"><span class="material-symbols-outlined text-sm">close</span></button>
+      </div>
+    </div>
+    <form id="formNurseVitals" class="p-5 space-y-3">
+      <input id="vitalsTransfusionId" type="hidden"/>
+      <p class="text-xs font-bold text-slate-800">Patient: <span id="vitalsPatientNameLabel" class="text-sky-600">Patient</span></p>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Check Checkpoint</label>
+        <select id="vitalsStage" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none">
+          <option value="fifteenMin">15-Minute Critical Check</option>
+          <option value="baseline">Baseline Vitals (Pre-Transfusion)</option>
+          <option value="post">Post-Transfusion Completion Check</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Temp (°C)</label>
+          <input id="vitalsTemp" type="number" step="0.1" value="37.0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" required/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Pulse (bpm)</label>
+          <input id="vitalsPulse" type="number" value="78" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" required/>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Systolic BP</label>
+          <input id="vitalsSystolic" type="number" value="120" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" required/>
+        </div>
+        <div>
+          <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Diastolic BP</label>
+          <input id="vitalsDiastolic" type="number" value="80" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none" required/>
+        </div>
+      </div>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Resp Rate (rpm)</label>
+        <input id="vitalsResp" type="number" value="16" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"/>
+      </div>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase text-slate-500 mb-1">Nurse Observations</label>
+        <input id="vitalsNotes" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 outline-none" placeholder="e.g. Patient resting comfortably, no chills"/>
+      </div>
+      <button type="submit" class="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer">
+        Save Vital Signs Check
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- STOP TRANSFUSION & REACTION REPORT MODAL -->
+<div id="nurseReactionModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseReactionModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-gradient-to-r from-red-900 to-rose-950 px-6 py-5 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center text-red-300 border border-white/20">
+            <span class="material-symbols-outlined text-xl">report_problem</span>
+          </div>
+          <div>
+            <h3 class="text-base font-black tracking-tight text-white">Stop Transfusion & Report Reaction</h3>
+            <p class="text-[10px] text-red-200 font-medium">Emergency hemovigilance adverse event alert</p>
+          </div>
+        </div>
+        <button onclick="window.closeModal('nurseReactionModal')" class="text-red-200 hover:text-white cursor-pointer"><span class="material-symbols-outlined">close</span></button>
+      </div>
+    </div>
+    <form id="formNurseReaction" class="p-6 space-y-4">
+      <input id="reactTransfusionId" type="hidden"/>
+      <input id="reactPatientName" type="hidden"/>
+      <input id="reactWardNumber" type="hidden"/>
+      <input id="reactBloodType" type="hidden"/>
+      <input id="reactBagBarcode" type="hidden"/>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Adverse Reaction Category</label>
+        <select id="reactType" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200">
+          <option value="Febrile Non-Hemolytic">Febrile Non-Hemolytic Reaction (Fever >1°C)</option>
+          <option value="Allergic / Urticarial">Allergic / Urticarial Reaction (Hives, Rash)</option>
+          <option value="Acute Hemolytic Reaction">Acute Hemolytic Reaction (Flank Pain, Hemoglobinuria)</option>
+          <option value="Anaphylactic / Severe">Anaphylactic Reaction (Bronchospasm, Shock)</option>
+          <option value="TRALI / Pulmonary">TRALI (Transfusion-Related Acute Lung Injury)</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Observed Symptoms</label>
+        <textarea id="reactSymptoms" rows="2" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-rose-200" placeholder="e.g. Patient developed chills, rigors, and 1.4°C temp spike 12 minutes into infusion." required></textarea>
+      </div>
+      <div>
+        <label class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mb-1">Immediate Clinical Actions Taken</label>
+        <input id="reactAction" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none" value="Transfusion stopped immediately, IV line flushed with normal saline"/>
+      </div>
+      <button type="submit" class="w-full bg-gradient-to-r from-red-700 to-rose-700 text-white font-bold py-3 rounded-xl text-xs shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2 cursor-pointer">
+        <span class="material-symbols-outlined text-sm">report_problem</span> Dispatch Hemovigilance Alert
+      </button>
+    </form>
+  </div>
+</div>
 
 <script type="module" src="/src/main.js"></script>
 </body></html>

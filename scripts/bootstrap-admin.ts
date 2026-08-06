@@ -70,13 +70,20 @@ async function main() {
     console.log('This account is already system_admin. Re-running will re-set the claim and revoke their tokens.');
   }
 
+  const newClaims = { role: 'system_admin', roles: ['system_admin', 'national_admin'] };
+
   if (!confirm) {
     console.log('\nDry run only (no --yes flag) — nothing was changed.');
-    console.log(`Would set custom claims on ${user.uid} to: { "role": "system_admin" }`);
+    console.log(`Would set custom claims on ${user.uid} to: ${JSON.stringify(newClaims)}`);
     return;
   }
 
-  await auth.setCustomUserClaims(user.uid, { role: 'system_admin' });
+  await auth.setCustomUserClaims(user.uid, newClaims);
+  await db.collection('users').doc(user.uid).set({
+    role: 'system_admin',
+    isVerified: true,
+    updatedAt: FieldValue.serverTimestamp()
+  }, { merge: true });
   await auth.revokeRefreshTokens(user.uid);
   await db.collection('auditLogs').add({
     actorUid: `bootstrap-script:${process.env.USERNAME || process.env.USER || 'unknown-operator'}`,
