@@ -288,3 +288,40 @@ describe('canAccessView', () => {
         expect(hasAnyRole({ roles: ['reception'] }, ['hospital_admin'])).toBe(false);
     });
 });
+
+describe('getFirstAccessibleView', () => {
+    const { getFirstAccessibleView, canAccessView } = require('./roleGating');
+    const map = {
+        staff: ['hospital_admin'],
+        settings: ['hospital_admin'],
+        campaigns: ['hospital_admin'],
+        forecasting: ['hospital_admin'],
+        mythbusting: ['hospital_admin'],
+        certificates: ['hospital_admin'],
+        inventory: ['nurse', 'lab_tech', 'hospital_admin'],
+        lab: ['lab_tech', 'hospital_admin'],
+        requests: ['nurse', 'hospital_admin'],
+        hemovigilance: ['nurse', 'lab_tech', 'hospital_admin'],
+        donors: ['reception', 'nurse', 'hospital_admin'],
+    };
+    const viewIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'staff', 'settings'];
+
+    it('returns dashboard for hospital_admin', () => {
+        expect(getFirstAccessibleView({ roles: ['hospital_admin'] }, viewIds, map)).toBe('dashboard');
+    });
+
+    it('returns first allowed view for multi-role nurse + lab_tech', () => {
+        expect(canAccessView({ roles: ['nurse', 'lab_tech'] }, 'lab', map)).toBe(true);
+        expect(canAccessView({ roles: ['nurse', 'lab_tech'] }, 'requests', map)).toBe(true);
+        expect(canAccessView({ roles: ['nurse', 'lab_tech'] }, 'staff', map)).toBe(false);
+        expect(getFirstAccessibleView({ roles: ['nurse', 'lab_tech'] }, viewIds, map)).toBe('dashboard');
+    });
+
+    it('returns fallback allowed view when initial target is unpermitted', () => {
+        const receptionUser = { roles: ['reception'] };
+        expect(canAccessView(receptionUser, 'staff', map)).toBe(false);
+        expect(canAccessView(receptionUser, 'settings', map)).toBe(false);
+        expect(canAccessView(receptionUser, 'donors', map)).toBe(true);
+        expect(getFirstAccessibleView(receptionUser, viewIds, map)).toBe('dashboard');
+    });
+});

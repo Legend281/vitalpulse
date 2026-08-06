@@ -163,3 +163,20 @@ export function canAccessView(user, viewId, permissionMap = {}) {
     if (!allowed || allowed.length === 0) return true;
     return hasAnyRole(user, allowed);
 }
+
+/**
+ * Computes the first view permitted for the active session from a given list of view IDs.
+ *
+ * @param {object|null} user - Current user object from getCurrentUser().
+ * @param {string[]} viewIds - Array of view IDs to check in priority order.
+ * @param {Record<string, string[]>} permissionMap - Map of viewId -> allowed role array.
+ * @returns {string} First accessible viewId, defaulting to 'dashboard'.
+ */
+export function getFirstAccessibleView(user, viewIds = [], permissionMap = {}) {
+    for (const viewId of viewIds) {
+        if (canAccessView(user, viewId, permissionMap)) {
+            return viewId;
+        }
+    }
+    return 'dashboard';
+}

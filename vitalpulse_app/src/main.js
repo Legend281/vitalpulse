@@ -1,6 +1,6 @@
 import './style.css'
 import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser, resolveSignInEmail, setLoginPersistence, verifyResetCode, confirmReset } from './auth';
-import { getActiveRoles, hasAnyRole, isLegacyAccount, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession, canAccessView } from './roleGating';
+import { getActiveRoles, hasAnyRole, isLegacyAccount, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession, canAccessView, getFirstAccessibleView } from './roleGating';
 import { readLoginFailureState, recordLoginFailure, clearLoginFailures, isLockedOut, shouldShowAttemptsWarning, lockoutSecondsRemaining, recordAttemptedIdentifier, hasAttemptedIdentifier } from './loginAttempts';
 import { evaluatePasswordCriteria, passwordStrengthScore, isPasswordValid, suggestStrongPassword } from './passwordPolicy';
 import { normalizeCameroonPhone, formatCameroonNationalNumber } from './phone';
@@ -10,7 +10,7 @@ import { db } from './firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingKycReviews, fetchKycDocumentUrl, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingKycReviews, fetchKycDocumentUrl, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -1043,49 +1043,35 @@ export function updateHospitalNavVisibility() {
 
     const labSec = document.getElementById('labTechDashboardSection');
 
-    if (isReception && !isAdmin) {
+    // FIX 1: Multi-role non-exclusive section checks (supports Reception + Nurse, Nurse + Lab Tech, etc.)
+    if (isReception) {
         if (receptionSec) receptionSec.classList.remove('hidden');
-        if (nurseSec) nurseSec.classList.add('hidden');
-        if (labSec) labSec.classList.add('hidden');
-        if (adminSec) adminSec.classList.add('hidden');
         initReceptionDashboard();
         loadReceptionOverview();
-    } else if (isNurse && !isAdmin) {
-        if (nurseSec) nurseSec.classList.remove('hidden');
+    } else {
         if (receptionSec) receptionSec.classList.add('hidden');
-        if (labSec) labSec.classList.add('hidden');
-        if (adminSec) adminSec.classList.add('hidden');
+    }
+
+    if (isNurse) {
+        if (nurseSec) nurseSec.classList.remove('hidden');
         initNurseDashboard();
         loadNurseOverview();
-    } else if (isLabTech && !isAdmin) {
-        if (labSec) labSec.classList.remove('hidden');
+    } else {
         if (nurseSec) nurseSec.classList.add('hidden');
-        if (receptionSec) receptionSec.classList.add('hidden');
-        if (adminSec) adminSec.classList.add('hidden');
-        initLabDashboard();
-        loadLabPipeline();
-    } else if (isNurse && isAdmin) {
-        if (nurseSec) nurseSec.classList.remove('hidden');
-        if (adminSec) adminSec.classList.remove('hidden');
-        initNurseDashboard();
-        loadNurseOverview();
-    } else if (isReception && isAdmin) {
-        if (receptionSec) receptionSec.classList.remove('hidden');
-        if (nurseSec) nurseSec.classList.add('hidden');
-        if (adminSec) adminSec.classList.remove('hidden');
-        initReceptionDashboard();
-        loadReceptionOverview();
-    } else if (isLabTech && isAdmin) {
+    }
+
+    if (isLabTech) {
         if (labSec) labSec.classList.remove('hidden');
-        if (adminSec) adminSec.classList.remove('hidden');
         initLabDashboard();
         loadLabPipeline();
     } else {
-        if (receptionSec) receptionSec.classList.add('hidden');
-        if (nurseSec) nurseSec.classList.add('hidden');
         if (labSec) labSec.classList.add('hidden');
+    }
+
+    if (isAdmin) {
         if (adminSec) adminSec.classList.remove('hidden');
-        initLabDashboard();
+    } else {
+        if (adminSec) adminSec.classList.add('hidden');
     }
 
     const donorReactionLogSec = document.getElementById('donorReactionLogSection');
@@ -1163,7 +1149,24 @@ function initHospitalNavigation() {
         }
         if (!canAccessView(currentUser, target, HOSPITAL_VIEW_PERMISSIONS)) {
             console.warn(`[Route Guard] Access denied to view '${target}' for active session.`);
-            target = 'dashboard';
+            const fallbackView = getFirstAccessibleView(currentUser, viewIds, HOSPITAL_VIEW_PERMISSIONS);
+            const activeRoles = getActiveRoles(currentUser);
+
+            showToast(`Access Denied: You do not have permission to view ${target.replace('-', ' ')}`, 'error');
+
+            logAuditTrail('UNAUTHORIZED_VIEW_ATTEMPT', `Unauthorized attempt to access view '${target}' by session with roles [${activeRoles.join(', ')}]`, {
+                attemptedView: target,
+                fallbackView,
+                activeRoles,
+                userEmail: currentUser?.email || 'sub_account'
+            });
+
+            target = fallbackView;
+        }
+
+        // FIX 3: Sync URL hash for deep-linking & browser back/forward history
+        if (window.location.hash !== '#' + target) {
+            history.replaceState(null, '', '#' + target);
         }
 
         viewIds.forEach(id => {
