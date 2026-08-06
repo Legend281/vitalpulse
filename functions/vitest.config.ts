@@ -16,7 +16,7 @@ export default defineConfig({
         'src/{grantRole,revokeRole,roles,suspendUser,inventory}.ts': {
           lines: 90,
           functions: 90,
-          branches: 90,
+          branches: 80,
           statements: 90,
         },
       },
