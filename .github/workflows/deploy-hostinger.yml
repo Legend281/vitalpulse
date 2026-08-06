@@ -42,7 +42,7 @@ jobs:
           npm run build
 
       - name: 6. Deploy compiled dist/ to Hostinger via FTP
-        uses: SamKirsch/ftp-deploy-action@v4.3.5
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_FTP_SERVER }}
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
