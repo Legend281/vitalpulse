@@ -1652,6 +1652,9 @@ export async function submitDonationRequest(donorId, donationData) {
         }
     }
 
+    const checkInToken = generateScopedCheckInToken(donorId || 'walkin');
+    const checkInTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // Valid for scheduled booking window
+
     const docRef = await addDoc(collection(db, 'donation_requests'), {
         donorId,
         donorName: donationData.donorName,
@@ -1661,11 +1664,14 @@ export async function submitDonationRequest(donorId, donationData) {
         units: donationData.units || 1,
         preferredDate: donationData.preferredDate,
         preferredLocation: donationData.preferredLocation,
+        hospital: donationData.preferredLocation || donationData.hospital || null,
         notes: donationData.notes || '',
         componentType: donationData.componentType || 'Whole Blood',
         screeningAnswers: donationData.screeningAnswers || null,
         screeningFlags: donationData.screeningFlags || [],
         screeningPassed: donationData.screeningPassed !== false,
+        checkInToken,
+        checkInTokenExpiresAt,
         status: 'pending',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -2170,14 +2176,20 @@ export async function fetchHospitalRequests(hospitalName) {
 export async function findRequestByCheckInToken(checkInToken, collectionName) {
     const normalized = (checkInToken || '').replace(/[^A-Za-z0-9-]/g, '').toUpperCase();
     if (!normalized) return null;
-    const q = query(collection(db, collectionName), where('checkInToken', '==', normalized));
-    const snapshot = await getDocs(q);
+    let q = query(collection(db, collectionName), where('checkInToken', '==', normalized));
+    let snapshot = await getDocs(q);
+    
+    if (snapshot.empty && collectionName !== 'donation_requests') {
+        const donationReqQ = query(collection(db, 'donation_requests'), where('checkInToken', '==', normalized));
+        snapshot = await getDocs(donationReqQ);
+    }
+
     if (snapshot.empty) return null;
     const docSnap = snapshot.docs[0];
     const data = docSnap.data();
 
     if (data.checkInTokenExpiresAt && new Date(data.checkInTokenExpiresAt) < new Date()) {
-        throw new Error('This check-in pass code has expired (valid for 24 hours).');
+        throw new Error('This check-in pass code has expired.');
     }
 
     return { id: docSnap.id, ...data };

@@ -2250,7 +2250,10 @@ async function loadScheduledBookings() {
                     <button onclick="window.rejectBookingAction('${b.id}', '${b.bloodType}')" class="text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors">Decline</button>
                     <button onclick="window.approveBookingAction('${b.id}', '${b.bloodType}')" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors">Confirm</button>
                     ` : `
-                    <button onclick="window.completeBookingAction('${b.id}')" class="text-[10px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-colors">Mark Donated</button>
+                    <button onclick="window.openDonationIntakeModal('${b.id}', '${b.donorId || ''}', '${b.bloodType || ''}', '${(b.donorName || 'Donor').replace(/'/g, "\\'")}', '${b.bloodType || ''}', ${b.screeningPassed === false})" class="text-[10px] font-bold text-teal-600 bg-teal-50 hover:bg-teal-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                        <span class="material-symbols-outlined text-xs">vaccines</span>
+                        Record Blood Draw
+                    </button>
                     `}
                 </div>
             </div>
