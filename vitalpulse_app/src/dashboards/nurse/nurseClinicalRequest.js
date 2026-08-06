@@ -1,6 +1,6 @@
 import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase.js';
-import { createEmergencyRequest, logActivity } from '../../db.js';
+import { createEmergencyRequest, logActivity, fetchHospitalRequests } from '../../db.js';
 import { getCurrentUser } from '../../auth.js';
 
 /**
@@ -34,6 +34,7 @@ export async function createNursePatientRequest(reqData) {
 
   // 1. Log clinical request doc
   const docRef = await addDoc(collection(db, 'requests'), {
+    hospital: hospitalName,
     hospitalName,
     patientName: patientName.trim(),
     patientIdNumber: patientIdNumber.trim(),
@@ -78,13 +79,8 @@ export async function createNursePatientRequest(reqData) {
 export async function fetchNurseActiveRequests(hospitalName) {
   if (!hospitalName) return [];
   try {
-    const q = query(
-      collection(db, 'requests'),
-      where('hospitalName', '==', hospitalName)
-    );
-    const snapshot = await getDocs(q);
-    const requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    return requests.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const requests = await fetchHospitalRequests(hospitalName);
+    return requests || [];
   } catch (e) {
     console.warn('fetchNurseActiveRequests query failed:', e);
     return [];

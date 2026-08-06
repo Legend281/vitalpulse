@@ -30,8 +30,8 @@ export async function loadNurseOverview() {
     const transfusions = await fetchActiveTransfusions(hospitalName);
     const reactions = await fetchNurseReactionLogs(hospitalName);
 
-    const pendingRequests = requests.filter(r => r.status === 'Pending Crossmatch' || r.status === 'Emergency Dispatch');
-    const activeTransfusions = transfusions.filter(t => t.status === 'Transfusing');
+    const activeReqs = requests.filter(r => r.status !== 'Fulfilled' && r.status !== 'Cancelled' && r.status !== 'Completed' && r.status !== 'Closed');
+    const pendingCrossmatch = activeReqs.filter(r => r.status === 'Pending Crossmatch' || r.status === 'Open' || r.status === 'Donor En Route');
 
     // Update KPI Tiles
     const activeEl = document.getElementById('nurseActiveReqCount');
@@ -39,9 +39,9 @@ export async function loadNurseOverview() {
     const pendingCrossEl = document.getElementById('nursePendingCrossCount');
     const reactionEl = document.getElementById('nurseReactionCount');
 
-    if (activeEl) activeEl.textContent = pendingRequests.length;
+    if (activeEl) activeEl.textContent = activeReqs.length;
     if (issuedEl) issuedEl.textContent = transfusions.length;
-    if (pendingCrossEl) pendingCrossEl.textContent = pendingRequests.filter(r => r.status === 'Pending Crossmatch').length;
+    if (pendingCrossEl) pendingCrossEl.textContent = pendingCrossmatch.length;
     if (reactionEl) reactionEl.textContent = reactions.length;
 
     // Render Active Clinical Requests List
@@ -60,7 +60,7 @@ function renderActiveClinicalRequestsList(requests = []) {
   const container = document.getElementById('nurseActiveRequestsList');
   if (!container) return;
 
-  const activeReqs = requests.filter(r => r.status !== 'Fulfilled' && r.status !== 'Cancelled');
+  const activeReqs = requests.filter(r => r.status !== 'Fulfilled' && r.status !== 'Cancelled' && r.status !== 'Completed' && r.status !== 'Closed');
 
   if (activeReqs.length === 0) {
     container.innerHTML = `
@@ -73,30 +73,35 @@ function renderActiveClinicalRequestsList(requests = []) {
   }
 
   container.innerHTML = activeReqs.map(r => {
-    const isEmergency = r.isTrackA || r.urgency === 'Emergency';
+    const isEmergency = r.isTrackA || r.urgency === 'Emergency' || r.urgency === 'Immediate';
     const badgeColor = isEmergency ? 'bg-red-100 text-red-800 border-red-200 animate-pulse' : 'bg-blue-100 text-blue-800 border-blue-200';
     const trackLabel = r.isTrackA ? 'Track A (Emergency Release)' : 'Track B (Standard Crossmatch)';
+    const patientName = r.patientName || r.reason || 'Emergency Patient';
+    const safePatientName = patientName.replace(/'/g, "\\'");
+    const ward = r.wardNumber || 'ICU/ER';
+    const bloodType = r.bloodType || 'O+';
+    const units = r.unitsNeeded || r.units || 1;
 
     return `
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80 hover:border-rose-200 transition-all">
         <div class="flex items-center gap-3.5">
           <div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-700 font-black text-sm flex items-center justify-center border border-rose-100 shrink-0">
-            ${r.bloodType || 'O+'}
+            ${bloodType}
           </div>
           <div>
             <div class="flex items-center gap-2">
-              <h4 class="font-extrabold text-sm text-slate-900">${r.patientName}</h4>
-              <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 text-slate-700">Ward ${r.wardNumber}</span>
+              <h4 class="font-extrabold text-sm text-slate-900">${patientName}</h4>
+              <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-200 text-slate-700">Ward ${ward}</span>
               <span class="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border ${badgeColor}">${trackLabel}</span>
             </div>
             <p class="text-xs font-semibold text-slate-500 mt-0.5">
-              ${r.unitsNeeded || 1} unit(s) needed · Dr. ${r.attendingDoctor || 'On Duty'} ${r.clinicalDiagnosis ? '· ' + r.clinicalDiagnosis : ''}
+              ${units} unit(s) needed · Dr. ${r.attendingDoctor || 'On Duty'} ${r.clinicalDiagnosis ? '· ' + r.clinicalDiagnosis : ''}
             </p>
           </div>
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
-          <button onclick="window.openNurseBedsideModal('${r.id}', '${r.patientName}', '${r.wardNumber}', '${r.bloodType}')" class="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5">
+          <button onclick="window.openNurseBedsideModal('${r.id}', '${safePatientName}', '${ward}', '${bloodType}')" class="px-4 py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5">
             <span class="material-symbols-outlined text-sm">bloodtype</span>
             Bedside Issue Bag
           </button>
