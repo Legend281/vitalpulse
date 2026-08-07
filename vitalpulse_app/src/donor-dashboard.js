@@ -1,5 +1,5 @@
 import { getCurrentUser, sendPasswordReset, hashNationalId, isEmailVerified, sendEmailVerificationLink } from './auth';
-import { collection, query, where, getDocs, doc, getDoc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import {
   fetchMatchedRequestsForDonor,
@@ -1244,6 +1244,22 @@ function initKycLivenessStep() {
     btn.disabled = true;
     btn.textContent = 'Submitting…';
     try {
+      // If the donors doc doesn't exist, create it first in the 'not_submitted' state to satisfy firestore.rules
+      if (_donorKycStatus === null) {
+        await setDoc(doc(db, 'donors', currentUser.uid), {
+          kycStatus: 'not_submitted',
+          kycDocType: null,
+          kycIdImageBase64: null,
+          kycIdBackImageBase64: null,
+          kycSelfieImageBase64: null,
+          kycRejectionReason: null,
+          kycReviewedBy: null,
+          kycReviewedAt: null,
+        });
+        // Update local status so snapshot triggers know it is initialized
+        _donorKycStatus = 'not_submitted';
+      }
+
       // The ONE write that transitions donors/{uid} from not_submitted|rejected -> pending
       // (see firestore.rules' donors/{donorId} allow update) — ID front/back and the
       // liveness selfie all land together, matching the doc-type + evidence shape the
