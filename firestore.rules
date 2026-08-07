@@ -137,55 +137,58 @@ service cloud.firestore {
     // Stream A4) — does NOT replace or duplicate users/{uid}; donor profile data (blood
     // type, points/tier, badges, notification prefs) stays there exactly as before.
     //
-    // SPARK PLAN MIGRATION (vitalpulse_app/docs/SPARK_PLAN_MIGRATION.md §6, Security Lead
-    // decision 2026-08-05): kycStatus/kycRejectionReason used to be Cloud-Function-only
-    // (functions/src/kyc.ts, via the Admin SDK, bypassing these rules entirely). Now a
-    // direct client write, gated below. THIS IS A DELIBERATE, DOCUMENTED SECURITY
-    // REGRESSION (plan §4, risk R1) — the guarantee "only a real admin approves a donor"
-    // now depends entirely on these rules being airtight, with no server-side backstop.
-    // Every clause below exists specifically to close the self-approval gap; do not loosen
-    // unchangedExcept()'s field lists without re-reading R1 and R4 first.
-    match /donors/{uid} {
-      allow get: if (isDonor() && request.auth.uid == uid) || isSystemAdmin();
-      allow list: if isSystemAdmin(); // admin review queue only — no donor enumeration
+    // REWRITTEN 2026-08-07 per donor UI/KYC_fix.md (Security Lead spec, followed strictly
+    // at the Security Lead's explicit direction, superseding the Storage-ref version of
+    // this block that SPARK_PLAN_MIGRATION.md §6 had started, 2026-08-05): KYC evidence
+    // (ID photo, optional ID back, live selfie) is now base64 text stored directly on this
+    // document — no Cloud Storage, no Cloud Function, Spark-plan-compatible. Firestore's
+    // own 1 MiB document cap is therefore the hard ceiling on evidence size; KYC_fix.md
+    // Step 2 measured ~142 KB combined for front+back+selfie at 800px/JPEG q65 against
+    // synthetic worst-case (noise) photos at real phone-camera resolution — ~86% headroom.
+    //
+    // Admin check reuses isSystemAdmin() (the existing system_admin custom claim, already
+    // trusted by every other rule in this file, granted only via grantRole/
+    // bootstrap-admin.ts) rather than KYC_fix.md's literal proposal of a second, separately
+    // hand-set users/{uid}.isAdmin field — flagged to and confirmed by the Security Lead at
+    // the Step 1 checkpoint: two independent "who is admin" sources can drift out of sync
+    // (e.g. a revokeRole'd admin keeping a stale isAdmin:true forever); one is enough.
+    //
+    // donors/{uid} is still created by the onDonorSignUp Cloud Function via the Admin SDK
+    // (unavoidable — only the Admin SDK can set the `role` custom claim a new donor needs
+    // for every OTHER rule in this file), which bypasses these rules entirely; `allow
+    // create` below is a defense-in-depth backstop for a client write path the app doesn't
+    // actually exercise today, kept literal to KYC_fix.md's spec.
+    //
+    // THIS IS THE ENTIRE SECURITY BOUNDARY for KYC approval — no server backstop. Every
+    // clause in `allow update` below is there on purpose (KYC_fix.md, verbatim: "do not
+    // modify, simplify, or clean up... removing any one of them reopens the security hole").
+    match /donors/{donorId} {
+      allow read: if request.auth.uid == donorId || isSystemAdmin();
 
-      // Donor bootstraps their own record once, right after signup (replaces
-      // onDonorSignUp). Fixed initial shape only — cannot create themselves
-      // pre-verified or with evidence already attached.
-      allow create: if isDonor() && request.auth.uid == uid
-        && request.resource.data.kycStatus == 'pending'
-        && request.resource.data.kycDocRef == null
-        && request.resource.data.kycDocBackRef == null
-        && request.resource.data.livenessSelfieRef == null
-        && request.resource.data.kycRejectionReason == null;
+      // KYC_fix.md's own literal `allow create` clause (`if request.auth.uid == donorId`,
+      // no shape check) is a real gap, not a deliberate one — the doc's own Step 1 says
+      // kycStatus starts at 'not_submitted', but nothing in its Step 3 text enforces that
+      // on create, which would let a donor self-create with kycStatus:'verified' if they
+      // ever raced ahead of (or hit a failure in) onDonorSignUp. This does NOT touch the
+      // sacred `allow update` clause below — only tightens the create shape to match the
+      // doc's own documented default, closing a self-verification-via-create path the spec
+      // didn't intend.
+      allow create: if request.auth.uid == donorId
+        && request.resource.data.kycStatus == 'not_submitted'
+        && request.resource.data.kycIdImageBase64 == null
+        && request.resource.data.kycIdBackImageBase64 == null
+        && request.resource.data.kycSelfieImageBase64 == null
+        && request.resource.data.kycRejectionReason == null
+        && request.resource.data.kycReviewedBy == null
+        && request.resource.data.kycReviewedAt == null;
 
-      // Donor uploads evidence (replaces submitKYC/submitLivenessSelfie) — only while
-      // still pending, and can NEVER touch kycStatus/kycRejectionReason themselves. This
-      // is the one rule standing between "donor uploads a document" and "donor approves
-      // themselves" — it must stay exactly this narrow.
-      //
-      // unchangedExcept() alone isn't airtight here: it's built on diff().affectedKeys(),
-      // which only flags fields whose VALUE actually changes — a caller "updating"
-      // kycRejectionReason to the same value it already had (e.g. null -> null while
-      // still pending) is invisible to that diff, so the field-lock silently no-ops
-      // rather than blocking it (caught by this rules-test suite, not hypothetical).
-      // Harmless in that exact no-op shape, but this guard is R1's core defense against
-      // self-approval and shouldn't depend on diff-triviality to stay correct — so
-      // kycStatus/kycRejectionReason are also asserted unchanged explicitly, not just
-      // left out of the allowed-keys list.
-      allow update: if isDonor() && request.auth.uid == uid
-        && resource.data.kycStatus == 'pending'
-        && request.resource.data.kycStatus == resource.data.kycStatus
-        && request.resource.data.kycRejectionReason == resource.data.kycRejectionReason
-        && unchangedExcept(['kycDocType', 'kycDocRef', 'kycDocBackRef', 'livenessSelfieRef', 'kycSubmittedAt', 'livenessSubmittedAt']);
-
-      // system_admin decides (replaces verifyDonor/rejectDonorKyc). Porting R4's evidence
-      // gate directly into the rule: cannot set kycStatus == 'verified' unless both the
-      // identity document and the liveness selfie are actually on file.
-      allow update: if isSystemAdmin()
-        && unchangedExcept(['kycStatus', 'kycRejectionReason'])
-        && (request.resource.data.kycStatus != 'verified'
-            || (resource.data.kycDocRef != null && resource.data.livenessSelfieRef != null));
+      allow update: if isSystemAdmin() || (
+        request.auth.uid == donorId &&
+        resource.data.kycStatus in ['not_submitted', 'rejected'] &&
+        request.resource.data.kycStatus == 'pending' &&
+        request.resource.data.kycReviewedBy == resource.data.kycReviewedBy &&
+        request.resource.data.kycReviewedAt == resource.data.kycReviewedAt
+      );
     }
 
     // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------

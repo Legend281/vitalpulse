@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
+// donor-dashboard.js no longer calls firebase/functions itself (KYC moved off Cloud
+// Functions per donor UI/KYC_fix.md), but it imports from ./db, which still does at module
+// load time for other Cloud Functions (suspendUser, roles, etc.) — this mock is for that
+// transitive import, not for anything in this file directly.
 vi.mock('firebase/functions', () => ({
   getFunctions: vi.fn(() => ({})),
   httpsCallable: vi.fn(() => vi.fn()),
@@ -52,18 +56,23 @@ describe('resolveLastDonationDate (56-Day WHO Deferral Tracking)', () => {
   });
 });
 
-describe('validateKycFile (Stream C3, KYC upload)', () => {
+describe('validateKycFile (donor UI/KYC_fix.md, KYC upload)', () => {
   it('accepts a valid JPG under 5MB', () => {
     expect(validateKycFile(makeFile({ type: 'image/jpeg', size: 1024 }))).toEqual({ valid: true, error: null });
   });
 
-  it('accepts a valid PNG and PDF', () => {
+  it('accepts a valid PNG', () => {
     expect(validateKycFile(makeFile({ type: 'image/png' })).valid).toBe(true);
-    expect(validateKycFile(makeFile({ type: 'application/pdf' })).valid).toBe(true);
   });
 
   it('HOSTILE: rejects a missing file', () => {
     expect(validateKycFile(null)).toEqual({ valid: false, error: "Please choose a file." });
+  });
+
+  it('HOSTILE: rejects PDF — no longer accepted (canvas-based compression can only resize a raster image, not render a PDF page)', () => {
+    const result = validateKycFile(makeFile({ type: 'application/pdf' }));
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/Unsupported format/);
   });
 
   it('HOSTILE: rejects an unsupported format', () => {

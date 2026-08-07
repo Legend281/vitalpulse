@@ -136,16 +136,31 @@ export async function registerUser(email, password, role, additionalData) {
         // Non-fatal by design: the Auth account and Firestore profile already exist by this
         // point, so a transient failure here shouldn't be reported as "signup failed" — it's
         // surfaced via the return value instead so the caller can decide how to handle it.
+        //
+        // BUG FIX 2026-08-07 (Security Lead report): a bare, non-retried failure here used
+        // to be able to leave an account permanently exempt from KYC — see the ordering fix
+        // in functions/src/kyc.ts's bootstrapDonorAccountHandler for the full mechanism. That
+        // server-side fix makes this call safely retryable now, so retry once on a transient
+        // failure (network blip, cold start, dev environment's Functions emulator not being
+        // up yet) before giving up and surfacing kycBootstrapFailed.
         let kycBootstrapFailed = false;
         if (role === 'donor') {
             try {
                 await onDonorSignUpFn();
+            } catch (firstError) {
+                console.warn('onDonorSignUp bootstrap failed, retrying once:', firstError);
+                try {
+                    await new Promise((resolve) => setTimeout(resolve, 1500));
+                    await onDonorSignUpFn();
+                } catch (retryError) {
+                    console.warn('onDonorSignUp bootstrap failed after retry (account still created):', retryError);
+                    kycBootstrapFailed = true;
+                }
+            }
+            if (!kycBootstrapFailed) {
                 // Claims were just set server-side; force-refresh so this session's token
                 // reflects them immediately rather than waiting out its ~1h natural expiry.
                 await user.getIdToken(true);
-            } catch (bootstrapError) {
-                console.warn('onDonorSignUp bootstrap failed (account still created):', bootstrapError);
-                kycBootstrapFailed = true;
             }
         }
 

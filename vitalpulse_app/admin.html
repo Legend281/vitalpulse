@@ -331,11 +331,11 @@ Urgent Request
 </section>
 <!-- Pending Donor KYC Verifications — donor accounts must be approved by a system_admin
      (never a hospital) before they get full dashboard access; this queue is the actual
-     approval surface for that. Each row needs BOTH the identity document and the liveness
-     selfie reviewed before it can be approved (verifyDonor rejects server-side otherwise —
-     functions/src/kyc.ts). Requested directly by the Security Lead (2026-08-02): until now
-     nothing in this admin UI surfaced pending donor KYC submissions at all, even though the
-     review Cloud Functions already existed. -->
+     approval surface for that. Requested directly by the Security Lead (2026-08-02): until
+     now nothing in this admin UI surfaced pending donor KYC submissions at all.
+     REWRITTEN 2026-08-07 per donor UI/KYC_fix.md: evidence photos are base64 fields on
+     donors/{uid} now (no Cloud Storage), displayed as inline <img> thumbnails; approve/
+     reject write donors/{uid} directly (no Cloud Function) — see main.js. -->
 <section class="space-y-5">
 <div class="flex items-center justify-between">
 <div class="flex items-center gap-3">
@@ -366,6 +366,39 @@ Urgent Request
 </div>
 </div>
 </section>
+
+<!-- KYC evidence lightbox — clicking a thumbnail in the queue above opens the full-size
+     base64 image here (a data: URL opened via window.open() is blocked by browsers in a
+     top-level navigation, so this has to be an in-page viewer, not a new tab). -->
+<div id="kycImageLightbox" class="hidden fixed inset-0 z-50 bg-black/80 items-center justify-center p-6" role="dialog" aria-modal="true">
+  <button id="btnKycLightboxClose" class="absolute top-5 right-6 text-white/80 hover:text-white" aria-label="Close">
+    <span class="material-symbols-outlined text-3xl">close</span>
+  </button>
+  <img id="kycLightboxImg" src="" alt="KYC evidence" class="max-w-full max-h-full rounded-lg shadow-2xl"/>
+</div>
+
+<!-- KYC rejection-reason picker — donor UI/KYC_fix.md Step 4.4's fixed reason list, replacing
+     a free-text prompt() so every rejection reason shown to a donor is one of the 8 approved. -->
+<div id="kycRejectReasonModal" class="hidden fixed inset-0 z-50 bg-black/50 items-center justify-center p-6" role="dialog" aria-modal="true">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+    <h3 class="text-base font-bold text-slate-800">Reason for rejection</h3>
+    <p class="text-xs text-slate-500">This will be shown to the donor.</p>
+    <select id="kycRejectReasonSelect" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700">
+      <option value="Image unreadable">Image unreadable</option>
+      <option value="Name mismatch">Name mismatch</option>
+      <option value="Expired ID">Expired ID</option>
+      <option value="Wrong document type">Wrong document type</option>
+      <option value="Selfie does not match ID">Selfie does not match ID</option>
+      <option value="Suspected duplicate account">Suspected duplicate account</option>
+      <option value="Signs of tampering">Signs of tampering</option>
+      <option value="Incomplete submission">Incomplete submission</option>
+    </select>
+    <div class="flex justify-end gap-2 pt-1">
+      <button id="btnKycRejectCancel" class="text-xs font-bold px-4 py-2.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">Cancel</button>
+      <button id="btnKycRejectConfirm" class="text-xs font-bold px-4 py-2.5 rounded-lg bg-error text-white hover:opacity-90 transition-opacity">Reject Donor</button>
+    </div>
+  </div>
+</div>
 <!-- Global Campaign Management -->
 <section>
 <div class="flex items-center gap-3 mb-7">

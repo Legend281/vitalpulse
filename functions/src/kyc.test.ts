@@ -66,19 +66,12 @@ describe('bootstrapDonorAccountHandler (onDonorSignUp)', () => {
     });
   });
 
-  it('HOSTILE: refuses to re-bootstrap an account that already has a role (no self-reset)', async () => {
-    mockAuth.getUser.mockResolvedValue({ uid: 'u1', customClaims: { role: 'donor', kycStatus: 'verified' } });
-    await expect(bootstrapDonorAccountHandler(req({ uid: 'u1', token: {} }, {}))).rejects.toMatchObject({
-      code: 'failed-precondition',
-    });
-    expect(mockAuth.setCustomUserClaims).not.toHaveBeenCalled();
-  });
-
   it('HOSTILE: refuses to re-bootstrap an account that already has a hospital role', async () => {
     mockAuth.getUser.mockResolvedValue({ uid: 'u1', customClaims: { role: 'hospital_staff', hospitalId: 'H1' } });
     await expect(bootstrapDonorAccountHandler(req({ uid: 'u1', token: {} }, {}))).rejects.toMatchObject({
       code: 'failed-precondition',
     });
+    expect(mockAuth.setCustomUserClaims).not.toHaveBeenCalled();
   });
 
   it('HOSTILE: refuses when a donors/{uid} record already exists (double-invocation)', async () => {
@@ -90,24 +83,43 @@ describe('bootstrapDonorAccountHandler (onDonorSignUp)', () => {
     expect(mockAuth.setCustomUserClaims).not.toHaveBeenCalled();
   });
 
-  it('bootstraps a fresh account: donor+pending claim, donors/{uid} created, tokens revoked, audited', async () => {
+  it('bootstraps a fresh account: donors/{uid} created BEFORE the claim is set, tokens revoked, audited', async () => {
     mockAuth.getUser.mockResolvedValue({ uid: 'u1', customClaims: {} });
     const result = await bootstrapDonorAccountHandler(req({ uid: 'u1', token: {} }, {}));
 
-    expect(result).toEqual({ success: true, kycStatus: 'pending' });
+    expect(result).toEqual({ success: true, kycStatus: 'not_submitted' });
     expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('u1', { role: 'donor', kycStatus: 'pending' });
     expect(mockAuth.revokeRefreshTokens).toHaveBeenCalledWith('u1');
     expect(mocks.collection).toHaveBeenCalledWith('donors');
     expect(mocks.doc).toHaveBeenCalledWith('u1');
     expect(mocks.create).toHaveBeenCalledWith(
-      expect.objectContaining({ kycStatus: 'pending', kycDocType: null, kycDocRef: null, kycSubmittedAt: null }),
+      expect.objectContaining({ kycStatus: 'not_submitted', kycDocType: null, kycIdImageBase64: null, kycSubmittedAt: null }),
     );
+    // The doc create() call must happen before the claim is set — this ordering is the
+    // actual bug fix (2026-08-07): a partial failure must never leave a donor claim set
+    // with no backing donors/{uid} doc, since a missing doc is treated as "grandfathered,
+    // exempt from KYC" elsewhere in the app.
+    const createOrder = mocks.create.mock.invocationCallOrder[0];
+    const claimsOrder = mockAuth.setCustomUserClaims.mock.invocationCallOrder[0];
+    expect(createOrder).toBeLessThan(claimsOrder);
     expect(writeAudit).toHaveBeenCalledWith({
       actorUid: 'u1',
       action: 'onDonorSignUp',
       targetUid: 'u1',
-      details: { kycStatus: 'pending' },
+      details: { kycStatus: 'not_submitted' },
     });
+  });
+
+  it('BUG FIX 2026-08-07: retries a partially-failed prior bootstrap (donor claim already set from a failed attempt, but no donors/{uid} doc yet) — this is exactly the scenario that used to permanently grandfather a donor around KYC', async () => {
+    mockAuth.getUser.mockResolvedValue({ uid: 'u1', customClaims: { role: 'donor', kycStatus: 'pending' } });
+    mocks.get.mockResolvedValue({ exists: false, data: () => undefined });
+    const result = await bootstrapDonorAccountHandler(req({ uid: 'u1', token: {} }, {}));
+
+    expect(result).toEqual({ success: true, kycStatus: 'not_submitted' });
+    expect(mocks.create).toHaveBeenCalledWith(
+      expect.objectContaining({ kycStatus: 'not_submitted' }),
+    );
+    expect(mockAuth.setCustomUserClaims).toHaveBeenCalledWith('u1', { role: 'donor', kycStatus: 'pending' });
   });
 });
 

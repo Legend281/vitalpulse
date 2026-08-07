@@ -16,9 +16,8 @@ onSnapshot,
 runTransaction,
 collectionGroup
 } from "firebase/firestore";
-import { db, storage, secondaryAuth } from './firebase';
+import { db, secondaryAuth } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, signOut } from 'firebase/auth';
-import { ref as storageRef, getDownloadURL } from 'firebase/storage';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getCurrentUser } from './auth';
 
@@ -1051,16 +1050,15 @@ export async function fetchPendingHospitals() {
 // isSystemAdmin()). Requested directly by the Security Lead (2026-08-02): until now nothing
 // in the admin UI surfaced pending donor KYC submissions at all, despite the backend review
 // Cloud Functions (verifyDonor/rejectDonorKyc, functions/src/kyc.ts) already existing.
-export async function fetchPendingKycReviews() {
-    const q = query(
-        collection(db, 'adminQueue'),
-        where('type', '==', 'kyc_review'),
-        where('status', '==', 'pending')
-    );
+// donor UI/KYC_fix.md Step 4.1: query donors directly where kycStatus == 'pending' (no
+// adminQueue collection — that was Cloud-Function-only and nothing writes it anymore now
+// that submitKYC/submitLivenessSelfie are unused; querying donors directly is simpler and
+// was SPARK_PLAN_MIGRATION.md §6's own recommendation). Sorted oldest-first client-side
+// (not via Firestore orderBy) so this doesn't need a new composite index deployed.
+export async function fetchPendingDonorKycReviews() {
+    const q = query(collection(db, 'donors'), where('kycStatus', '==', 'pending'));
     const snapshot = await getDocs(q);
-    const rows = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-    // Join with users/{uid} for donor-facing display (name/email/bloodType) — adminQueue
-    // itself only ever stored the KYC-specific fields (Stream B's original design).
+    const rows = snapshot.docs.map(d => ({ id: d.id, donorUid: d.id, ...d.data() }));
     await Promise.all(rows.map(async (row) => {
         try {
             const userSnap = await getDoc(doc(db, 'users', row.donorUid));
@@ -1073,15 +1071,7 @@ export async function fetchPendingKycReviews() {
         } catch { /* keep the row without donor details rather than failing the whole queue */ }
     }));
     const toMillis = (v) => v?.toDate?.().getTime() ?? (v ? new Date(v).getTime() : 0);
-    return rows.sort((a, b) => toMillis(b.submittedAt) - toMillis(a.submittedAt));
-}
-
-// Resolves a short-lived signed download URL for a KYC document/selfie stored under
-// kyc/{uid}/ — storage.rules restricts read to system_admin, so this only ever succeeds for
-// an authenticated admin caller; every other caller is denied at the Storage layer itself.
-export async function fetchKycDocumentUrl(storagePath) {
-    if (!storagePath) return null;
-    return getDownloadURL(storageRef(storage, storagePath));
+    return rows.sort((a, b) => toMillis(a.kycSubmittedAt) - toMillis(b.kycSubmittedAt));
 }
 
 export async function fetchAllHospitals() {

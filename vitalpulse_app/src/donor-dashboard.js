@@ -1,7 +1,6 @@
 import { getCurrentUser, sendPasswordReset, hashNationalId, isEmailVerified, sendEmailVerificationLink } from './auth';
-import { collection, query, where, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { db } from './firebase';
+import { collection, query, where, getDocs, doc, getDoc, onSnapshot, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from './firebase';
 import {
   fetchMatchedRequestsForDonor,
   fetchPublicRequestsForDonor,
@@ -72,8 +71,12 @@ let _donorEligibilityCache = null;
 // onSnapshot listener (not a poll, not a per-component read). Accounts with no donors/{uid}
 // doc at all (pre-dating this feature) are grandfathered — same rule firestore.rules'
 // isKycEligible() already uses — and are always treated as verified, never locked.
-let _donorKycStatus = null;        // null (grandfathered) | 'pending' | 'verified' | 'rejected'
-let _donorKycDocRef = null;        // set once real documents are submitted (vs. skipped)
+//
+// Schema per donor UI/KYC_fix.md (2026-08-07): kycStatus has an explicit 'not_submitted'
+// state distinct from 'pending' (submitted, awaiting review), so — unlike the old
+// Storage-ref schema — no separate "was anything actually uploaded yet" field is needed to
+// tell "skipped" and "under review" apart; kycStatus alone is enough.
+let _donorKycStatus = null;        // null (grandfathered) | 'not_submitted' | 'pending' | 'verified' | 'rejected'
 let _donorKycRejectionReason = null;
 let _donorKycUnsub = null;
 let _donorKycStatusKnown = false;  // false until the first snapshot has actually arrived
@@ -89,11 +92,10 @@ function isDonorKycRejected() {
   return _donorKycStatusKnown && _donorKycStatus === 'rejected';
 }
 function isDonorKycSkipped() {
-  // kycStatus is 'pending' but nothing was ever actually submitted — "I'll complete this later".
-  return _donorKycStatusKnown && _donorKycStatus === 'pending' && !_donorKycDocRef;
+  return _donorKycStatusKnown && _donorKycStatus === 'not_submitted';
 }
 function isDonorKycUnderReview() {
-  return _donorKycStatusKnown && _donorKycStatus === 'pending' && Boolean(_donorKycDocRef);
+  return _donorKycStatusKnown && _donorKycStatus === 'pending';
 }
 
 function initDonorStatusListener() {
@@ -103,12 +105,10 @@ function initDonorStatusListener() {
     const prevStatus = _donorKycStatusKnown ? _donorKycStatus : undefined; // undefined = first load
     if (snap.exists()) {
       const data = snap.data();
-      _donorKycStatus = data.kycStatus || 'pending';
-      _donorKycDocRef = data.kycDocRef || null;
+      _donorKycStatus = data.kycStatus || 'not_submitted';
       _donorKycRejectionReason = data.kycRejectionReason || null;
     } else {
       _donorKycStatus = null;
-      _donorKycDocRef = null;
       _donorKycRejectionReason = null;
     }
     _donorKycStatusKnown = true;
@@ -813,42 +813,108 @@ export function initDonorNavigation() {
 
 // ============================================
 // KYC (Identity Verification) — Stream C3, donor UI/VitalPulse_Plan_Tracker.md.
+//
+// REWRITTEN 2026-08-07 per donor UI/KYC_fix.md (Security Lead spec, followed strictly at
+// the Security Lead's explicit direction): no Cloud Function, no Cloud Storage. Evidence
+// photos are resized/compressed client-side (Step 2 below) and written as base64 directly
+// on donors/{uid} (see firestore.rules' donors/{donorId} block for the write-side gating —
+// this is the ENTIRE security boundary now, no server backstop).
+//
+// PDF dropped from accepted formats: Step 2's compression pipeline is a <canvas> resize —
+// canvas can rasterize an <img>, not render a PDF page, and adding a PDF-rendering library
+// would reintroduce the extra-dependency footprint KYC_fix.md is explicitly avoiding.
 // ============================================
-const submitKycFn = httpsCallable(getFunctions(), 'submitKYC');
-const submitLivenessSelfieFn = httpsCallable(getFunctions(), 'submitLivenessSelfie');
-const KYC_MAX_BYTES = 5 * 1024 * 1024;
-const KYC_MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'application/pdf': 'pdf' };
+const KYC_MAX_BYTES = 5 * 1024 * 1024; // pre-compression raw upload guard, not the final size
+const KYC_MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png' };
 const KYC_DOC_LABELS = { national_id: 'National ID', drivers_licence: "Driver's License", passport: 'Passport', other: 'Document' };
+// Step 2 (KYC_fix.md): resize so neither width nor height exceeds 800px (aspect ratio
+// preserved), export as JPEG at ~65% quality. Measured combined size for front+back+selfie
+// at these settings: ~142 KB against Firestore's 1 MiB document cap (~86% headroom) — see
+// the Step 2 confirmation in the conversation that produced this change.
+const KYC_COMPRESS_MAX_DIM = 800;
+const KYC_COMPRESS_QUALITY = 0.65;
 let _kycSelectedDocType = null;
 let _kycSelectedFile = null;
 // National ID is the only doc type that needs both faces — a driver's license/passport is a
 // single page. Kept as a separate variable (not an array) so the existing front-file flow
 // above is untouched for every other doc type.
 let _kycSelectedFileBack = null;
+// Populated by the upload step (compressed, base64, NOT yet written to Firestore) — the
+// actual write happens once, at the end of the liveness step below. donors/{uid}'s update
+// rule only allows a single not_submitted|rejected -> pending transition; it does not allow
+// a second write while already 'pending', so the doc upload and the liveness selfie must
+// land in ONE combined updateDoc call, not two separate ones like the old Cloud-Function
+// flow (submitKYC then submitLivenessSelfie) used to.
+let _kycIdFrontBase64 = null;
+let _kycIdBackBase64 = null;
 
 // Liveness step (Step 3) — camera-only, requested directly by the Security Lead
-// (2026-08-02). _livenessStream is the live MediaStream from getUserMedia(); torn down
-// whenever the KYC view resets or the selfie is confirmed, so the camera light never stays
-// on longer than the donor is actually on this step.
+// (2026-08-02), preserved at the Security Lead's explicit instruction when this file moved
+// off Cloud Functions. _livenessStream is the live MediaStream from getUserMedia(); torn
+// down whenever the KYC view resets or the selfie is confirmed, so the camera light never
+// stays on longer than the donor is actually on this step.
 let _livenessStream = null;
-let _livenessCapturedDataUrl = null;
+let _livenessCapturedDataUrl = null; // full data: URL, for the <img> preview only
+let _livenessSelfieBase64 = null;    // compressed base64 (no data: prefix) — what actually gets saved
 
 // Pure — exported so it's directly unit-testable without touching the DOM.
 export function validateKycFile(file) {
   if (!file) return { valid: false, error: "Please choose a file." };
-  if (!KYC_MIME_EXT[file.type]) return { valid: false, error: 'Unsupported format. Please upload a JPG, PNG, or PDF.' };
+  if (!KYC_MIME_EXT[file.type]) return { valid: false, error: 'Unsupported format. Please upload a JPG or PNG.' };
   if (file.size === 0) return { valid: false, error: 'File appears to be empty.' };
   if (file.size > KYC_MAX_BYTES) return { valid: false, error: 'File is too large. Maximum size is 5 MB.' };
   return { valid: true, error: null };
 }
 
-function kycFileToBase64(file) {
+// Shared resize step — draws `source` (an <img> or a live <video> frame) onto a canvas no
+// larger than 800px on its longest side, preserving aspect ratio, then hands back the canvas
+// for the caller to export. Used by both the file-upload path and the live-camera capture
+// path so evidence photos and the liveness selfie go through the identical pipeline.
+function drawResizedToCanvas(source, sourceWidth, sourceHeight) {
+  let width = sourceWidth;
+  let height = sourceHeight;
+  if (width > KYC_COMPRESS_MAX_DIM || height > KYC_COMPRESS_MAX_DIM) {
+    if (width >= height) {
+      height = Math.round(height * (KYC_COMPRESS_MAX_DIM / width));
+      width = KYC_COMPRESS_MAX_DIM;
+    } else {
+      width = Math.round(width * (KYC_COMPRESS_MAX_DIM / height));
+      height = KYC_COMPRESS_MAX_DIM;
+    }
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d').drawImage(source, 0, 0, width, height);
+  return canvas;
+}
+
+// File-upload path (ID front/back): load the file into an <img>, resize+compress, return
+// base64 (no "data:image/jpeg;base64," prefix — that's added back only where needed for
+// an <img src>).
+function compressImageFileToBase64(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
-    reader.onerror = () => reject(reader.error || new Error('Failed to read file'));
-    reader.readAsDataURL(file);
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const canvas = drawResizedToCanvas(img, img.naturalWidth, img.naturalHeight);
+        resolve(canvas.toDataURL('image/jpeg', KYC_COMPRESS_QUALITY).split(',')[1] || '');
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read the image file.')); };
+    img.src = url;
   });
+}
+
+// Live-camera path (liveness selfie): resize+compress directly from the <video> element's
+// current frame — same pipeline, no intermediate File.
+function compressVideoFrameToBase64(video) {
+  const canvas = drawResizedToCanvas(video, video.videoWidth, video.videoHeight);
+  return canvas.toDataURL('image/jpeg', KYC_COMPRESS_QUALITY).split(',')[1] || '';
 }
 
 function updateKycSubmitEnabled() {
@@ -993,7 +1059,7 @@ function initKycView() {
       return;
     }
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Uploading…';
+    submitBtn.textContent = 'Processing…';
     try {
       // National ID moved here from Sign Up (previously step 1) — same hash/dedupe
       // pattern the Profile page already uses for editing CNI (loadDonorProfile above),
@@ -1002,9 +1068,19 @@ function initKycView() {
       if (natIdVal) {
         const hashed = await hashNationalId(natIdVal);
         if (hashed) {
+          // BUG FIX 2026-08-07 (false-positive "already linked" report): two problems here.
+          // (1) `currentUser` came only from the localStorage cache (getCurrentUser()),
+          // which can be stale after a re-login race — `auth.currentUser` (the live Firebase
+          // Auth session) is the authoritative uid and is checked first now. (2) the dupe
+          // check only ever looked at `dupSnap.docs[0]` — if a query somehow matched more
+          // than one document (e.g. leftover test data), a donor's OWN record sitting at any
+          // position other than index 0 would incorrectly read as "belongs to someone else."
+          // Now every matching doc is checked, not just the first.
           const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
           const dupSnap = await getDocs(dupQuery);
-          if (!dupSnap.empty && dupSnap.docs[0].id !== currentUser?.uid) {
+          const myUid = auth.currentUser?.uid || currentUser?.uid;
+          const belongsToSomeoneElse = dupSnap.docs.some((d) => d.id !== myUid);
+          if (belongsToSomeoneElse) {
             throw new Error('This National ID (CNI) is already linked to another account.');
           }
           const cleanId = natIdVal.replace(/[\s-]/g, '');
@@ -1018,27 +1094,20 @@ function initKycView() {
         }
       }
 
-      const fileBase64 = await kycFileToBase64(_kycSelectedFile);
-      const payload = {
-        docType: _kycSelectedDocType,
-        fileBase64,
-        fileName: _kycSelectedFile.name,
-        mimeType: _kycSelectedFile.type,
-      };
-      if (isNationalId && _kycSelectedFileBack) {
-        payload.fileBackBase64 = await kycFileToBase64(_kycSelectedFileBack);
-        payload.fileNameBack = _kycSelectedFileBack.name;
-        payload.mimeTypeBack = _kycSelectedFileBack.type;
-      }
-      await submitKycFn(payload);
-      // Document uploaded — on to Step 3 (liveness selfie), not straight to success. A
-      // donor is not actually verifiable server-side until both pieces of evidence exist
-      // (reviewDonorKycHandler enforces this), so the flow shouldn't imply "done" yet.
+      // Step 2 (KYC_fix.md): resize + compress here, but do NOT write to Firestore yet —
+      // donors/{uid}'s update rule only allows a single not_submitted|rejected -> pending
+      // transition, so this gets combined with the liveness selfie into one updateDoc call
+      // at the end of the next step (see initKycLivenessStep's submit handler below).
+      _kycIdFrontBase64 = await compressImageFileToBase64(_kycSelectedFile);
+      _kycIdBackBase64 = isNationalId && _kycSelectedFileBack
+        ? await compressImageFileToBase64(_kycSelectedFileBack)
+        : null;
+
       showKycLivenessStep();
     } catch (err) {
-      console.error('submitKYC failed:', err);
+      console.error('KYC document processing failed:', err);
       if (errEl) {
-        errEl.textContent = err?.message || 'Upload failed. Please try again.';
+        errEl.textContent = err?.message || 'Could not process your document. Please try again.';
         errEl.classList.remove('hidden');
       }
       submitBtn.disabled = false;
@@ -1112,10 +1181,12 @@ function captureLivenessSelfie() {
   const video = document.getElementById('kycLivenessVideo');
   const canvas = document.getElementById('kycLivenessCanvas');
   if (!video || !canvas || !video.videoWidth) return;
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-  _livenessCapturedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  // Step 2 (KYC_fix.md) applies to the liveness selfie too, not just the uploaded ID photo —
+  // resize to <=800px/JPEG q65 via the same pipeline, instead of capturing at full camera
+  // resolution. _livenessSelfieBase64 is what actually gets saved; _livenessCapturedDataUrl
+  // is only the already-compressed image re-wrapped with a data: prefix for the <img> preview.
+  _livenessSelfieBase64 = compressVideoFrameToBase64(video);
+  _livenessCapturedDataUrl = 'data:image/jpeg;base64,' + _livenessSelfieBase64;
 
   // The frame is captured — the live stream itself is no longer needed until/unless the
   // donor retakes, so stop it now rather than leaving the camera light on indefinitely.
@@ -1131,6 +1202,7 @@ function captureLivenessSelfie() {
 
 function retakeLivenessSelfie() {
   _livenessCapturedDataUrl = null;
+  _livenessSelfieBase64 = null;
   document.getElementById('kycLivenessPreviewImg')?.classList.add('hidden');
   document.getElementById('kycLivenessPlaceholder')?.classList.remove('hidden');
   showLivenessControls('start');
@@ -1139,6 +1211,7 @@ function retakeLivenessSelfie() {
 function resetLivenessStep() {
   stopLivenessCamera();
   _livenessCapturedDataUrl = null;
+  _livenessSelfieBase64 = null;
   setLivenessError('');
   document.getElementById('kycLivenessVideo')?.classList.add('hidden');
   document.getElementById('kycLivenessPreviewImg')?.classList.add('hidden');
@@ -1163,18 +1236,33 @@ function initKycLivenessStep() {
   document.getElementById('btnKycRetakeSelfie')?.addEventListener('click', retakeLivenessSelfie);
 
   document.getElementById('btnKycSubmitSelfie')?.addEventListener('click', async () => {
-    if (!_livenessCapturedDataUrl) return;
+    if (!_livenessSelfieBase64 || !_kycIdFrontBase64 || !_kycSelectedDocType) return;
     const btn = document.getElementById('btnKycSubmitSelfie');
+    const currentUser = getCurrentUser();
+    if (!currentUser?.uid) return;
     setLivenessError('');
     btn.disabled = true;
     btn.textContent = 'Submitting…';
     try {
-      const fileBase64 = _livenessCapturedDataUrl.split(',')[1] || '';
-      await submitLivenessSelfieFn({ fileBase64, mimeType: 'image/jpeg' });
+      // The ONE write that transitions donors/{uid} from not_submitted|rejected -> pending
+      // (see firestore.rules' donors/{donorId} allow update) — ID front/back and the
+      // liveness selfie all land together, matching the doc-type + evidence shape the
+      // rule's transition clause expects. kycRejectionReason is cleared here too (not locked
+      // by the rule for this transition) so a resubmission doesn't leave a stale reason
+      // sitting on the doc.
+      await updateDoc(doc(db, 'donors', currentUser.uid), {
+        kycStatus: 'pending',
+        kycDocType: _kycSelectedDocType,
+        kycIdImageBase64: _kycIdFrontBase64,
+        kycIdBackImageBase64: _kycIdBackBase64,
+        kycSelfieImageBase64: _livenessSelfieBase64,
+        kycSubmittedAt: serverTimestamp(),
+        kycRejectionReason: null,
+      });
       document.getElementById('kycLivenessStep')?.classList.add('hidden');
       document.getElementById('kycSuccessStep')?.classList.remove('hidden');
     } catch (err) {
-      console.error('submitLivenessSelfie failed:', err);
+      console.error('KYC submission failed:', err);
       setLivenessError(err?.message || 'Submission failed. Please try again.');
       btn.disabled = false;
       btn.innerHTML = '<span class="material-symbols-outlined text-lg">check</span> Confirm &amp; Submit';
@@ -1188,6 +1276,8 @@ function loadKycView() {
   _kycSelectedDocType = null;
   _kycSelectedFile = null;
   _kycSelectedFileBack = null;
+  _kycIdFrontBase64 = null;
+  _kycIdBackBase64 = null;
   document.getElementById('kycUploadStep')?.classList.remove('hidden');
   document.getElementById('kycLivenessStep')?.classList.add('hidden');
   resetLivenessStep();

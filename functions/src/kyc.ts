@@ -48,44 +48,74 @@ export async function bootstrapDonorAccountHandler(request: CallableRequest) {
   });
   const existingClaims = (targetUser.customClaims ?? {}) as CallerClaims;
 
-  // Idempotency / anti-abuse: only ever bootstraps a claims-less account into 'donor'.
-  // A hospital account (already claimed 'hospital_*' by grantRole) or a donor who already
-  // called this once cannot re-invoke it to reset their own state — this is a one-way,
-  // one-time door, never a way to self-service back to a clean slate.
-  if (existingClaims.role) {
-    throw new HttpsError(
-      'failed-precondition',
-      'This account already has a role assigned; onDonorSignUp is for first-time donor signup only.',
-    );
-  }
-
+  // BUG FOUND AND FIXED 2026-08-07 (Security Lead report: a donor who reached the KYC
+  // screen, then logged out and back in, got full unrestricted dashboard access instead of
+  // being routed back into KYC): the OLD order here set the `role` claim FIRST, then created
+  // donors/{uid} SECOND. If the claim write succeeded but the Firestore create() failed for
+  // any reason (a transient error, or — very plausibly in this exact case — the local dev
+  // Functions emulator not running, since firebase.js auto-points Functions calls at it on
+  // localhost), the account was left in an unrecoverable half-bootstrapped state: `role:
+  // 'donor'` claim set (so every role-gated rule treats them as a normal donor), but no
+  // donors/{uid} doc at all. Retrying this same call would immediately hit the
+  // `existingClaims.role` guard below and refuse to run again — so the doc could never be
+  // created after that point. And a MISSING donors/{uid} doc is exactly what
+  // firestore.rules' isKycEligible()/isDonorVerified() treat as "grandfathered, exempt from
+  // KYC" (a deliberate design for accounts that predate this feature) — so a donor whose
+  // bootstrap merely had a transient hiccup ended up PERMANENTLY treated as pre-verified,
+  // bypassing identity verification entirely. Fail-open, not fail-closed — the opposite of
+  // this project's stated rules.
+  //
+  // FIX: create the Firestore doc FIRST. The guard below now keys off the DOC's existence,
+  // not the claim's — so if the doc create() step previously failed, a retry can still get
+  // all the way through (claims can be safely re-set; they're idempotent). If claim-setting
+  // then fails on this attempt, the donor is left with a real donors/{uid} doc but no role
+  // claim — role-gated rules deny them everywhere, a visibly broken (fails CLOSED) state
+  // that surfaces as permission errors rather than a silent, wide-open bypass.
   const donorRef = db.collection('donors').doc(uid);
   const existingDonorDoc = await donorRef.get();
   if (existingDonorDoc.exists) {
     throw new HttpsError('failed-precondition', 'A donors/{uid} record already exists for this account.');
   }
+  // A hospital/admin account (already claimed a non-donor role by grantRole) can never
+  // bootstrap into donor — but a donor claim from a PRIOR partial attempt at this same
+  // handler must not block the retry that's the whole point of this fix.
+  if (existingClaims.role && existingClaims.role !== 'donor') {
+    throw new HttpsError(
+      'failed-precondition',
+      'This account already has a non-donor role assigned; onDonorSignUp is for first-time donor signup only.',
+    );
+  }
+
+  // kycStatus starts 'not_submitted', not 'pending' — donor UI/KYC_fix.md (2026-08-07)
+  // introduces this as a real state distinct from "submitted, awaiting review." The claim
+  // still says 'pending' here deliberately: no OTHER rule in this file reads a 'not_submitted'
+  // claim value, and B7's isKycEligible()/every existing consumer of the kycStatus claim only
+  // ever distinguishes 'verified' from "anything else" — donors/{uid}'s Firestore field (not
+  // the claim) is now KYC_fix.md's actual source of truth for the donor-facing state machine.
+  await donorRef.create({
+    kycStatus: 'not_submitted',
+    kycDocType: null,
+    kycIdImageBase64: null,
+    kycIdBackImageBase64: null,
+    kycSelfieImageBase64: null,
+    kycSubmittedAt: null,
+    kycRejectionReason: null,
+    kycReviewedBy: null,
+    kycReviewedAt: null,
+    createdAt: FieldValue.serverTimestamp(),
+  });
 
   await auth.setCustomUserClaims(uid, { role: 'donor', kycStatus: 'pending' });
   await auth.revokeRefreshTokens(uid);
-
-  await donorRef.create({
-    kycStatus: 'pending',
-    kycDocType: null,
-    kycDocRef: null,
-    kycDocBackRef: null,
-    kycSubmittedAt: null,
-    kycRejectionReason: null,
-    createdAt: FieldValue.serverTimestamp(),
-  });
 
   await writeAudit({
     actorUid: uid,
     action: 'onDonorSignUp',
     targetUid: uid,
-    details: { kycStatus: 'pending' },
+    details: { kycStatus: 'not_submitted' },
   });
 
-  return { success: true, kycStatus: 'pending' };
+  return { success: true, kycStatus: 'not_submitted' };
 }
 
 export const onDonorSignUp = onCall(bootstrapDonorAccountHandler);

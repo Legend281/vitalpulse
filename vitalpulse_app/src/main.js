@@ -5,12 +5,11 @@ import { readLoginFailureState, recordLoginFailure, clearLoginFailures, isLocked
 import { evaluatePasswordCriteria, passwordStrengthScore, isPasswordValid, suggestStrongPassword } from './passwordPolicy';
 import { normalizeCameroonPhone, formatCameroonNationalNumber } from './phone';
 import { passwordsMatch, isSignupFormValid } from './signupValidation';
-import { doc, getDoc, updateDoc, onSnapshot, collection } from "firebase/firestore";
+import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from "firebase/firestore";
 import { db } from './firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingKycReviews, fetchKycDocumentUrl, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -4799,27 +4798,31 @@ window.handleAdminApprove = async (id, name) => {
 
 // Donor KYC review queue — requested directly by the Security Lead (2026-08-02): donor
 // accounts must be approved by a system_admin (never a hospital) before they get full
-// dashboard access, and that approval must be based on evidence actually on file. The
-// verifyDonor Cloud Function itself already enforces "both document and selfie present"
-// server-side (functions/src/kyc.ts) — the disabled Approve button here is a UX nicety on
-// top of that, not the real boundary.
+// dashboard access.
+//
+// REWRITTEN 2026-08-07 per donor UI/KYC_fix.md (Security Lead spec, followed strictly):
+// evidence photos are base64 fields on donors/{uid} (no Cloud Storage), shown as inline
+// thumbnails; approve/reject write donors/{uid} directly via updateDoc (no Cloud Function —
+// firestore.rules' donors/{donorId} `allow update: if isSystemAdmin()` is the entire
+// boundary now, no server-side evidence check backing it up, per the doc's own design).
+// Step 4.5: both images are cleared from the document immediately after review either way,
+// so reviewed evidence doesn't sit in Firestore indefinitely.
 async function renderPendingKycReviews() {
     const tableBody = document.getElementById('adminPendingKycReviews');
     if (!tableBody) return;
     try {
-        const rows = await fetchPendingKycReviews();
+        const rows = await fetchPendingDonorKycReviews();
         const badgeEl = document.getElementById('kycPendingCountBadge');
         if (badgeEl) badgeEl.textContent = rows.length;
         if (rows.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500 font-medium">No pending donor KYC submissions.</td></tr>';
             return;
         }
+        const thumb = (base64, label) => base64
+            ? `<img data-kyc-lightbox-src="data:image/jpeg;base64,${base64}" src="data:image/jpeg;base64,${base64}" alt="${esc(label)}" title="${esc(label)} — click to enlarge" class="w-10 h-10 rounded object-cover cursor-pointer border border-slate-200 hover:opacity-80 transition-opacity"/>`
+            : `<span class="w-10 h-10 rounded bg-slate-100 flex items-center justify-center text-slate-300" title="${esc(label)} not submitted"><span class="material-symbols-outlined text-base">image_not_supported</span></span>`;
         tableBody.innerHTML = rows.map(row => {
-            const hasDoc = Boolean(row.kycDocRef);
-            const hasDocBack = Boolean(row.kycDocBackRef);
-            const hasSelfie = Boolean(row.livenessSelfieRef);
-            const canApprove = hasDoc && hasSelfie;
-            const submitted = row.submittedAt?.toDate ? row.submittedAt.toDate() : (row.submittedAt ? new Date(row.submittedAt) : null);
+            const submitted = row.kycSubmittedAt?.toDate ? row.kycSubmittedAt.toDate() : (row.kycSubmittedAt ? new Date(row.kycSubmittedAt) : null);
             return `
             <tr class="hover:bg-slate-50/50 transition-colors">
                 <td class="px-6 py-5">
@@ -4830,41 +4833,20 @@ async function renderPendingKycReviews() {
                 <td class="px-6 py-5 text-sm text-slate-600">${submitted ? submitted.toLocaleDateString() : '—'}</td>
                 <td class="px-6 py-5">
                     <div class="flex items-center gap-2">
-                        <button data-view-kyc-doc="${esc(row.kycDocRef || '')}" ${hasDoc ? '' : 'disabled'} class="inline-flex items-center gap-1 text-xs font-bold ${hasDoc ? 'text-tertiary hover:bg-tertiary-container/10 cursor-pointer' : 'text-slate-300 cursor-not-allowed'} px-2 py-1 rounded transition-colors">
-                            <span class="material-symbols-outlined text-sm">description</span> Front
-                        </button>
-                        ${row.docType === 'national_id' ? `
-                        <button data-view-kyc-doc="${esc(row.kycDocBackRef || '')}" ${hasDocBack ? '' : 'disabled'} class="inline-flex items-center gap-1 text-xs font-bold ${hasDocBack ? 'text-tertiary hover:bg-tertiary-container/10 cursor-pointer' : 'text-slate-300 cursor-not-allowed'} px-2 py-1 rounded transition-colors">
-                            <span class="material-symbols-outlined text-sm">description</span> Back
-                        </button>` : ''}
-                        <button data-view-kyc-doc="${esc(row.livenessSelfieRef || '')}" ${hasSelfie ? '' : 'disabled'} class="inline-flex items-center gap-1 text-xs font-bold ${hasSelfie ? 'text-tertiary hover:bg-tertiary-container/10 cursor-pointer' : 'text-slate-300 cursor-not-allowed'} px-2 py-1 rounded transition-colors">
-                            <span class="material-symbols-outlined text-sm">face</span> Selfie
-                        </button>
+                        ${thumb(row.kycIdImageBase64, 'ID front')}
+                        ${row.kycDocType === 'national_id' ? thumb(row.kycIdBackImageBase64, 'ID back') : ''}
+                        ${thumb(row.kycSelfieImageBase64, 'Liveness selfie')}
                     </div>
-                    ${canApprove ? '' : '<div class="text-[10px] text-amber-600 font-semibold mt-1">Awaiting both document + selfie</div>'}
                 </td>
                 <td class="px-6 py-5 text-right space-x-2">
                     <button onclick="window.handleAdminRejectDonorKyc('${row.donorUid}')" class="text-xs font-bold px-4 py-2 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors">Reject</button>
-                    <button onclick="window.handleAdminApproveDonorKyc('${row.donorUid}')" ${canApprove ? '' : 'disabled title="Both the identity document and liveness selfie must be submitted first"'} class="text-xs font-bold px-4 py-2 rounded-lg ${canApprove ? 'bg-primary-container text-on-primary-container hover:shadow-md transition-all' : 'bg-slate-100 text-slate-300 cursor-not-allowed'}">Approve</button>
+                    <button onclick="window.handleAdminApproveDonorKyc('${row.donorUid}')" class="text-xs font-bold px-4 py-2 rounded-lg bg-primary-container text-on-primary-container hover:shadow-md transition-all">Approve</button>
                 </td>
             </tr>`;
         }).join('');
 
-        tableBody.querySelectorAll('[data-view-kyc-doc]').forEach(btn => {
-            const path = btn.dataset.viewKycDoc;
-            if (!path) return;
-            btn.addEventListener('click', async () => {
-                btn.disabled = true;
-                try {
-                    const url = await fetchKycDocumentUrl(path);
-                    window.open(url, '_blank', 'noopener');
-                } catch (err) {
-                    console.error('Failed to load KYC document:', err);
-                    alert('Failed to load document. Please try again.');
-                } finally {
-                    btn.disabled = false;
-                }
-            });
+        tableBody.querySelectorAll('[data-kyc-lightbox-src]').forEach(img => {
+            img.addEventListener('click', () => openKycLightbox(img.dataset.kycLightboxSrc));
         });
     } catch (err) {
         console.error('Failed to load pending KYC reviews:', err);
@@ -4872,10 +4854,62 @@ async function renderPendingKycReviews() {
     }
 }
 
+function openKycLightbox(dataUrl) {
+    const modal = document.getElementById('kycImageLightbox');
+    const img = document.getElementById('kycLightboxImg');
+    if (!modal || !img) return;
+    img.src = dataUrl;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+function closeKycLightbox() {
+    const modal = document.getElementById('kycImageLightbox');
+    modal?.classList.add('hidden');
+    modal?.classList.remove('flex');
+}
+document.getElementById('btnKycLightboxClose')?.addEventListener('click', closeKycLightbox);
+document.getElementById('kycImageLightbox')?.addEventListener('click', (e) => {
+    if (e.target.id === 'kycImageLightbox') closeKycLightbox();
+});
+
+// Step 4.4 (KYC_fix.md): a fixed 8-reason picker instead of a free-text prompt(). Resolves
+// to the selected reason, or null if the admin cancels.
+function pickKycRejectReason() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('kycRejectReasonModal');
+        const select = document.getElementById('kycRejectReasonSelect');
+        const confirmBtn = document.getElementById('btnKycRejectConfirm');
+        const cancelBtn = document.getElementById('btnKycRejectCancel');
+        if (!modal || !select || !confirmBtn || !cancelBtn) { resolve(null); return; }
+        const cleanup = (result) => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            confirmBtn.removeEventListener('click', onConfirm);
+            cancelBtn.removeEventListener('click', onCancel);
+            resolve(result);
+        };
+        const onConfirm = () => cleanup(select.value);
+        const onCancel = () => cleanup(null);
+        confirmBtn.addEventListener('click', onConfirm);
+        cancelBtn.addEventListener('click', onCancel);
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    });
+}
+
 window.handleAdminApproveDonorKyc = async (targetUid) => {
     if (!confirm('Approve this donor? They will get full dashboard access immediately.')) return;
     try {
-        await httpsCallable(getFunctions(), 'verifyDonor')({ targetUid });
+        const currentUser = getCurrentUser();
+        await updateDoc(doc(db, 'donors', targetUid), {
+            kycStatus: 'verified',
+            kycReviewedBy: currentUser?.uid || null,
+            kycReviewedAt: serverTimestamp(),
+            // Step 4.5: reviewed evidence doesn't sit in Firestore once a decision is made.
+            kycIdImageBase64: null,
+            kycIdBackImageBase64: null,
+            kycSelfieImageBase64: null,
+        });
     } catch (err) {
         console.error('Failed to approve donor KYC:', err);
         alert(err?.message || 'Failed to approve donor. Please try again.');
@@ -4885,10 +4919,19 @@ window.handleAdminApproveDonorKyc = async (targetUid) => {
 };
 
 window.handleAdminRejectDonorKyc = async (targetUid) => {
-    const reason = prompt('Reason for rejection (shown to the donor):', '');
+    const reason = await pickKycRejectReason();
     if (reason === null) return; // cancelled
     try {
-        await httpsCallable(getFunctions(), 'rejectDonorKyc')({ targetUid, reason: reason || undefined });
+        const currentUser = getCurrentUser();
+        await updateDoc(doc(db, 'donors', targetUid), {
+            kycStatus: 'rejected',
+            kycRejectionReason: reason,
+            kycReviewedBy: currentUser?.uid || null,
+            kycReviewedAt: serverTimestamp(),
+            kycIdImageBase64: null,
+            kycIdBackImageBase64: null,
+            kycSelfieImageBase64: null,
+        });
     } catch (err) {
         console.error('Failed to reject donor KYC:', err);
         alert(err?.message || 'Failed to reject donor. Please try again.');
