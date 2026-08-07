@@ -38,7 +38,7 @@ export default [
   },
   // Frontend one-off build/text-processing scripts (CommonJS, Node).
   {
-    files: ['vitalpulse_app/*.cjs'],
+    files: ['vitalpulse_app/*.cjs', 'scripts/**/*.js'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'commonjs',

@@ -1352,7 +1352,6 @@ function initHospitalNavigation() {
     initChronicPatientModal();
     initTransferModal();
     initDonorReactionModal();
-    initLabPipelineControls();
     initLabTestModal();
     initLabCertModal();
     initDonationIntakeModal();
@@ -2689,23 +2688,7 @@ const COMPONENT_SHELF_LIFE_DAYS = {
 let labPipelineBatches = { pending: [], cleared: [], rejected: [] };
 let labPipelineActiveFilter = 'pending';
 
-function initLabPipelineControls() {
-    const refreshBtn = document.getElementById('btnRefreshLabPipeline');
-    if (refreshBtn) refreshBtn.addEventListener('click', loadLabPipeline);
 
-    document.querySelectorAll('#labFilterTabs .lab-tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('#labFilterTabs .lab-tab-btn').forEach(b => {
-                b.classList.remove('active', 'bg-white', 'text-slate-900', 'shadow-sm');
-                b.classList.add('text-slate-600');
-            });
-            btn.classList.add('active', 'bg-white', 'text-slate-900', 'shadow-sm');
-            btn.classList.remove('text-slate-600');
-            labPipelineActiveFilter = btn.dataset.filter;
-            renderLabPipelineGrid();
-        });
-    });
-}
 
 function initLabTestModal() {
     const modal = document.getElementById('labTestModal');
