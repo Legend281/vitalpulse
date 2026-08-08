@@ -292,8 +292,8 @@ service cloud.firestore {
       allow list: if isSystemAdmin() || isHospitalRole()
                   || (isDonor() && resource.data.donorId == request.auth.uid);
 
-      allow create: if isDonor() && request.resource.data.donorId == request.auth.uid
-                    && request.resource.data.status == 'pending';
+      allow create: if (isDonor() && request.resource.data.donorId == request.auth.uid && request.resource.data.status == 'pending')
+                    || ((isHospitalRole() || isSystemAdmin()) && request.resource.data.status == 'completed');
 
       // Hospital/admin review: approve / reject / complete / cancel / issue / lab outcome.
       // Reconciliation 2026-07-31: whitelist reconciled with the REAL client writes —

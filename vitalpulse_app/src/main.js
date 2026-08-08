@@ -1108,7 +1108,8 @@ function cleanupHospitalLiveFeed() {
 }
 
 function initHospitalNavigation() {
-    if (hospitalNavigationInitialized) return;
+    hydrateSessionIdentity();
+    updateHospitalNavVisibility();
 
     const navIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'reception-stock', 'reception-activity', 'nurse-issued', 'nurse-reactions', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
     const viewIds = ['dashboard', 'lab', 'requests', 'inventory', 'donors', 'reception-stock', 'reception-activity', 'nurse-issued', 'nurse-reactions', 'campaigns', 'settings', 'staff', 'hemovigilance', 'forecasting', 'mythbusting', 'certificates'];
@@ -1137,9 +1138,6 @@ function initHospitalNavigation() {
 
     const activeClass = 'bg-red-50 text-red-700 font-bold shadow-sm';
     const inactiveClass = 'text-slate-500 hover:bg-red-50 hover:text-red-700';
-
-    hydrateSessionIdentity();
-    updateHospitalNavVisibility();
 
     const switchView = (target) => {
         const currentUser = getCurrentUser();
@@ -1232,6 +1230,8 @@ function initHospitalNavigation() {
         }
         history.replaceState(null, '', '#' + target);
     };
+
+    window.switchHospitalView = switchView;
 
     navIds.forEach(id => {
         const nav = document.getElementById('nav-' + id);
