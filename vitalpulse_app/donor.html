@@ -225,7 +225,10 @@
 
     <!-- Footer: primary action + theme + logout -->
     <div class="p-3 border-t border-outline-variant/15 space-y-2">
-      <button onclick="openDonationModal()" class="press-scale w-full flex items-center justify-center gap-2 bg-primary text-on-primary font-extrabold text-sm py-3 rounded-2xl shadow-md shadow-primary/25 cursor-pointer">
+      <!-- D3: locked by applyKycLocksToDOM() like the hero CTA and quick-action tile — all
+           three open the same wizard, so an unlocked one here would bypass the other two. -->
+      <button id="btnScheduleDonationMobile" onclick="openDonationModal()" class="press-scale w-full flex items-center justify-center gap-2 bg-primary text-on-primary font-extrabold text-sm py-3 rounded-2xl shadow-md shadow-primary/25 cursor-pointer disabled:cursor-not-allowed">
+        <span id="scheduleDonationMobileLockIcon" class="material-symbols-outlined text-lg hidden">lock</span>
         <span class="material-symbols-outlined text-lg">event_available</span> Schedule a Donation
       </button>
       <button data-theme-toggle aria-label="Switch to dark mode" title="Dark mode" class="press-scale w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-sm font-bold text-on-surface hover:bg-surface-container-low cursor-pointer text-left">
@@ -443,6 +446,15 @@
           Respond Now
           <span class="material-symbols-outlined text-sm">arrow_forward</span>
         </button>
+
+        <!-- D3 lock overlay — toggled by applyKycLocksToDOM(). z-20 because the banner's own
+             content sits at z-10. Same blur treatment as the requests feed: the request's
+             hospital / blood type / units / distance stay unreadable until approval. -->
+        <span id="emergencyAlertLockOverlay" class="hidden absolute inset-0 rounded-2xl bg-surface-container-lowest/85 backdrop-blur-[3px] flex-col items-center justify-center gap-1.5 text-center px-6 z-20">
+          <span class="material-symbols-outlined text-2xl text-on-surface-variant">lock</span>
+          <p class="text-xs font-bold text-on-surface">Emergency requests unlock once your account is approved.</p>
+          <p class="text-[11px] text-on-surface-variant">We'll notify you within 24–48 hours.</p>
+        </span>
       </section>
 
       <!-- Near You — one real map shared by blood requests and donation centers, with a tab

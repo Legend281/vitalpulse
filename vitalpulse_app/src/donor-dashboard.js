@@ -209,10 +209,42 @@ function applyKycLocksToDOM() {
   if (tileBtn) tileBtn.disabled = locked;
   setOverlay('scheduleDonationTileLock', locked);
 
+  // Third entry point: the mobile nav drawer's footer CTA. Same modal again — it was left
+  // unlocked in the original D3 pass, which meant the whole lock was bypassable on a phone.
+  const drawerBtn = document.getElementById('btnScheduleDonationMobile');
+  if (drawerBtn) {
+    drawerBtn.disabled = locked;
+    drawerBtn.classList.toggle('opacity-50', locked);
+    drawerBtn.title = locked ? 'Locked until your account is approved.' : '';
+  }
+  const drawerLockIcon = document.getElementById('scheduleDonationMobileLockIcon');
+  if (drawerLockIcon) drawerLockIcon.classList.toggle('hidden', !locked);
+
+  // Fourth entry point: "Nearby Donation Centers" cards (dashboard panel + the Centers view)
+  // open the same wizard pre-pointed at a hospital. Browsing centers stays unlocked (D4) —
+  // only the donate action on each card locks. Queried live rather than by id because both
+  // lists are re-rendered from data; the KYC listener calls this function again on any
+  // status flip, so a list rendered before approval unlocks without a reload.
+  document.querySelectorAll('[data-donate-center]').forEach((btn) => {
+    btn.disabled = locked;
+    btn.classList.toggle('opacity-50', locked);
+    btn.classList.toggle('cursor-not-allowed', locked);
+    btn.title = locked ? 'Locked until your account is approved.' : '';
+  });
+
   // Live Requests panel (the browsable feed) — Donation Centers stays fully usable (D4),
   // so only requestsFeed itself is covered, not the whole "Near You" section.
   document.getElementById('requestsFeed')?.classList.toggle('pointer-events-none', locked);
   setOverlay('requestsFeedLockOverlay', locked);
+
+  // "Urgent Need Nearby" banner — the same class of content as the requests feed (a live
+  // request's hospital, blood type, units and distance), just surfaced higher up, so it gets
+  // the same blur+overlay treatment. Disabling only its "Respond Now" button (the original
+  // D3 behaviour) left the request details themselves fully readable to an account that
+  // hasn't been identity-checked yet.
+  const alertEl = document.getElementById('emergencyAlert');
+  if (alertEl) alertEl.classList.toggle('pointer-events-none', locked);
+  setOverlay('emergencyAlertLockOverlay', locked);
 
   // Emergency "Respond Now" — a second entry point into accepting a request, not covered
   // by the requestsFeed overlay above, so it needs its own lock.
@@ -352,13 +384,28 @@ function renderDonorJourneyChecklist(steps) {
   `;
 }
 
-// Guard for window.donorAcceptRequest — defense-in-depth behind the visual locks above
-// (which cover the known UI entry points), so accepting is blocked even if some future
-// entry point forgets to check the DOM lock state first.
-async function warnIfKycPending() {
+// Guard for the two donor actions that require a verified account — accepting a blood
+// request (window.donorAcceptRequest) and scheduling a donation (window.openDonationModal).
+// Defense-in-depth behind the visual locks above: those cover the entry points we know
+// about, this covers the ones we don't (and any future one that forgets to check the DOM
+// lock state first), so both actions are gated at the single choke point they funnel into.
+//
+// Two distinct states get two distinct messages: a donor still awaiting review has nothing
+// left to do but wait, so offering them a "Verify Now" button would send them back into a
+// KYC form they've already completed.
+async function warnIfKycPending(action = 'accept blood requests') {
   if (isDonorVerified()) return true;
+  if (isDonorKycUnderReview()) {
+    await window.vpAlert({
+      type: 'warning',
+      title: 'Account under review',
+      message: `Your account is still being reviewed, so you can't ${action} yet. We'll notify you within 24–48 hours once it's approved.`,
+      confirmText: 'Got it',
+    });
+    return false;
+  }
   const goVerify = await window.vpConfirm(
-    'Complete identity verification before accepting blood requests.',
+    `Complete identity verification before you can ${action}.`,
     { title: 'Verification required', confirmText: 'Verify Now', cancelText: 'Not Now' },
   );
   if (goVerify) switchDonorView('kyc');
@@ -395,6 +442,12 @@ window.openDonationModalForHospital = (hospitalName) => {
 window.openDonationModal = async () => {
   const modal = document.getElementById('donationModal');
   if (!modal) return;
+  // D3: block scheduling while KYC-pending/rejected, checked before the eligibility gate for
+  // the same reason donorAcceptRequest does — it's the more fundamental of the two. This is
+  // the choke point every entry point funnels through (hero CTA, quick-action tile, mobile
+  // drawer, donation-center cards, and the Care Reminders / Certificates empty states), so a
+  // caller that isn't covered by a DOM lock still can't open the wizard.
+  if (!await warnIfKycPending('schedule a donation')) { _preselectedCenter = null; return; }
   // Gate: don't even open the scheduling wizard if the donor isn't eligible yet.
   if (!await warnIfIneligible()) { _preselectedCenter = null; return; }
   // Carry a pre-selected hospital through if one was chosen from a donation-center card; the
@@ -1717,6 +1770,7 @@ function renderAllCentersList() {
   listEl.querySelectorAll('[data-donate-center]').forEach(btn => btn.addEventListener('click', () => {
     window.openDonationModalForHospital(btn.dataset.donateCenter);
   }));
+  applyKycLocksToDOM(); // these cards are a scheduling entry point — lock them if unverified
 }
 
 // Matched by the hospital's actual name, not city — each photo depicts one specific real
@@ -1772,6 +1826,7 @@ function renderCentersList() {
   listEl.querySelectorAll('[data-donate-center]').forEach(btn => {
     btn.addEventListener('click', () => window.openDonationModalForHospital(btn.dataset.donateCenter));
   });
+  applyKycLocksToDOM(); // these cards are a scheduling entry point — lock them if unverified
   document.getElementById('btnViewAllCenters')?.addEventListener('click', () => switchDonorView('centers'));
 }
 

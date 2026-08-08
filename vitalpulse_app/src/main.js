@@ -848,11 +848,13 @@ function showFallbackError() {
     }
   });
 
-  // Fallback: open donation modal for FAB and schedule buttons
-  const showDonationModal = () => {
-    const m = document.getElementById('donationModal');
-    if (m) { m.classList.remove('hidden'); m.classList.add('flex'); }
-  };
+  // Fallback: open donation modal for FAB and schedule buttons.
+  // This used to reveal #donationModal directly, which skipped BOTH gates the real entry
+  // point applies (D3 KYC verification and the 56-day deferral check) — a safety net that
+  // quietly became a bypass. It now routes through the same choke point; if
+  // donor-dashboard.js never loaded, the wizard's own step logic is missing too, so opening
+  // the shell would be useless as well as ungated — do nothing instead.
+  const showDonationModal = () => { window.openDonationModal?.(); };
   document.getElementById('btnDonateFAB')?.addEventListener('click', showDonationModal);
   document.getElementById('btnScheduleDonationDesktop')?.addEventListener('click', showDonationModal);
   document.getElementById('btnCancelDonation')?.addEventListener('click', () => {
