@@ -178,6 +178,17 @@ export const verifyStaffPinSchema = z
 
 export type VerifyStaffPinInput = z.infer<typeof verifyStaffPinSchema>;
 
+// Staff sign-in (email + PIN -> custom token). Callable while unauthenticated by
+// design; see authenticateStaffDirectLoginHandler for the compensating controls.
+export const staffDirectLoginSchema = z
+  .object({
+    email: z.string().trim().email(),
+    pin: z.string().trim().regex(/^\d{4}$/, 'PIN must be exactly 4 digits'),
+  })
+  .strict();
+
+export type StaffDirectLoginInput = z.infer<typeof staffDirectLoginSchema>;
+
 // KYC / donor onboarding — Auth & Onboarding workstream (donor UI/VitalPulse_Plan_Tracker.md
 // Stream B). donors/{uid} is a NEW, KYC-only collection approved 2026-08-01 (Stream A4) —
 // it does not replace or duplicate anything on users/{uid}.

@@ -29,6 +29,7 @@ const claims = {
   staffH2:  { role: 'hospital_staff', hospitalId: 'H2' },
   labH1:    { role: 'lab_tech', hospitalId: 'H1' },
   hAdminH1: { role: 'hospital_admin', hospitalId: 'H1' },
+  hAdminH2: { role: 'hospital_admin', hospitalId: 'H2' },
   sysAdmin: { role: 'system_admin' },
   nbtp:     { role: 'nbtp_viewer' },
   suspended:{ role: 'donor', suspended: true },
@@ -56,6 +57,9 @@ beforeEach(async () => {
 
     await setDoc(doc(db, 'requests/R1'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Open', isEmergency: true, requestedAt: 'now' });
     await setDoc(doc(db, 'requests/R2'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor Assigned', matchedDonor: 'donorA', matchedAt: 'now', requestedAt: 'now', isEmergency: true });
+    // R3: donorA already en route — the state the live-GPS, arrival-signal and
+    // reception check-in rules operate on.
+    await setDoc(doc(db, 'requests/R3'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor En Route', matchedDonor: 'donorA', matchedAt: 'now', enRouteAt: 'now', requestedAt: 'now', isEmergency: true });
 
     await setDoc(doc(db, 'public_requests/PR1'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Broadcasting' });
 
@@ -229,6 +233,112 @@ describe('requests', () => {
     assertSucceeds(updateDoc(doc(ctx('donorC'), 'requests/R1'), {
       status: 'Donor Assigned', matchedDonor: 'donorC', matchedAt: 'now',
     })));
+
+  // ---- Whitelist reconciliation, 2026-08-08 ----
+  // These pin the rules to the ACTUAL client write shapes. Every one of them
+  // failed before this pass, which meant the corresponding user action was
+  // denied in production while the rule read as though it allowed it.
+
+  it('donor accept succeeds with the FULL field set db.js actually writes', async () =>
+    // acceptRequest's transaction writes seven fields. `checkInTokenExpiresAt`
+    // and `nudgeSent` were missing from the whitelist, so unchangedExcept()
+    // failed and every real accept was denied.
+    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R1'), {
+      status: 'Donor Assigned',
+      matchedDonor: 'donorA',
+      matchedAt: 'now',
+      checkInToken: 'VP-0001-ABCD',
+      checkInTokenExpiresAt: 'later',
+      nudgeSent: false,
+      donorScreeningPassed: true,
+    })));
+
+  it('the matched donor may push live GPS position while en route', async () =>
+    // No rule permitted these fields before, so updateDonorLiveLocation was
+    // denied on every tick (silently — the caller try/catches) and the
+    // hospital's tracking map never moved off "Waiting for signal…".
+    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+      donorLat: 4.15, donorLng: 9.24, donorLocationUpdatedAt: 'now',
+    })));
+
+  it('HOSTILE: a donor cannot smuggle a status change into a location update', async () =>
+    assertFails(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+      donorLat: 4.15, donorLng: 9.24, status: 'Checked In',
+    })));
+
+  it('the matched donor signals arrival WITHOUT advancing to Checked In', async () =>
+    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+      status: 'Donor En Route', arrivedAt: 'now', receptionStatus: 'Awaiting Verification',
+    })));
+
+  it('HOSTILE: a donor cannot check THEMSELVES in — only hospital staff may', async () =>
+    // The whole point of the reception handshake: the pass code has to be
+    // presented to a person. Self-check-in made it decorative.
+    assertFails(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+      status: 'Checked In', checkedInAt: 'now',
+    })));
+
+  it('the owning hospital checks a donor in with the full write shape', async () =>
+    // checkInDonor writes checkedInByStaffUid and receptionStatus too; both were
+    // missing from the whitelist, so the front desk's own check-in was denied.
+    assertSucceeds(updateDoc(doc(ctx('staffH1'), 'requests/R3'), {
+      status: 'Checked In', checkedInAt: 'now', checkedInByStaffUid: 'staffH1', receptionStatus: 'Checked In',
+    })));
+
+  it('HOSTILE: staff of another hospital cannot check in this hospital\'s donor', async () =>
+    assertFails(updateDoc(doc(ctx('staffH2'), 'requests/R3'), {
+      status: 'Checked In', checkedInAt: 'now', checkedInByStaffUid: 'staffH2',
+    })));
+});
+
+describe('staff credential collections are server-only (2026-08-08 remediation)', () => {
+  // PERMANENT GUARANTEE. `staff_accounts` was `allow get, list: if true` and
+  // held every hospital staff member's PIN hash — an unauthenticated GET
+  // returned the national staff directory, and the 4-digit PIN behind each
+  // unsalted SHA-256 cracked instantly. The PIN also derived the account's
+  // Firebase Auth password, so recovery meant takeover. No caller, at any role,
+  // may read or write any of these collections again.
+  it('HOSTILE: an unauthenticated visitor cannot list staff_accounts', async () =>
+    assertFails(getDocs(collection(anon(), 'staff_accounts'))));
+
+  it('HOSTILE: a signed-in donor cannot read staff_accounts', async () =>
+    assertFails(getDocs(collection(ctx('donorA'), 'staff_accounts'))));
+
+  it('HOSTILE: a signed-in donor cannot FORGE a staff_accounts record', async () =>
+    // The old rule was `allow write: if signedIn()`.
+    assertFails(setDoc(doc(ctx('donorA'), 'staff_accounts/evil@x.com'), {
+      uid: 'donorA', roles: ['hospital_admin'], hospitalId: 'H1', active: true,
+    })));
+
+  it('HOSTILE: even a system_admin has no client path to staff_accounts', async () =>
+    assertFails(getDocs(collection(ctx('sysAdmin'), 'staff_accounts'))));
+
+  it('HOSTILE: nobody can read the staff_index routing table', async () =>
+    assertFails(getDoc(doc(ctx('sysAdmin'), 'staff_index/patricia@hospital.cm'))));
+
+  it('HOSTILE: nobody can reset their own PIN lockout counter', async () =>
+    assertFails(setDoc(doc(ctx('donorA'), 'staff_login_attempts/login_patricia@hospital.cm'), { attempts: 0 })));
+
+  it('a hospital_admin may READ its own hospital\'s staff roster', async () => {
+    await env.withSecurityRulesDisabled(async (c) => {
+      await setDoc(doc(c.firestore(), 'hospitals/H1/staff/S1'), {
+        uid: 'S1', name: 'Patricia', roles: ['reception'], hospitalId: 'H1', active: true,
+      });
+    });
+    await assertSucceeds(getDoc(doc(ctx('hAdminH1'), 'hospitals/H1/staff/S1')));
+  });
+
+  it('HOSTILE: hospital_staff (non-admin) cannot read the staff roster', async () =>
+    assertFails(getDoc(doc(ctx('staffH1'), 'hospitals/H1/staff/S1'))));
+
+  it('HOSTILE: a hospital_admin cannot WRITE a staff record — creation is Cloud-Function-only', async () =>
+    // Writing was the path that put a client-computed PIN hash in Firestore.
+    assertFails(setDoc(doc(ctx('hAdminH1'), 'hospitals/H1/staff/S2'), {
+      uid: 'S2', name: 'Forged', roles: ['hospital_admin'], hospitalId: 'H1', active: true, pinHash: 'x',
+    })));
+
+  it('HOSTILE: staff of another hospital cannot read this hospital\'s roster', async () =>
+    assertFails(getDoc(doc(ctx('hAdminH2'), 'hospitals/H1/staff/S1'))));
 });
 
 describe('public_requests — B7 KYC gate mirrors requests/', () => {

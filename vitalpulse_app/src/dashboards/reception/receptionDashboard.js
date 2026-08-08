@@ -1,5 +1,6 @@
 import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 import { fetchIncomingDonors } from '../../db.js';
+import { esc } from '../../donor-dashboard.js';
 import { verifyAndCheckInToken, callNextDonor, saveDonorEtaNote } from './receptionCheckIn.js';
 import { fetchReceptionStockSummary, savePatientRequisitionHold, fetchPatientRequisitions, deletePatientRequisition } from './receptionStockLookup.js';
 import { renderReceptionActivityStream } from './receptionActivity.js';
@@ -26,31 +27,56 @@ export async function loadReceptionOverview() {
   const currentUser = getCurrentUser();
   const hospitalName = getEffectiveHospitalName(currentUser);
 
+  // Without a resolved hospital every query below silently returns nothing, which
+  // is exactly how this dashboard used to fail: it fell back to the receptionist's
+  // own name and rendered a permanently empty lobby with no error.
+  if (!hospitalName) {
+    const container = document.getElementById('receptionLobbyQueue');
+    if (container) {
+      container.innerHTML = `
+        <div class="text-center py-10 text-slate-500">
+          <span class="material-symbols-outlined text-3xl text-amber-500">domain_disabled</span>
+          <p class="text-xs font-bold mt-2 text-slate-700">Your account isn't linked to a hospital yet</p>
+          <p class="text-[11px] text-slate-400 mt-1">Ask your Hospital Admin to link this staff account before checking donors in.</p>
+        </div>`;
+    }
+    return;
+  }
+
   try {
     const donors = await fetchIncomingDonors(hospitalName);
     const requisitions = await fetchPatientRequisitions(hospitalName);
 
-    const checkedInDonors = donors.filter(d => (d.receptionStatus || d.status) === 'Checked In' || (d.receptionStatus || d.status) === 'Calling');
-    const enRouteDonors = donors.filter(d => (d.receptionStatus || d.status) === 'En Route' || d.status === 'Accepted');
+    // These MUST match the real lifecycle values written by db.js (see
+    // REQUEST_ACTIVE_STATUSES). The previous filters looked for 'En Route' and
+    // 'Accepted', which no code path ever writes — the real values are
+    // 'Donor En Route' and 'Donor Assigned' — so the en-route count was always 0
+    // and an approaching donor never appeared at the front desk.
+    const isCheckedIn = d => d.status === 'Checked In' || d.receptionStatus === 'Calling';
+    const isEnRoute = d => d.status === 'Donor En Route';
+    const isAssigned = d => d.status === 'Donor Assigned';
 
-    // Update KPI Tiles
+    const checkedInDonors = donors.filter(isCheckedIn);
+    const enRouteDonors = donors.filter(isEnRoute);
+    // A donor who has pressed "I've arrived" but not yet been verified at the
+    // desk — the queue reception actually has to act on.
+    const awaitingVerification = donors.filter(d => isEnRoute(d) && d.receptionStatus === 'Awaiting Verification');
+
     const checkedInEl = document.getElementById('recCheckedInCount');
     const lobbyEl = document.getElementById('recLobbyCount');
     const enRouteEl = document.getElementById('recEnRouteCount');
     const reqEl = document.getElementById('recReqCount');
 
     if (checkedInEl) checkedInEl.textContent = checkedInDonors.length;
-    if (lobbyEl) lobbyEl.textContent = checkedInDonors.length;
+    if (lobbyEl) lobbyEl.textContent = checkedInDonors.length + awaitingVerification.length;
     if (enRouteEl) enRouteEl.textContent = enRouteDonors.length;
     if (reqEl) reqEl.textContent = requisitions.length;
 
-    // Render Live Lobby Queue
-    renderLobbyWaitingQueue(donors);
+    renderLobbyWaitingQueue(donors.filter(d => isCheckedIn(d) || isEnRoute(d) || isAssigned(d)));
   } catch (e) {
     console.warn('loadReceptionOverview failed:', e);
   }
 
-  // Also refresh stock lookup, requisitions & activity stream if active
   renderReceptionStockWidget(hospitalName);
   renderPatientRequisitionsList(hospitalName);
   renderReceptionActivityStream();
@@ -63,7 +89,17 @@ function renderLobbyWaitingQueue(donors = []) {
   const container = document.getElementById('receptionLobbyQueue');
   if (!container) return;
 
-  const activeWaiting = donors.filter(d => ['Checked In', 'Calling', 'En Route', 'Accepted'].includes(d.receptionStatus || d.status));
+  // Callers already filter to the lifecycle statuses reception acts on; the
+  // previous second filter here used the same nonexistent status strings as the
+  // KPI tiles and dropped everything except already-checked-in donors.
+  // Order: people standing at the desk first, then arriving, then committed.
+  const rank = (d) => {
+    if (d.status === 'Donor En Route' && d.receptionStatus === 'Awaiting Verification') return 0;
+    if (d.status === 'Checked In') return 1;
+    if (d.status === 'Donor En Route') return 2;
+    return 3;
+  };
+  const activeWaiting = [...donors].sort((a, b) => rank(a) - rank(b));
 
   if (activeWaiting.length === 0) {
     container.innerHTML = `
@@ -77,43 +113,65 @@ function renderLobbyWaitingQueue(donors = []) {
   }
 
   container.innerHTML = activeWaiting.map(d => {
-    const isCheckedIn = (d.receptionStatus || d.status) === 'Checked In';
-    const isCalling = (d.receptionStatus || d.status) === 'Calling';
-    const statusBadge = isCalling ? 'bg-indigo-100 text-indigo-800 border-indigo-200' : isCheckedIn ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-sky-100 text-sky-800 border-sky-200';
-    const statusText = isCalling ? `Calling to ${d.calledToRoom || 'Screening Room 1'}` : isCheckedIn ? 'Checked In / In Lobby' : 'En Route to Hospital';
+    // fetchIncomingDonors nests the donor's profile under `donorInfo`. Reading
+    // these flat (d.donorName / d.bloodType / d.phone) always missed, so every
+    // row rendered the placeholder values below — including a hardcoded
+    // 'VP-9482' pass code on a check-in screen, which invites staff to verify
+    // against a code that belongs to nobody.
+    const donor = d.donorInfo || {};
+    const donorName = donor.name || d.donorName || 'Unnamed donor';
+    const bloodType = donor.bloodType || d.bloodType || d.type || '—';
+    const phone = donor.phone || d.contactPhone || null;
+    const token = d.checkInToken || null;
+    const reqId = d.id;
 
-    const donorName = d.donorName || d.name || 'Donor';
-    const bloodType = d.bloodType || 'O+';
-    const token = d.checkInToken || d.code || 'VP-9482';
-    const reqId = d.requestId || d.id;
+    const isCheckedIn = d.status === 'Checked In';
+    const isCalling = d.receptionStatus === 'Calling';
+    const isAwaiting = d.status === 'Donor En Route' && d.receptionStatus === 'Awaiting Verification';
+
+    const statusBadge = isCalling ? 'bg-indigo-100 text-indigo-800 border-indigo-200'
+      : isAwaiting ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+      : isCheckedIn ? 'bg-amber-100 text-amber-800 border-amber-200'
+      : 'bg-sky-100 text-sky-800 border-sky-200';
+    const statusText = isCalling ? `Calling to ${esc(d.calledToRoom || 'Screening Room 1')}`
+      : isAwaiting ? 'At desk — verify pass code'
+      : isCheckedIn ? 'Checked In / In Lobby'
+      : d.status === 'Donor En Route' ? 'En Route to Hospital'
+      : 'Committed — not yet travelling';
+
+    // "Call to room" only makes sense once they're actually checked in.
+    const canCall = isCheckedIn || isCalling;
 
     return `
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80 hover:border-indigo-200 transition-all">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/80 p-4 rounded-2xl border ${isAwaiting ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-slate-200/80'} hover:border-indigo-200 transition-all">
         <div class="flex items-center gap-3.5">
           <div class="w-11 h-11 rounded-2xl bg-red-50 text-red-700 font-black text-sm flex items-center justify-center border border-red-100 shrink-0">
-            ${bloodType}
+            ${esc(bloodType)}
           </div>
           <div>
-            <div class="flex items-center gap-2">
-              <h4 class="font-extrabold text-sm text-slate-900">${donorName}</h4>
-              <span class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-200 text-slate-700">${token}</span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h4 class="font-extrabold text-sm text-slate-900">${esc(donorName)}</h4>
+              ${token ? `<span class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-200 text-slate-700">${esc(token)}</span>` : ''}
+              ${d.isPublicRequest ? '<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-orange-50 text-orange-600 border border-orange-200">Public</span>' : ''}
             </div>
-            <p class="text-xs font-semibold text-slate-500 mt-0.5 flex items-center gap-2">
+            <p class="text-xs font-semibold text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
               <span class="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase border ${statusBadge}">${statusText}</span>
-              ${d.phone ? '<span>📞 ' + d.phone + '</span>' : ''}
+              ${phone ? `<a href="tel:${esc(String(phone).replace(/\s+/g, ''))}" class="hover:text-red-600">📞 ${esc(phone)}</a>` : ''}
             </p>
           </div>
         </div>
 
         <div class="flex items-center gap-2 shrink-0">
-          <button onclick="window.openReceptionEtaModal('${reqId}', '${donorName}')" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer flex items-center gap-1">
+          <button onclick="window.openReceptionEtaModal('${esc(reqId)}', '${esc(donorName).replace(/'/g, "\\'")}')" class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition-all cursor-pointer flex items-center gap-1">
             <span class="material-symbols-outlined text-sm text-slate-500">call</span>
             Note
           </button>
-          <button onclick="window.callNextDonorAction('${reqId}', '${donorName}')" class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5">
+          ${canCall ? `
+          <button onclick="window.callNextDonorAction('${esc(reqId)}', '${esc(donorName).replace(/'/g, "\\'")}')" class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5">
             <span class="material-symbols-outlined text-sm">volume_up</span>
             Call to Room 1
-          </button>
+          </button>` : `
+          <span class="px-3 py-2 text-[11px] font-bold text-slate-400">Awaiting check-in</span>`}
         </div>
       </div>
     `;
@@ -134,8 +192,9 @@ function bindReceptionPasscodeCheckIn() {
       return;
     }
     try {
-      const currentUser = getCurrentUser();
-      const result = await verifyAndCheckInToken(val, currentUser?.name);
+      // The HOSPITAL's name, not the receptionist's — the desk must only be able
+      // to check in its own facility's donors.
+      const result = await verifyAndCheckInToken(val, getEffectiveHospitalName(getCurrentUser()));
       showToast(`✅ Checked in ${result.donorName} (${result.code})`);
       if (inputEl) inputEl.value = '';
 
@@ -271,7 +330,7 @@ function bindPatientRequisitionModal() {
       form.reset();
 
       const currentUser = getCurrentUser();
-      renderPatientRequisitionsList(currentUser?.name);
+      renderPatientRequisitionsList(getEffectiveHospitalName(currentUser));
     } catch (err) {
       showToast(err.message || 'Failed to log requisition', 'error');
     } finally {
@@ -322,7 +381,7 @@ function bindGlobalReceptionActions() {
       await deletePatientRequisition(reqId);
       showToast('Requisition updated');
       const currentUser = getCurrentUser();
-      renderPatientRequisitionsList(currentUser?.name);
+      renderPatientRequisitionsList(getEffectiveHospitalName(currentUser));
     } catch (e) {
       showToast('Could not remove requisition', 'error');
     }

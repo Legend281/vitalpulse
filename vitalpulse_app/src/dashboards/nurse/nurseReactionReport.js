@@ -1,7 +1,7 @@
 import { doc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { submitHemovigilanceReport, logActivity } from '../../db.js';
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
  * stopTransfusionAndReportReaction - Stop Transfusion & Emergency Reaction Protocol
@@ -24,7 +24,7 @@ export async function stopTransfusionAndReportReaction(reactionData) {
   }
 
   const currentUser = getCurrentUser();
-  const hospitalName = currentUser?.name || 'General Hospital';
+  const hospitalName = getEffectiveHospitalName(currentUser);
   const now = new Date().toISOString();
 
   // 1. If transfusionId provided, update transfusion record status

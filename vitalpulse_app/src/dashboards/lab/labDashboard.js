@@ -264,7 +264,7 @@ function bindLabModalForm() {
     e.preventDefault();
     try {
       const currentUser = getCurrentUser();
-      const hospitalName = currentUser?.name || 'General Hospital';
+      const hospitalName = getEffectiveHospitalName(currentUser);
 
       const bloodType = document.getElementById('labTestBloodType')?.value;
       const batchId = document.getElementById('labTestBatchId')?.value;

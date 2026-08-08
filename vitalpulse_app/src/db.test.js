@@ -30,6 +30,8 @@ vi.mock('firebase/firestore', () => ({
     setDoc: vi.fn().mockResolvedValue(undefined),
     deleteDoc: vi.fn().mockResolvedValue(undefined),
     onSnapshot: vi.fn(),
+    runTransaction: vi.fn(),
+    collectionGroup: vi.fn((_db, path) => ({ __type: 'collectionGroup', path })),
 }));
 
 const functionsMocks = vi.hoisted(() => ({
@@ -48,7 +50,8 @@ vi.mock('firebase/functions', () => ({
     httpsCallable: functionsMocks.httpsCallable,
 }));
 
-import { getDocs, getDoc, addDoc, updateDoc, where } from 'firebase/firestore';
+import { getDocs, getDoc, addDoc, updateDoc, setDoc, where, runTransaction } from 'firebase/firestore';
+const { httpsCallable } = functionsMocks;
 import {
     getCompatibleBloodTypes,
     getCompatibleDonorTypes,
@@ -266,10 +269,96 @@ describe('Scoped Check-In Tokens & Token Expiration', () => {
         const { findRequestByCheckInToken } = await import('./db.js');
         const expiredDate = new Date(Date.now() - 3600000).toISOString();
         getDocs.mockResolvedValueOnce(fakeSnapshot([
-            { id: 'r1', data: { checkInToken: 'VP-1234-ABCD', checkInTokenExpiresAt: expiredDate } }
+            { id: 'r1', data: { hospital: 'Buea Regional', checkInToken: 'VP-1234-ABCD', checkInTokenExpiresAt: expiredDate } }
         ]));
 
-        await expect(findRequestByCheckInToken('VP-1234-ABCD', 'requests')).rejects.toThrow(/pass code has expired/);
+        await expect(findRequestByCheckInToken('VP-1234-ABCD', 'Buea Regional')).rejects.toThrow(/pass code has expired/);
+    });
+
+    it('findRequestByCheckInToken will not return another hospital\'s donor', async () => {
+        // A front desk must never be able to check in a donor who is expected at
+        // a different facility. Scoping used to be the caller's job and only
+        // covered the `requests` collection.
+        const { findRequestByCheckInToken } = await import('./db.js');
+        getDocs
+            .mockResolvedValueOnce(fakeSnapshot([
+                { id: 'r1', data: { hospital: 'Douala General', checkInToken: 'VP-1234-ABCD', status: 'Donor En Route' } }
+            ]))
+            .mockResolvedValueOnce(fakeSnapshot([]))
+            .mockResolvedValueOnce(fakeSnapshot([]));
+
+        await expect(findRequestByCheckInToken('VP-1234-ABCD', 'Buea Regional')).resolves.toBeNull();
+    });
+
+    it('findRequestByCheckInToken resolves a SCHEDULED booking and reports its collection', async () => {
+        // Regression guard: bookings carry a 7-day pass code but reception had no
+        // way to accept one — the lookup only searched `requests`/`public_requests`
+        // and demanded a status a booking never reaches.
+        const { findRequestByCheckInToken } = await import('./db.js');
+        getDocs
+            .mockResolvedValueOnce(fakeSnapshot([]))
+            .mockResolvedValueOnce(fakeSnapshot([]))
+            .mockResolvedValueOnce(fakeSnapshot([
+                { id: 'b1', data: { hospital: 'Buea Regional', checkInToken: 'VP-1234-ABCD', status: 'approved', donorId: 'd1' } }
+            ]));
+
+        const match = await findRequestByCheckInToken('VP-1234-ABCD', 'Buea Regional');
+        expect(match).toMatchObject({ id: 'b1', sourceCollection: 'donation_requests', status: 'approved' });
+    });
+});
+
+describe('donorMarkArrived (check-in handshake, donor half)', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('signals arrival without advancing the journey to Checked In', async () => {
+        // The donor announces they are at the desk; only hospital staff may set
+        // 'Checked In', after verifying the pass code and CNI in person.
+        const { donorMarkArrived } = await import('./db.js');
+        const update = vi.fn();
+        runTransaction.mockImplementationOnce(async (_db, fn) => fn({
+            get: async () => ({
+                exists: () => true,
+                data: () => ({ status: 'Donor En Route', matchedDonor: 'd1', hospital: 'Buea Regional' }),
+            }),
+            update,
+        }));
+        getDocs.mockResolvedValue(fakeSnapshot([]));
+
+        await donorMarkArrived('r1', 'd1', false);
+
+        const [, payload] = update.mock.calls[0];
+        expect(payload).toMatchObject({ receptionStatus: 'Awaiting Verification' });
+        expect(payload).not.toHaveProperty('status');
+    });
+
+    it('refuses to signal arrival on an expired pass code', async () => {
+        const { donorMarkArrived } = await import('./db.js');
+        runTransaction.mockImplementationOnce(async (_db, fn) => fn({
+            get: async () => ({
+                exists: () => true,
+                data: () => ({
+                    status: 'Donor En Route',
+                    matchedDonor: 'd1',
+                    checkInTokenExpiresAt: new Date(Date.now() - 3600000).toISOString(),
+                }),
+            }),
+            update: vi.fn(),
+        }));
+
+        await expect(donorMarkArrived('r1', 'd1', false)).rejects.toThrow(/expired/);
+    });
+
+    it('refuses to signal arrival for a donor who is not the assigned one', async () => {
+        const { donorMarkArrived } = await import('./db.js');
+        runTransaction.mockImplementationOnce(async (_db, fn) => fn({
+            get: async () => ({
+                exists: () => true,
+                data: () => ({ status: 'Donor En Route', matchedDonor: 'someone-else' }),
+            }),
+            update: vi.fn(),
+        }));
+
+        await expect(donorMarkArrived('r1', 'd1', false)).rejects.toThrow(/not the assigned donor/);
     });
 });
 
@@ -534,30 +623,79 @@ describe('issueBloodToPatient (Phase 3)', () => {
     });
 });
 
-describe('authenticateStaffDirectLoginCall', () => {
+describe('authenticateStaffDirectLoginCall (server-only staff auth)', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
     it('throws error when email or pin is missing', async () => {
         const { authenticateStaffDirectLoginCall } = await import('./db.js');
         await expect(authenticateStaffDirectLoginCall({})).rejects.toThrow('Email and 4-digit PIN are required.');
     });
 
-    it('authenticates staff account successfully when index doc exists', async () => {
-        const { authenticateStaffDirectLoginCall } = await import('./db.js');
-        getDoc.mockResolvedValueOnce({
-            exists: () => true,
-            data: () => ({
-                uid: 'staff_123',
-                name: 'Patricia Ngu',
-                email: 'patricia@buea.cm',
-                roles: ['nurse', 'lab_tech'],
-                hospitalId: 'hosp_buea',
-                active: true,
-                pinHash: null,
-            }),
+    it('delegates to the Cloud Function and never reads a PIN hash client-side', async () => {
+        // PERMANENT GUARANTEE. This used to run entirely in the browser: it read
+        // a staff record (including its PIN hash) out of a world-readable
+        // `staff_accounts` collection or a localStorage registry, compared the
+        // hash itself, and let auth.js derive the Firebase password from the PIN.
+        // The client must now have no credential-verification path at all.
+        const callable = vi.fn().mockResolvedValue({
+            data: { success: true, token: 'CUSTOM_TOKEN', name: 'Patricia Ngu', roles: ['nurse', 'lab_tech'], hospitalId: 'hosp_buea' },
         });
+        httpsCallable.mockReturnValueOnce(callable);
 
-        const res = await authenticateStaffDirectLoginCall({ email: 'patricia@buea.cm', pin: '1234' });
-        expect(res.success).toBe(true);
-        expect(res.name).toBe('Patricia Ngu');
-        expect(res.roles).toEqual(['nurse', 'lab_tech']);
+        const { authenticateStaffDirectLoginCall } = await import('./db.js');
+        const res = await authenticateStaffDirectLoginCall({ email: 'Patricia@Buea.CM', pin: '1234' });
+
+        expect(httpsCallable).toHaveBeenCalledWith(expect.anything(), 'authenticateStaffDirectLogin');
+        expect(callable).toHaveBeenCalledWith({ email: 'patricia@buea.cm', pin: '1234' });
+        expect(res).toMatchObject({ success: true, token: 'CUSTOM_TOKEN' });
+        // No Firestore lookup of any staff/credential document.
+        expect(getDoc).not.toHaveBeenCalled();
+        expect(getDocs).not.toHaveBeenCalled();
+    });
+});
+
+describe('staff credential handling — permanent guarantees', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('db.js exports no PIN-hashing or password-derivation helper', async () => {
+        // The removed `formatStaffAuthPassword` turned a 4-digit PIN into the
+        // account's actual Firebase Auth password ('VP_PIN_1234'), so recovering a
+        // PIN was account takeover. `hashPinFallback` let the browser verify PINs.
+        // Neither may come back.
+        const dbModule = await import('./db.js');
+        expect(dbModule.formatStaffAuthPassword).toBeUndefined();
+        expect(dbModule.hashPinFallback).toBeUndefined();
+        expect(dbModule.tryAutoHealStaffAccount).toBeUndefined();
+    });
+
+    it('createStaffAccountCall has no client-side fallback that skips custom claims', async () => {
+        // The old fallback wrote the staff record straight from the browser when
+        // the Cloud Function failed. It could not set custom claims, so it
+        // produced accounts that every rule and every Function later denied —
+        // while masking the fact that Functions were not deployed.
+        const callable = vi.fn().mockRejectedValue(new Error('internal'));
+        httpsCallable.mockReturnValueOnce(callable);
+
+        const { createStaffAccountCall } = await import('./db.js');
+        await expect(createStaffAccountCall({ name: 'X', email: 'x@h.cm', roles: ['nurse'] })).rejects.toThrow();
+        expect(setDoc).not.toHaveBeenCalled();
+    });
+
+    it('fetchHospitalStaff is a pure read and strips credential material', async () => {
+        // It used to call createUserWithEmailAndPassword for every staff member on
+        // every render (the identitytoolkit 400 spam) and re-publish every PIN
+        // hash to the public staff_accounts collection.
+        getDocs.mockResolvedValueOnce(fakeSnapshot([
+            { id: 's1', data: { uid: 's1', name: 'Patricia', roles: ['nurse'], pinHash: 'SECRET', pinSalt: 'SALT', pinAlgo: 'scrypt' } },
+        ]));
+
+        const { fetchHospitalStaff } = await import('./db.js');
+        const list = await fetchHospitalStaff('hosp_buea');
+
+        expect(list[0]).toMatchObject({ id: 's1', name: 'Patricia' });
+        expect(list[0]).not.toHaveProperty('pinHash');
+        expect(list[0]).not.toHaveProperty('pinSalt');
+        expect(setDoc).not.toHaveBeenCalled();
+        expect(addDoc).not.toHaveBeenCalled();
     });
 });

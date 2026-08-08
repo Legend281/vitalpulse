@@ -1,5 +1,76 @@
 import './style.css'
-import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser, resolveSignInEmail, setLoginPersistence, verifyResetCode, confirmReset } from './auth';
+import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser, resolveSignInEmail, setLoginPersistence, verifyResetCode, confirmReset, getEffectiveHospitalName, getEffectiveHospitalId, getEffectiveHospitalCity, fetchOwnContactPhone } from './auth';
+
+/**
+ * The hospital NAME every hospital-scoped Firestore query keys on.
+ *
+ * Replaces ~40 copies of `hospitalScopeName()`. That
+ * pattern was correct only for a hospital's own account: for a staff
+ * sub-account `name` is the PERSON's name, so a receptionist's dashboard queried
+ * `where('hospital','==','Patricia')` and every view — incoming donors, requests,
+ * inventory, bookings, lab — rendered empty with no error. The 'General Hospital'
+ * fallback made it worse by quietly querying a hospital that doesn't exist.
+ *
+ * Returns null when the identity genuinely can't be resolved, so callers can
+ * surface that instead of silently reading someone else's (or nobody's) data.
+ */
+function hospitalScopeName() {
+    return getEffectiveHospitalName(getCurrentUser());
+}
+
+/** The owning hospital's uid — what claims-scoped Firestore rules compare against. */
+function hospitalScopeId() {
+    return getEffectiveHospitalId(getCurrentUser());
+}
+
+/** The owning hospital's city — stamped on requests and used by the matcher. */
+function hospitalScopeCity() {
+    return getEffectiveHospitalCity(getCurrentUser());
+}
+
+// Notifications are addressed to the HOSPITAL's uid, so "mark all read" must
+// clear the hospital's queue, not the signed-in staff member's (which is empty).
+window.markAllHospitalNotificationsReadAction = async () => {
+    const hid = hospitalScopeId();
+    if (!hid) return;
+    try {
+        await markAllHospitalNotificationsRead(hid);
+        _hospitalNotifCache = null;
+        document.getElementById('hospitalNotifPanel')?.remove();
+    } catch (e) {
+        console.warn('Could not mark hospital notifications read:', e);
+    }
+};
+
+/**
+ * Guard for any action that writes hospital-scoped data. Returns the resolved
+ * {id, name, city} or null after showing the operator why it can't proceed —
+ * far better than writing a request owned by 'General Hospital' in 'Cameroon',
+ * which is what the previous fallbacks did.
+ */
+function requireHospitalScope() {
+    const name = hospitalScopeName();
+    const id = hospitalScopeId();
+    if (!name || !id) {
+        showToast('Your account is not linked to a hospital yet. Ask your Hospital Admin to link it before continuing.', 'error');
+        return null;
+    }
+    return { id, name, city: hospitalScopeCity() };
+}
+
+/**
+ * Renders the "we can't tell which hospital you belong to" state. Only reachable
+ * for a staff account whose hospitalId/hospitalName never resolved (claims not
+ * yet backfilled — see scripts/migrate-staff-and-claims.ts).
+ */
+function renderUnscopedHospitalState(el, what = 'data') {
+    if (!el) return;
+    el.innerHTML = `<div class="col-span-full flex flex-col items-center justify-center py-12 text-center text-slate-500">
+        <span class="material-symbols-outlined text-4xl mb-3 text-amber-500">domain_disabled</span>
+        <p class="text-sm font-bold text-slate-700">Your account isn't linked to a hospital yet</p>
+        <p class="text-xs mt-1 max-w-sm">We can't load ${esc(what)} until an administrator links this staff account to its hospital. Please contact your Hospital Admin.</p>
+    </div>`;
+}
 import { getActiveRoles, hasAnyRole, isLegacyAccount, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession, canAccessView, getFirstAccessibleView } from './roleGating';
 import { readLoginFailureState, recordLoginFailure, clearLoginFailures, isLockedOut, shouldShowAttemptsWarning, lockoutSecondsRemaining, recordAttemptedIdentifier, hasAttemptedIdentifier } from './loginAttempts';
 import { evaluatePasswordCriteria, passwordStrengthScore, isPasswordValid, suggestStrongPassword } from './passwordPolicy';
@@ -704,15 +775,23 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (path.includes('hospital.html')) {
             const hName = document.getElementById('hospitalName');
             const hLoc = document.getElementById('hospitalLocation');
-            if (hName) hName.textContent = currentUser.name || 'General Hospital';
-            if (hLoc) hLoc.innerHTML = `<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span> ${currentUser.city || 'Yaoundé'} Network`;
+            if (hName) hName.textContent = hospitalScopeName() || currentUser.name || 'Hospital';
+            const hCity = getEffectiveHospitalCity(currentUser);
+            if (hLoc) hLoc.innerHTML = hCity ? `<span class="material-symbols-outlined text-sm" data-icon="location_on">location_on</span> ${esc(hCity)} Network` : '';
         } else if (path.includes('admin.html')) {
-            const adminName = document.getElementById('adminName');
-            if (adminName) adminName.textContent = currentUser.name || 'Super Admin';
-            const sidebarName = document.getElementById('sidebarAdminName');
-            if (sidebarName) sidebarName.textContent = currentUser.name || 'Super Admin';
-            const sidebarAvatar = document.getElementById('sidebarAvatar');
-            if (sidebarAvatar) sidebarAvatar.textContent = (currentUser.name || 'A').charAt(0).toUpperCase();
+            // Three identity surfaces now: the desktop sidebar footer, the header chip (lg+), and
+            // the mobile drawer footer — all fed from the same values so a phone admin sees who
+            // they're signed in as without a sidebar.
+            const displayName = currentUser.name || 'Super Admin';
+            const initial = (currentUser.name || 'A').charAt(0).toUpperCase();
+            ['adminName', 'sidebarAdminName', 'drawerAdminName'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = displayName;
+            });
+            ['sidebarAvatar', 'drawerAdminAvatar', 'headerAdminAvatar'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = initial;
+            });
             const adminRole = document.getElementById('adminRole');
             if (adminRole) adminRole.textContent = 'Super Administrator';
         }
@@ -927,12 +1006,21 @@ export function hydrateSessionIdentity() {
         }
     }
 
+    // Small-screen mirrors of the header breadcrumb, which collapses below sm: the name moves
+    // under the page title, and the drawer footer carries name + role next to logout.
+    const hHeaderNameMobile = document.getElementById('hospitalHeaderNameMobile');
+    const drawerHospitalName = document.getElementById('drawerHospitalName');
+    const drawerStaffName = document.getElementById('drawerStaffName');
+
     if (staffSession) {
         const staffName = staffSession.name || 'Staff Member';
         const roleLabel = (staffSession.roles || []).map(r => r.replace('_', ' ')).join(', ').toUpperCase() || 'STAFF';
         const firstName = staffName.split(' ')[0];
 
         if (hHeaderName) hHeaderName.textContent = staffName;
+        if (hHeaderNameMobile) hHeaderNameMobile.textContent = staffName;
+        if (drawerHospitalName) drawerHospitalName.textContent = hospitalScopeName() || currentUser?.name || 'Hospital';
+        if (drawerStaffName) drawerStaffName.textContent = `${staffName} · ${roleLabel}`;
         if (hHeaderRole) {
             hHeaderRole.textContent = roleLabel;
             hHeaderRole.classList.remove('hidden');
@@ -942,8 +1030,11 @@ export function hydrateSessionIdentity() {
         if (dashGreeting) dashGreeting.textContent = isDirectStaffLogin ? staffName : `${firstName} (${roleLabel})`;
         if (endStaffWrapper) endStaffWrapper.classList.remove('hidden');
     } else {
-        const hospName = currentUser?.name || 'General Hospital';
+        const hospName = hospitalScopeName() || currentUser?.name || 'Hospital';
         if (hHeaderName) hHeaderName.textContent = hospName;
+        if (hHeaderNameMobile) hHeaderNameMobile.textContent = hospName;
+        if (drawerHospitalName) drawerHospitalName.textContent = hospName;
+        if (drawerStaffName) drawerStaffName.textContent = 'Hospital Admin';
         if (hHeaderRole) {
             hHeaderRole.textContent = 'HOSPITAL ADMIN';
             hHeaderRole.classList.remove('hidden');
@@ -1194,18 +1285,18 @@ function initHospitalNavigation() {
             activeNav.className = `flex items-center gap-3 px-4 py-2.5 rounded-xl ${activeClass} transition-all duration-200 cursor-pointer${isHidden ? ' hidden' : ''}`;
         }
 
-        // Sync mobile drawer active state
+        // Sync mobile drawer active state. Written as a full className assignment (rather than
+        // add/remove of a few tokens) so the inactive state matches the markup exactly — the
+        // token approach left `text-slate-600 font-semibold` from the HTML fighting the
+        // `text-slate-500 font-medium` it added, and which won depended on stylesheet order.
         document.querySelectorAll('.mobile-drawer-btn').forEach(b => {
             const isActive = b.dataset.nav === target;
-            b.classList.remove('text-red-600', 'bg-red-50', 'font-semibold');
-            b.classList.add('text-slate-500', 'font-medium');
+            const wasHidden = b.classList.contains('hidden');
+            b.className = `mobile-drawer-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm transition-all duration-200 cursor-pointer text-left ${
+                isActive ? 'text-red-600 bg-red-50 font-bold' : 'text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold'
+            }${wasHidden ? ' hidden' : ''}`;
             const icon = b.querySelector('.material-symbols-outlined');
-            if (icon) icon.style.fontVariationSettings = "'FILL' 0";
-            if (isActive) {
-                b.classList.remove('text-slate-500', 'font-medium');
-                b.classList.add('text-red-600', 'bg-red-50', 'font-semibold');
-                if (icon) icon.style.fontVariationSettings = "'FILL' 1";
-            }
+            if (icon) icon.style.fontVariationSettings = isActive ? "'FILL' 1" : "'FILL' 0";
         });
 
         if (globalTitle && titles[target]) globalTitle.textContent = titles[target].title;
@@ -1282,19 +1373,27 @@ function initHospitalNavigation() {
     const closeBtn = document.getElementById('mobileDrawerClose');
 
     function openDrawer() {
+        if (!drawer || !overlay) return;
         drawer.classList.remove('-translate-x-full');
         overlay.classList.remove('hidden');
         requestAnimationFrame(() => overlay.classList.remove('opacity-0'));
+        // Without this the page behind the drawer scrolls under the user's finger on touch.
+        document.body.classList.add('overflow-hidden');
     }
     function closeDrawer() {
+        if (!drawer || !overlay) return;
         drawer.classList.add('-translate-x-full');
         overlay.classList.add('opacity-0');
         setTimeout(() => overlay.classList.add('hidden'), 300);
+        document.body.classList.remove('overflow-hidden');
     }
 
     if (hamburger) hamburger.addEventListener('click', openDrawer);
     if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
     if (overlay) overlay.addEventListener('click', closeDrawer);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && drawer && !drawer.classList.contains('-translate-x-full')) closeDrawer();
+    });
 
     // Wire mobile search toggle
     const btnMobileSearch = document.getElementById('btnMobileSearch');
@@ -1316,21 +1415,11 @@ function initHospitalNavigation() {
         });
     }
 
-    // Wire mobile drawer nav buttons
+    // Wire mobile drawer nav buttons. switchView() already re-paints every drawer button's
+    // active state, so this only has to route and close.
     document.querySelectorAll('.mobile-drawer-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            const target = btn.dataset.nav;
-            document.querySelectorAll('.mobile-drawer-btn').forEach(b => {
-                b.classList.remove('text-red-600', 'bg-red-50', 'font-semibold');
-                b.classList.add('text-slate-500', 'font-medium');
-                const icon = b.querySelector('.material-symbols-outlined');
-                if (icon) icon.style.fontVariationSettings = "'FILL' 0";
-            });
-            btn.classList.remove('text-slate-500', 'font-medium');
-            btn.classList.add('text-red-600', 'bg-red-50', 'font-semibold');
-            const icon = btn.querySelector('.material-symbols-outlined');
-            if (icon) icon.style.fontVariationSettings = "'FILL' 1";
-            switchView(target);
+            switchView(btn.dataset.nav);
             closeDrawer();
         });
     });
@@ -1419,7 +1508,7 @@ function initHospitalNavigation() {
 async function loadHospitalDashboard() {
     hydrateSessionIdentity();
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     const dateEl = document.getElementById('dashDate');
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -1540,7 +1629,7 @@ async function loadHospitalDashboard() {
 
 async function loadHospitalRequests() {
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
     const tableBody = document.getElementById('requestsTableBody');
     if (!tableBody) return;
 
@@ -1616,7 +1705,7 @@ async function loadChronicPatients() {
     if (!gridEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         chronicPatientsCache = await fetchChronicPatients(hospitalName);
@@ -1687,7 +1776,7 @@ function initChronicPatientModal() {
                 nextDue.setDate(nextDue.getDate() + recurrenceWeeks * 7);
 
                 await saveChronicPatient({
-                    hospitalName: currentUser?.name || 'General Hospital',
+                    hospitalName: hospitalScopeName(),
                     patientName: document.getElementById('cpPatientName').value,
                     patientIdNumber: document.getElementById('cpPatientIdNumber').value,
                     bloodType: document.getElementById('cpBloodType').value,
@@ -1703,7 +1792,7 @@ function initChronicPatientModal() {
                 loadChronicPatients();
             } catch (err) {
                 console.error('Failed to save chronic patient:', err);
-                alert('Failed to save patient profile. Please try again.');
+                window.vpNotify('Failed to save patient profile. Please try again.');
             } finally {
                 btn.disabled = false;
             }
@@ -1712,14 +1801,14 @@ function initChronicPatientModal() {
 }
 
 window.deleteChronicPatientAction = async (patientId, patientName) => {
-    if (!confirm(`Remove ${patientName} from the chronic patient registry?`)) return;
+    if (!await window.vpConfirm(`Remove ${patientName} from the chronic patient registry?`)) return;
     try {
         await deleteChronicPatient(patientId);
         showToast('Patient profile removed');
         loadChronicPatients();
     } catch (err) {
         console.error('Failed to delete chronic patient:', err);
-        alert('Failed to remove patient profile.');
+        window.vpNotify('Failed to remove patient profile.');
     }
 };
 
@@ -1756,7 +1845,7 @@ async function loadHospitalInventoryData() {
     if (!gridEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const inventory = await fetchInventory(hospitalName);
@@ -1898,7 +1987,7 @@ async function loadHospitalTransfers() {
     if (!gridEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const transfers = await fetchHospitalTransfers(hospitalName);
@@ -1997,7 +2086,7 @@ function initTransferModal() {
             btn.disabled = true;
             try {
                 await createBloodTransferRequest({
-                    requestingHospital: currentUser?.name || 'General Hospital',
+                    requestingHospital: hospitalScopeName(),
                     targetHospital: document.getElementById('transferTargetHospital').value,
                     bloodType: document.getElementById('transferBloodType').value,
                     componentType: document.getElementById('transferComponent').value,
@@ -2009,7 +2098,7 @@ function initTransferModal() {
                 loadHospitalTransfers();
             } catch (err) {
                 console.error('Failed to create transfer request:', err);
-                alert('Failed to send transfer request. Please try again.');
+                window.vpNotify('Failed to send transfer request. Please try again.');
             } finally {
                 btn.disabled = false;
             }
@@ -2018,19 +2107,19 @@ function initTransferModal() {
 }
 
 window.dispatchTransferAction = async (transferId) => {
-    if (!confirm('Mark this transfer as dispatched? Confirm the units have physically left your facility.')) return;
+    if (!await window.vpConfirm('Mark this transfer as dispatched? Confirm the units have physically left your facility.')) return;
     try {
         await dispatchBloodTransfer(transferId);
         showToast('Transfer marked as dispatched');
         loadHospitalTransfers();
     } catch (err) {
         console.error('Failed to dispatch transfer:', err);
-        alert('Failed to dispatch transfer.');
+        window.vpNotify('Failed to dispatch transfer.');
     }
 };
 
 window.receiveTransferAction = async (transferId) => {
-    if (!confirm('Confirm these units have arrived? This will add them to your available inventory.')) return;
+    if (!await window.vpConfirm('Confirm these units have arrived? This will add them to your available inventory.')) return;
     try {
         await receiveBloodTransfer(transferId);
         showToast('Transfer received and added to inventory');
@@ -2038,19 +2127,19 @@ window.receiveTransferAction = async (transferId) => {
         loadHospitalInventoryData();
     } catch (err) {
         console.error('Failed to receive transfer:', err);
-        alert('Failed to confirm receipt.');
+        window.vpNotify('Failed to confirm receipt.');
     }
 };
 
 window.cancelTransferAction = async (transferId) => {
-    const reason = prompt('Reason for cancelling this transfer (optional):') || '';
+    const reason = await window.vpPrompt('Reason for cancelling this transfer (optional):') || '';
     try {
         await cancelBloodTransfer(transferId, reason);
         showToast('Transfer cancelled');
         loadHospitalTransfers();
     } catch (err) {
         console.error('Failed to cancel transfer:', err);
-        alert('Failed to cancel transfer.');
+        window.vpNotify('Failed to cancel transfer.');
     }
 };
 
@@ -2063,7 +2152,7 @@ async function checkPartnerNetworkStock(bloodType, componentType) {
     if (!panel || !resultsEl || !bloodType) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     resultsEl.innerHTML = '<div class="text-[10px] text-blue-600 flex items-center gap-1.5"><span class="material-symbols-outlined text-xs animate-spin">sync</span>Checking partner hospitals...</div>';
     panel.classList.remove('hidden');
@@ -2147,11 +2236,23 @@ function initDonorTrackingMap(requestId, hospitalCity, isPublic) {
 
 async function loadHospitalDonors() {
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
     const gridEl = document.getElementById('donorsGrid');
     if (!gridEl) return;
 
     teardownDonorTrackingMaps();
+
+    if (!hospitalName) {
+        renderUnscopedHospitalState(gridEl, 'incoming donors');
+        return;
+    }
+
+    // Reception can see and check in donors but does not draw blood, and the
+    // Cloud Function enforces that (DONOR_INTAKE_ROLES in functions/src/inventory.ts).
+    // Rendering the button for them anyway just produced a guaranteed
+    // permission-denied on click, with no explanation.
+    const canRecordBloodDraw = isLegacyAccount(currentUser)
+        || hasAnyRole(currentUser, ['nurse', 'lab_tech', 'hospital_staff', 'hospital_admin']);
 
     try {
         const donors = await fetchIncomingDonors(hospitalName);
@@ -2278,19 +2379,23 @@ async function loadHospitalDonors() {
                         </button>
                         ` : ''}
                     </div>
-                    ${isCheckedIn ? `
+                    ${isCheckedIn ? (canRecordBloodDraw ? `
                     <button onclick="window.openDonationIntakeModal('${d.id}', '${d.matchedDonor}', '${d.type || d.bloodType || ''}', '${(donor.name || 'Donor').replace(/'/g, "\\'")}', '${donor.bloodType || ''}', ${d.donorScreeningPassed === false})" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
                         <span class="material-symbols-outlined text-xs">vaccines</span>
                         Record Blood Draw
                     </button>
-                    ` : `<span class="text-[10px] font-bold text-slate-400 px-3 py-1.5">Waiting for check-in…</span>`}
+                    ` : `<span class="text-[10px] font-bold text-slate-400 px-3 py-1.5" title="Only clinical staff can record a blood draw">Ready for the donation room</span>`)
+                    : `<span class="text-[10px] font-bold text-slate-400 px-3 py-1.5">Waiting for check-in…</span>`}
                 </div>
             </div>
             `;
         }).join('');
 
+        // The HOSPITAL's city anchors this map, not the signed-in staff member's
+        // (a nurse's personal city is usually absent, which left the map with no
+        // hospital marker and a permanent "Waiting for signal…" distance).
         donors.filter(d => d.status === 'Donor En Route').forEach(d => {
-            initDonorTrackingMap(d.id, currentUser?.city, !!d.isPublicRequest);
+            initDonorTrackingMap(d.id, hospitalScopeCity(), !!d.isPublicRequest);
         });
         }
     } catch (e) {
@@ -2314,7 +2419,7 @@ async function loadScheduledBookings() {
     const listEl = document.getElementById('scheduledBookingsList');
     if (!listEl) return;
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const bookings = await fetchDonationRequestsForHospital(hospitalName);
@@ -2386,29 +2491,32 @@ function initDonorCheckInTokenLookup() {
 
         const doLookup = async () => {
             const token = input.value.trim();
-            if (!token) { alert('Enter a check-in code first'); return; }
-            const currentUser = getCurrentUser();
-            const hospitalName = currentUser?.name || 'General Hospital';
+            if (!token) { await window.vpAlert({ type: 'warning', title: 'No code entered', message: 'Enter the donor\'s check-in pass code first.' }); return; }
+            const hospitalName = hospitalScopeName();
+            if (!hospitalName) {
+                await window.vpAlert({ type: 'error', title: 'Hospital not linked', message: 'Your account is not linked to a hospital yet, so donors cannot be checked in. Contact your Hospital Admin.' });
+                return;
+            }
             btn.disabled = true;
 
             try {
-                let match = await findRequestByCheckInToken(token, 'requests');
-                if (match && match.hospital !== hospitalName) match = null; // not this hospital's donor
+                // One lookup across requests / public_requests / donation_requests,
+                // scoped to this hospital and expiry-checked inside the helper.
+                // Scheduled bookings (donation_requests) are now reachable here —
+                // they carry a 7-day pass code that no desk could previously accept.
+                const match = await findRequestByCheckInToken(token, hospitalName);
                 if (!match) {
-                    const publicMatch = await findRequestByCheckInToken(token, 'public_requests');
-                    if (publicMatch && publicMatch.hospitalName === hospitalName) match = publicMatch;
-                }
-                if (!match) { alert('No donor found with that code at your hospital.'); return; }
-                if (match.status !== 'Donor En Route') {
-                    alert(`This donor's status is "${match.status}" — check-in requires "Donor En Route".`);
+                    await window.vpAlert({ type: 'error', title: 'Code not recognised', message: 'No donor found with that pass code at your hospital. Check the code, or register them as a walk-in.' });
                     return;
                 }
 
-                // Look up donor identity info for verification
-                let donorIdentity = { name: 'Unknown', cniLast4: null, phone: 'N/A', bloodType: 'N/A', lastDonationDate: null, eligible: true };
-                if (match.matchedDonor) {
+                // Look up donor identity info for verification. `donorId` covers
+                // scheduled bookings, which have no `matchedDonor`.
+                const donorUid = match.matchedDonor || match.donorId || null;
+                let donorIdentity = { name: match.donorName || 'Unknown', cniLast4: null, phone: 'N/A', bloodType: 'N/A', lastDonationDate: null, eligible: true };
+                if (donorUid) {
                     try {
-                        const donorSnap = await getDoc(doc(db, 'users', match.matchedDonor));
+                        const donorSnap = await getDoc(doc(db, 'users', donorUid));
                         if (donorSnap.exists()) {
                             const d = donorSnap.data();
                             const lastDate = d.lastDonationDate || d.lastDonatedAt || null;
@@ -2460,13 +2568,14 @@ function initDonorCheckInTokenLookup() {
 
                 if (!confirmed) return;
 
-                await checkInDonor(match.id);
+                await checkInDonor(match.id, match.sourceCollection);
                 showToast('Donor checked in successfully!');
                 input.value = '';
                 loadHospitalDonors();
+                if (typeof loadReceptionOverview === 'function') loadReceptionOverview();
             } catch (err) {
                 console.error('Check-in lookup failed:', err);
-                alert(err.message || 'Check-in failed.');
+                await window.vpAlert({ type: 'error', title: 'Check-in failed', message: esc(err.message || 'Could not check this donor in. Please try again.') });
             } finally {
                 btn.disabled = false;
             }
@@ -2478,9 +2587,9 @@ function initDonorCheckInTokenLookup() {
 }
 
 window.cancelHospitalRequestAction = async (id) => {
-    const reason = prompt('Reason for cancelling this request:');
+    const reason = await window.vpPrompt('Reason for cancelling this request:');
     if (reason === null) return;
-    if (!confirm('Cancel this blood request? This cannot be undone.')) return;
+    if (!await window.vpConfirm('Cancel this blood request? This cannot be undone.')) return;
     const currentUser = getCurrentUser();
     try {
         await cancelHospitalRequest(id, currentUser?.name || 'Hospital', reason || '');
@@ -2488,12 +2597,12 @@ window.cancelHospitalRequestAction = async (id) => {
         loadHospitalRequests();
     } catch (err) {
         console.error('Failed to cancel request:', err);
-        alert('Failed to cancel request.');
+        window.vpNotify('Failed to cancel request.');
     }
 };
 
 window.removeIncomingDonorAction = async (id, isPublic) => {
-    if (!confirm('Remove this donor from the request? The request will return to open status and the donor will be notified.')) return;
+    if (!await window.vpConfirm('Remove this donor from the request? The request will return to open status and the donor will be notified.')) return;
     const currentUser = getCurrentUser();
     try {
         await removeIncomingDonor(id, currentUser?.name || 'Hospital', isPublic === true);
@@ -2501,23 +2610,23 @@ window.removeIncomingDonorAction = async (id, isPublic) => {
         loadHospitalDonors();
     } catch (err) {
         console.error('Failed to remove donor:', err);
-        alert('Failed to remove donor.');
+        window.vpNotify('Failed to remove donor.');
     }
 };
 
 window.hospitalCancelBookingAction = async (id) => {
-    if (!confirm('Cancel this scheduled booking? The donor will be notified.')) return;
+    if (!await window.vpConfirm('Cancel this scheduled booking? The donor will be notified.')) return;
     try {
         const currentUser = getCurrentUser();
-        const bookings = await fetchDonationRequestsForHospital(currentUser?.name || 'General Hospital');
+        const bookings = await fetchDonationRequestsForHospital(hospitalScopeName());
         const booking = bookings.find(b => b.id === id);
-        if (!booking) { alert('Booking not found.'); return; }
+        if (!booking) { window.vpNotify('Booking not found.'); return; }
         await hospitalCancelBooking(id, booking);
         showToast('Booking cancelled');
         loadScheduledBookings();
     } catch (err) {
         console.error('Failed to cancel booking:', err);
-        alert('Failed to cancel booking.');
+        window.vpNotify('Failed to cancel booking.');
     }
 };
 
@@ -2528,12 +2637,12 @@ window.approveBookingAction = async (id, bloodType) => {
         loadScheduledBookings();
     } catch (err) {
         console.error('Failed to confirm booking:', err);
-        alert('Failed to confirm booking.');
+        window.vpNotify('Failed to confirm booking.');
     }
 };
 
 window.rejectBookingAction = async (id, bloodType) => {
-    const reason = prompt('Reason for declining this booking (shown to the donor):');
+    const reason = await window.vpPrompt('Reason for declining this booking (shown to the donor):');
     if (reason === null) return;
     try {
         await rejectDonationRequest(id, { bloodType }, reason || 'Not specified');
@@ -2541,21 +2650,21 @@ window.rejectBookingAction = async (id, bloodType) => {
         loadScheduledBookings();
     } catch (err) {
         console.error('Failed to decline booking:', err);
-        alert('Failed to decline booking.');
+        window.vpNotify('Failed to decline booking.');
     }
 };
 
 window.completeBookingAction = async (id) => {
     try {
         const currentUser = getCurrentUser();
-        const hospitalName = currentUser?.name || 'General Hospital';
+        const hospitalName = hospitalScopeName();
         const bookings = await fetchDonationRequestsForHospital(hospitalName);
         const booking = bookings.find(b => b.id === id);
         if (!booking) throw new Error('Booking not found');
         window.openDonationIntakeModal(id, booking.donorId || booking.uid, booking.bloodType || 'O+', booking.donorName || booking.name || 'Donor', booking.donorOnFileType || booking.bloodType, false);
     } catch (err) {
         console.error('Failed to open intake modal for booking:', err);
-        alert(err.message || 'Failed to open intake modal.');
+        window.vpNotify(err.message || 'Failed to open intake modal.');
     }
 };
 
@@ -2571,7 +2680,7 @@ async function loadDonorReactions() {
     if (!listEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const reactions = await fetchDonorReactions(hospitalName);
@@ -2624,7 +2733,7 @@ window.resolveDonorReaction = async (reactionId) => {
         loadDonorReactions();
     } catch (err) {
         console.error('Failed to resolve donor reaction:', err);
-        alert('Failed to update reaction status.');
+        window.vpNotify('Failed to update reaction status.');
     }
 };
 
@@ -2644,7 +2753,7 @@ function initDonorReactionModal() {
                 reactionType: document.getElementById('reactionType').value,
                 description: document.getElementById('reactionDescription').value,
                 actionTaken: document.getElementById('reactionActionTaken').value,
-                hospitalName: currentUser?.name || 'General Hospital',
+                hospitalName: hospitalScopeName(),
                 reportedBy: currentUser?.name || null
             });
             window.closeDonorReactionModal();
@@ -2652,7 +2761,7 @@ function initDonorReactionModal() {
             loadDonorReactions();
         } catch (err) {
             console.error('Failed to submit donor reaction:', err);
-            alert('Failed to submit report. Please try again.');
+            window.vpNotify('Failed to submit report. Please try again.');
         } finally {
             btn.disabled = false;
         }
@@ -2719,7 +2828,7 @@ function initLabTestModal() {
             const currentUser = getCurrentUser();
             // form.dataset.hospitalName is set only when admin opens this modal on behalf of a
             // shadow (unregistered) hospital — otherwise this is the logged-in hospital's own tab.
-            const hospName = form.dataset.hospitalName || currentUser?.name || 'General Hospital';
+            const hospName = form.dataset.hospitalName || hospitalScopeName();
             const batchId = form.dataset.batchId;
             const bloodType = form.dataset.bloodType;
             const btn = form.querySelector('button[type="submit"]');
@@ -2752,7 +2861,7 @@ function initLabTestModal() {
                 else loadLabPipeline();
             } catch (err) {
                 console.error('Failed to resolve lab test:', err);
-                alert(err.message || 'Failed to save lab test result.');
+                window.vpNotify(err.message || 'Failed to save lab test result.');
             } finally {
                 btn.disabled = false;
             }
@@ -2835,15 +2944,24 @@ async function loadHospitalSettings() {
     const currentUser = getCurrentUser();
     if (!currentUser) return;
 
-    document.getElementById('setHospitalName').value = currentUser.name || '';
-    document.getElementById('setHospitalCity').value = currentUser.city || '';
+    document.getElementById('setHospitalName').value = hospitalScopeName() || currentUser.name || '';
+    document.getElementById('setHospitalCity').value = hospitalScopeCity() || '';
     document.getElementById('setHospitalEmail').value = currentUser.email || '';
-    document.getElementById('setHospitalPhone').value = currentUser.phone || '';
+    // Phone is deliberately absent from the cached session (PII) — read it from
+    // the hospital's own record so the field isn't silently blanked on save.
+    try {
+        const hid = hospitalScopeId();
+        if (hid) {
+            const hSnap = await fetchHospitalById(hid);
+            document.getElementById('setHospitalPhone').value = hSnap?.phone || '';
+            if (!hospitalScopeCity() && hSnap?.city) document.getElementById('setHospitalCity').value = hSnap.city;
+        }
+    } catch (e) { console.warn('Could not load hospital contact details:', e); }
 
     const sidebarName = document.getElementById('hospitalSidebarName');
     const sidebarLoc = document.getElementById('hospitalSidebarLocation');
-    if (sidebarName) sidebarName.textContent = currentUser.name || 'Hospital';
-    if (sidebarLoc) sidebarLoc.textContent = (currentUser.city || 'Cameroon') + ' Network';
+    if (sidebarName) sidebarName.textContent = hospitalScopeName() || currentUser.name || 'Hospital';
+    if (sidebarLoc) sidebarLoc.textContent = hospitalScopeCity() ? hospitalScopeCity() + ' Network' : '';
 
     // Settings form
     const form = document.getElementById('settingsForm');
@@ -2870,7 +2988,7 @@ async function loadHospitalSettings() {
                 if (sidebarLoc) sidebarLoc.textContent = (updated.city || 'Cameroon') + ' Network';
             } catch (err) {
                 console.error('Failed to save settings:', err);
-                alert('Failed to save settings.');
+                window.vpNotify('Failed to save settings.');
             } finally {
                 btn.innerHTML = 'Save Changes';
                 btn.disabled = false;
@@ -2910,14 +3028,22 @@ function initNewRequestModal() {
             e.preventDefault();
             const currentUser = getCurrentUser();
             if (!currentUser) return;
+            // Resolve the OWNING hospital, not the signed-in person. A nurse
+            // submitting this form must produce a request owned by (and matched
+            // for) their hospital — previously it was stamped with the nurse's
+            // own name/uid and a 'Cameroon' city, which made the request
+            // invisible to the hospital and unmatchable to any donor.
+            const scope = requireHospitalScope();
+            if (!scope) return;
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Submitting...';
             btn.disabled = true;
 
             try {
                 await createEmergencyRequest({
-                    hospital: currentUser.name || 'General Hospital',
-                    city: currentUser.city || 'Cameroon',
+                    hospital: scope.name,
+                    hospitalId: scope.id,
+                    city: scope.city,
                     type: selectedInput.value,
                     bloodType: selectedInput.value,
                     componentType: document.getElementById('reqComponent')?.value || 'Whole Blood',
@@ -2938,7 +3064,7 @@ function initNewRequestModal() {
                 loadHospitalRequests();
             } catch (err) {
                 console.error('Failed to create request:', err);
-                alert('Failed to create request.');
+                window.vpNotify('Failed to create request.');
             } finally {
                 btn.innerHTML = 'Submit Request';
                 btn.disabled = false;
@@ -2976,14 +3102,17 @@ function initUrgentRequestModal() {
             e.preventDefault();
             const currentUser = getCurrentUser();
             if (!currentUser) return;
+            const scope = requireHospitalScope();
+            if (!scope) return;
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Broadcasting...';
             btn.disabled = true;
 
             try {
                 await createEmergencyRequest({
-                    hospital: currentUser.name || 'General Hospital',
-                    city: currentUser.city || 'Cameroon',
+                    hospital: scope.name,
+                    hospitalId: scope.id,
+                    city: scope.city,
                     type: selectedInput.value,
                     bloodType: selectedInput.value,
                     units: parseInt(document.getElementById('urgentUnits').value, 10),
@@ -3000,7 +3129,7 @@ function initUrgentRequestModal() {
                 showToast('Emergency broadcast sent!');
             } catch (err) {
                 console.error('Failed to broadcast:', err);
-                alert('Failed to broadcast emergency.');
+                window.vpNotify('Failed to broadcast emergency.');
             } finally {
                 btn.innerHTML = 'Broadcast Emergency';
                 btn.disabled = false;
@@ -3063,7 +3192,7 @@ function initHospitalAddStockModal() {
             btn.disabled = true;
 
             const currentUser = getCurrentUser();
-            const hospName = currentUser?.name || 'General Hospital';
+            const hospName = hospitalScopeName();
             try {
                 await updateInventoryStock(
                     document.getElementById('stockBloodType').value,
@@ -3081,7 +3210,7 @@ function initHospitalAddStockModal() {
                 loadHospitalInventoryData();
             } catch (err) {
                 console.error('Failed to add stock:', err);
-                alert('Failed to add stock.');
+                window.vpNotify('Failed to add stock.');
             } finally {
                 btn.innerHTML = 'Add to Inventory';
                 btn.disabled = false;
@@ -3466,7 +3595,7 @@ async function loadAdminDashboard() {
                     loadAdminDashboard(); // refresh dashboard metrics
                 } catch(err) {
                     console.error("Failed to broadcast", err);
-                    alert("Failure to push to system.");
+                    window.vpNotify("Failure to push to system.");
                 } finally {
                     btn.innerHTML = 'Broadcast Request';
                     btn.disabled = false;
@@ -3554,16 +3683,34 @@ function initAdminNavigation() {
     const allViews = [viewOverview, viewVerifications, viewUsers, viewLogs, viewAnalytics, viewCampaigns, viewPublicTriage, viewShadowHospitals, viewSafetyOversight, viewSettings];
     const allNavBtns = [btnOverview, btnVerifications, btnUsers, btnLogs, btnAnalytics, btnCampaigns, btnPublicTriage, btnShadowHospitals, btnSafetyOversight, btnSettings];
 
+    // These two must stay byte-identical to the classes admin.html ships on its sidebar links.
+    // The previous pair described an older sidebar design (`rounded-r-full px-4 py-3`, no
+    // gradient), and since resetViews() assigns `b.className` wholesale, the very first nav click
+    // re-skinned the entire sidebar into that dead design.
+    const inactiveNavClass = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-500 hover:text-red-700 hover:bg-red-50 font-medium text-sm transition-all duration-200 cursor-pointer';
+    const activeClass = 'flex items-center gap-3 px-3 py-2.5 rounded-lg bg-gradient-to-r from-red-600 to-red-500 text-white font-semibold text-sm shadow-md shadow-red-200/50 transition-all duration-200 cursor-default';
+
     const resetViews = () => {
         allViews.forEach(v => { if (v) { v.classList.add('hidden'); v.classList.remove('block'); } });
-        const inactiveClass = 'text-slate-500 dark:text-slate-400 px-4 py-3 flex items-center gap-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 cursor-pointer';
-        allNavBtns.forEach(b => { if (b) b.className = inactiveClass; });
+        allNavBtns.forEach(b => { if (b) b.className = inactiveNavClass; });
     };
 
-    const activeClass = 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 font-bold rounded-r-full px-4 py-3 flex items-center gap-3 transition-all duration-200 cursor-default';
+    // Keeps the mobile drawer's highlighted item in step with the desktop sidebar, so a view
+    // entered from either surface (or from a #hash on load) reads as current in both.
+    const syncAdminDrawer = (target) => {
+        document.querySelectorAll('.admin-drawer-btn').forEach(b => {
+            const isActive = b.dataset.adminNav === target;
+            b.className = `admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-sm transition-all duration-200 cursor-pointer text-left ${
+                isActive ? 'text-red-600 bg-red-50 font-bold' : 'text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold'
+            }`;
+            const icon = b.querySelector('.material-symbols-outlined');
+            if (icon) icon.style.fontVariationSettings = isActive ? "'FILL' 1" : "'FILL' 0";
+        });
+    };
 
     const switchView = (target) => {
         resetViews();
+        syncAdminDrawer(target);
 
         if(target === 'overview') {
             viewOverview.classList.remove('hidden');
@@ -3661,6 +3808,57 @@ function initAdminNavigation() {
         });
     }
 
+    // ---- Mobile drawer (the phone equivalent of the desktop sidebar) ----
+    const adminDrawer = document.getElementById('adminDrawer');
+    const adminDrawerOverlay = document.getElementById('adminDrawerOverlay');
+
+    const openAdminDrawer = () => {
+        if (!adminDrawer || !adminDrawerOverlay) return;
+        adminDrawer.classList.remove('-translate-x-full');
+        adminDrawerOverlay.classList.remove('hidden');
+        requestAnimationFrame(() => adminDrawerOverlay.classList.remove('opacity-0'));
+        // Stops the page underneath from scrolling behind the open drawer on touch devices.
+        document.body.classList.add('overflow-hidden');
+    };
+    const closeAdminDrawer = () => {
+        if (!adminDrawer || !adminDrawerOverlay) return;
+        adminDrawer.classList.add('-translate-x-full');
+        adminDrawerOverlay.classList.add('opacity-0');
+        setTimeout(() => adminDrawerOverlay.classList.add('hidden'), 300);
+        document.body.classList.remove('overflow-hidden');
+    };
+
+    document.getElementById('adminHamburger')?.addEventListener('click', openAdminDrawer);
+    document.getElementById('adminDrawerClose')?.addEventListener('click', closeAdminDrawer);
+    adminDrawerOverlay?.addEventListener('click', closeAdminDrawer);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && adminDrawer && !adminDrawer.classList.contains('-translate-x-full')) closeAdminDrawer();
+    });
+
+    document.querySelectorAll('.admin-drawer-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            switchView(btn.dataset.adminNav);
+            closeAdminDrawer();
+        });
+    });
+
+    document.getElementById('adminDrawerUrgent')?.addEventListener('click', () => {
+        closeAdminDrawer();
+        document.getElementById('openUrgentModalBtn')?.click();
+    });
+
+    // ---- Mobile search overlay (search is a header feature on desktop; below md it opens here) ----
+    const adminMobileSearchOverlay = document.getElementById('adminMobileSearchOverlay');
+    const inputAdminMobileSearch = document.getElementById('inputAdminMobileSearch');
+    document.getElementById('btnAdminMobileSearch')?.addEventListener('click', () => {
+        if (!adminMobileSearchOverlay) return;
+        adminMobileSearchOverlay.classList.toggle('hidden');
+        if (!adminMobileSearchOverlay.classList.contains('hidden')) inputAdminMobileSearch?.focus();
+    });
+    document.getElementById('btnCloseAdminMobileSearch')?.addEventListener('click', () => {
+        adminMobileSearchOverlay?.classList.add('hidden');
+    });
+
     // Campaign modal close button
     const btnCloseCampaignModal = document.getElementById('btnCloseCampaignModal');
     if (btnCloseCampaignModal) {
@@ -3713,6 +3911,7 @@ function initAdminNavigation() {
     }
 
     initAdminGlobalSearch();
+    initAdminGlobalSearch('inputAdminMobileSearch', 'adminMobileSearchResults');
 
     // Internal Sub-Tabs for Hospitals
     const hospitalTabBtns = document.querySelectorAll('#hospitalTabs button');
@@ -3764,6 +3963,9 @@ function initAdminNavigation() {
     const adminViews = ['overview', 'verifications', 'users', 'logs', 'analytics', 'campaigns', 'public-triage', 'shadow-hospitals', 'safety-oversight', 'settings'];
     const adminHash = window.location.hash.replace('#', '');
     if (adminHash && adminViews.includes(adminHash)) switchView(adminHash);
+    // No hash: the markup already renders Overview, but only the desktop sidebar carries the
+    // active class in HTML — seed the drawer so its highlight isn't blank on first open.
+    else syncAdminDrawer('overview');
 
     window.addEventListener('hashchange', () => {
         const v = window.location.hash.replace('#', '');
@@ -3866,19 +4068,19 @@ function initPublicTriageControls() {
 }
 
 window.approveTriageRequest = async (requestId) => {
-    if (!confirm('Approve this request and broadcast it to nearby donors now?')) return;
+    if (!await window.vpConfirm('Approve this request and broadcast it to nearby donors now?')) return;
     try {
         await approvePublicRequest(requestId);
         showToast('Request approved and broadcasting');
         loadPublicTriageQueue();
     } catch (err) {
         console.error('Failed to approve request:', err);
-        alert('Failed to approve request.');
+        window.vpNotify('Failed to approve request.');
     }
 };
 
 window.flagTriageRequest = async (requestId) => {
-    const reason = prompt('Reason for flagging this request as suspicious:');
+    const reason = await window.vpPrompt('Reason for flagging this request as suspicious:');
     if (!reason) return;
     try {
         await flagPublicRequest(requestId, reason);
@@ -3886,7 +4088,7 @@ window.flagTriageRequest = async (requestId) => {
         loadPublicTriageQueue();
     } catch (err) {
         console.error('Failed to flag request:', err);
-        alert('Failed to flag request.');
+        window.vpNotify('Failed to flag request.');
     }
 };
 
@@ -3897,7 +4099,7 @@ window.resolveTriageRequest = async (requestId) => {
         loadPublicTriageQueue();
     } catch (err) {
         console.error('Failed to resolve request:', err);
-        alert('Failed to resolve request.');
+        window.vpNotify('Failed to resolve request.');
     }
 };
 
@@ -4009,14 +4211,14 @@ function initShadowHospitalIntake() {
 
     btn.addEventListener('click', async () => {
         const token = tokenInput.value.trim();
-        if (!token) { alert('Enter a pass code first'); return; }
+        if (!token) { window.vpNotify('Enter a pass code first'); return; }
         btn.disabled = true;
 
         try {
             const match = await findRequestByCheckInToken(token, 'public_requests');
-            if (!match) { alert('No public request found with that pass code.'); return; }
-            if (match.status === 'Completed') { alert('This donation has already been recorded.'); return; }
-            if (!confirm(`Confirm intake for ${match.bloodType || 'blood'} donation at ${match.hospitalName || 'this hospital'}?`)) return;
+            if (!match) { window.vpNotify('No public request found with that pass code.'); return; }
+            if (match.status === 'Completed') { window.vpNotify('This donation has already been recorded.'); return; }
+            if (!await window.vpConfirm(`Confirm intake for ${match.bloodType || 'blood'} donation at ${match.hospitalName || 'this hospital'}?`)) return;
 
             await adminProxyCheckInDonor(match.id, token, labTypeSelect?.value || null);
             showToast('Donor intake verified — blood sent to lab quarantine.');
@@ -4025,7 +4227,7 @@ function initShadowHospitalIntake() {
             loadShadowHospitalPendingTests();
         } catch (err) {
             console.error('Shadow hospital intake failed:', err);
-            alert(err.message || 'Failed to verify intake.');
+            window.vpNotify(err.message || 'Failed to verify intake.');
         } finally {
             btn.disabled = false;
         }
@@ -4033,7 +4235,7 @@ function initShadowHospitalIntake() {
 }
 
 window.addShadowHospitalContact = async (shadowId) => {
-    const phone = prompt('Contact phone number for this hospital (e.g. +237 6XX XXX XXX):');
+    const phone = await window.vpPrompt('Contact phone number for this hospital (e.g. +237 6XX XXX XXX):');
     if (phone === null) return;
     try {
         await updateShadowHospitalContact(shadowId, phone, null);
@@ -4041,7 +4243,7 @@ window.addShadowHospitalContact = async (shadowId) => {
         loadShadowHospitalsLeaderboard();
     } catch (err) {
         console.error('Failed to save contact info:', err);
-        alert('Failed to save contact info.');
+        window.vpNotify('Failed to save contact info.');
     }
 };
 
@@ -4052,7 +4254,7 @@ window.sendShadowHospitalInvite = async (shadowId) => {
         loadShadowHospitalsLeaderboard();
     } catch (err) {
         console.error('Failed to send invite:', err);
-        alert(err.message || 'Failed to send invite. Add contact info first.');
+        window.vpNotify(err.message || 'Failed to send invite. Add contact info first.');
     }
 };
 
@@ -4152,7 +4354,7 @@ window.adminResolveHemoReport = async (reportId) => {
         loadSafetyOversightView();
     } catch (err) {
         console.error('Failed to resolve hemovigilance report:', err);
-        alert('Failed to update report.');
+        window.vpNotify('Failed to update report.');
     }
 };
 
@@ -4163,7 +4365,7 @@ window.adminResolveDonorReaction = async (reactionId) => {
         loadSafetyOversightView();
     } catch (err) {
         console.error('Failed to resolve donor reaction:', err);
-        alert('Failed to update reaction.');
+        window.vpNotify('Failed to update reaction.');
     }
 };
 
@@ -4179,7 +4381,7 @@ window.downloadCSVFromTable = (tableBodyId, filename) => {
     const rows = document.querySelectorAll(`#${tableBodyId} tr`);
     
     if (rows.length === 0 || (rows.length === 1 && rows[0].innerText.includes('No '))) {
-        alert("No data available to export.");
+        window.vpNotify("No data available to export.");
         return;
     }
 
@@ -4237,9 +4439,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // ============================================
 let adminSearchDebounceTimer = null;
 
-function initAdminGlobalSearch() {
-    const input = document.getElementById('inputAdminSearch');
-    const resultsEl = document.getElementById('adminSearchResults');
+// Closes every admin search surface at once. The desktop header dropdown and the mobile
+// slide-down overlay are two separate DOM nodes running the same search, so a result click has
+// to dismiss whichever one it came from without needing to know which that was.
+window.closeAdminSearch = () => {
+    document.getElementById('adminSearchResults')?.classList.add('hidden');
+    document.getElementById('adminMobileSearchOverlay')?.classList.add('hidden');
+};
+
+// `inputId`/`resultsId` are parameters (not hardcoded) so the same search can back both the
+// desktop header dropdown and the mobile overlay — mobile users get the identical capability
+// instead of a header that silently drops search below the md breakpoint.
+function initAdminGlobalSearch(inputId = 'inputAdminSearch', resultsId = 'adminSearchResults') {
+    const input = document.getElementById(inputId);
+    const resultsEl = document.getElementById(resultsId);
     if (!input || !resultsEl) return;
 
     const closeResults = () => { resultsEl.classList.add('hidden'); resultsEl.innerHTML = ''; };
@@ -4271,19 +4484,19 @@ function initAdminGlobalSearch() {
             const section = (title, itemsHtml) => !itemsHtml ? '' : `<div class="px-3 pt-3 pb-1 text-[9px] font-bold uppercase tracking-widest text-slate-400">${title}</div>${itemsHtml}`;
 
             const hospitalItems = matchedHospitals.map(h => `
-                <div onclick="window.viewHospitalDetail('${h.id}'); document.getElementById('adminSearchResults').classList.add('hidden');" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
+                <div onclick="window.viewHospitalDetail('${h.id}'); window.closeAdminSearch();" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                     <span class="material-symbols-outlined text-slate-400 text-base">local_hospital</span>
                     <span class="text-sm font-bold text-slate-700 truncate">${esc(h.name)}</span>
                 </div>`).join('');
 
             const donorItems = matchedDonors.map(d => `
-                <div onclick="window.viewDonorDetail('${d.id}'); document.getElementById('adminSearchResults').classList.add('hidden');" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
+                <div onclick="window.viewDonorDetail('${d.id}'); window.closeAdminSearch();" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                     <span class="material-symbols-outlined text-slate-400 text-base">bloodtype</span>
                     <span class="text-sm font-bold text-slate-700 truncate">${esc(d.name || d.email || 'Donor')}</span>
                 </div>`).join('');
 
             const requestItems = matchedRequests.map(r => `
-                <div onclick="window.viewRequestDetail('${r.id}'); document.getElementById('adminSearchResults').classList.add('hidden');" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
+                <div onclick="window.viewRequestDetail('${r.id}'); window.closeAdminSearch();" class="px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2">
                     <span class="material-symbols-outlined text-slate-400 text-base">emergency</span>
                     <span class="text-sm font-bold text-slate-700 truncate">#${r.id.slice(0, 8).toUpperCase()} · ${esc(r.bloodType) || 'Any'}</span>
                 </div>`).join('');
@@ -4631,7 +4844,7 @@ function initAdminActivityLogModal() {
     }
 
     const clearAll = async () => {
-        if (!confirm('Clear the entire activity log? This cannot be undone.')) return;
+        if (!await window.vpConfirm('Clear the entire activity log? This cannot be undone.')) return;
         try {
             await clearAllActivityLogs();
             showToast('Activity log cleared');
@@ -4640,7 +4853,7 @@ function initAdminActivityLogModal() {
             if (feed) feed.innerHTML = '<div class="text-center text-slate-400 text-sm italic py-4">System is quiet. No logs yet.</div>';
         } catch (e) {
             console.error('Failed to clear activity log:', e);
-            alert('Failed to clear activity log.');
+            window.vpNotify('Failed to clear activity log.');
         }
     };
     if (clearBtnModal) clearBtnModal.addEventListener('click', clearAll);
@@ -4767,12 +4980,12 @@ window.handleAdminApprove = async (id, name) => {
     if (!name) {
         try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
     }
-    if(confirm(`Approve ${name}?`)) {
+    if(await window.vpConfirm(`Approve ${name}?`)) {
         try {
             await verifyHospital(id, name, true);
         } catch (err) {
             console.error('Failed to approve hospital:', err);
-            alert('Failed to approve hospital. Please try again.');
+            window.vpNotify('Failed to approve hospital. Please try again.');
             return;
         }
         loadAdminDashboard();
@@ -4883,7 +5096,7 @@ function pickKycRejectReason() {
 }
 
 window.handleAdminApproveDonorKyc = async (targetUid) => {
-    if (!confirm('Approve this donor? They will get full dashboard access immediately.')) return;
+    if (!await window.vpConfirm('Approve this donor? They will get full dashboard access immediately.')) return;
     try {
         const currentUser = getCurrentUser();
         await updateDoc(doc(db, 'donors', targetUid), {
@@ -4897,7 +5110,7 @@ window.handleAdminApproveDonorKyc = async (targetUid) => {
         });
     } catch (err) {
         console.error('Failed to approve donor KYC:', err);
-        alert(err?.message || 'Failed to approve donor. Please try again.');
+        window.vpNotify(err?.message || 'Failed to approve donor. Please try again.');
         return;
     }
     renderPendingKycReviews();
@@ -4919,7 +5132,7 @@ window.handleAdminRejectDonorKyc = async (targetUid) => {
         });
     } catch (err) {
         console.error('Failed to reject donor KYC:', err);
-        alert(err?.message || 'Failed to reject donor. Please try again.');
+        window.vpNotify(err?.message || 'Failed to reject donor. Please try again.');
         return;
     }
     renderPendingKycReviews();
@@ -4929,12 +5142,12 @@ window.handleAdminReject = async (id, name) => {
     if (!name) {
         try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
     }
-    if(confirm(`Reject ${name}?`)) {
+    if(await window.vpConfirm(`Reject ${name}?`)) {
         try {
             await rejectHospital(id, name);
         } catch (err) {
             console.error('Failed to reject hospital:', err);
-            alert('Failed to reject hospital. Please try again.');
+            window.vpNotify('Failed to reject hospital. Please try again.');
             return;
         }
         loadAdminDashboard();
@@ -4950,12 +5163,12 @@ window.handleAdminDeactivateHospital = async (id, name) => {
     if (!name) {
         try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
     }
-    if(confirm(`WARNING: Deactivate ${name}?\n\nAll of the hospital's staff will be signed out and locked out immediately. The hospital will no longer appear in the verified network. This can be undone with Reactivate — nothing is deleted.`)) {
+    if(await window.vpConfirm(`WARNING: Deactivate ${name}?\n\nAll of the hospital's staff will be signed out and locked out immediately. The hospital will no longer appear in the verified network. This can be undone with Reactivate — nothing is deleted.`)) {
         try {
             await deactivateHospital(id, name);
         } catch (err) {
             console.error('Failed to deactivate hospital:', err);
-            alert('Failed to deactivate hospital. Please try again.');
+            window.vpNotify('Failed to deactivate hospital. Please try again.');
             return;
         }
         loadAdminDashboard();
@@ -4968,12 +5181,12 @@ window.handleAdminReactivateHospital = async (id, name) => {
     if (!name) {
         try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
     }
-    if(confirm(`Reactivate ${name}?\n\nStaff locked out by the deactivation will regain access. Staff suspended individually (for personal reasons) stay suspended.`)) {
+    if(await window.vpConfirm(`Reactivate ${name}?\n\nStaff locked out by the deactivation will regain access. Staff suspended individually (for personal reasons) stay suspended.`)) {
         try {
             await reactivateHospital(id, name);
         } catch (err) {
             console.error('Failed to reactivate hospital:', err);
-            alert('Failed to reactivate hospital. Please try again.');
+            window.vpNotify('Failed to reactivate hospital. Please try again.');
             return;
         }
         loadAdminDashboard();
@@ -5229,12 +5442,12 @@ window.handleAdminSuspendUser = async (id, name) => {
     if (!name) {
         try { const d = await fetchDonorById(id); name = d?.name || ''; } catch { /* keep default */ }
     }
-    if(confirm(`WARNING: Are you sure you want to suspend ${name}?\n\nThey will be immediately removed from the matchmaking pool.`)) {
+    if(await window.vpConfirm(`WARNING: Are you sure you want to suspend ${name}?\n\nThey will be immediately removed from the matchmaking pool.`)) {
         try {
             await suspendDonor(id, name);
         } catch (err) {
             console.error('Failed to suspend donor:', err);
-            alert('Failed to suspend donor. Please try again.');
+            window.vpNotify('Failed to suspend donor. Please try again.');
             return;
         }
         loadAdminDashboard();
@@ -5247,12 +5460,12 @@ window.handleAdminReactivateUser = async (id, name) => {
     if (!name) {
         try { const d = await fetchDonorById(id); name = d?.name || ''; } catch { /* keep default */ }
     }
-    if(confirm(`Reactivate ${name}?\n\nThey will become eligible for blood requests again.`)) {
+    if(await window.vpConfirm(`Reactivate ${name}?\n\nThey will become eligible for blood requests again.`)) {
         try {
             await reactivateDonor(id, name);
         } catch (err) {
             console.error('Failed to reactivate donor:', err);
-            alert('Failed to reactivate donor. Please try again.');
+            window.vpNotify('Failed to reactivate donor. Please try again.');
             return;
         }
         loadAdminDashboard();
@@ -5803,7 +6016,7 @@ async function loadSettingsDashboard() {
                 }
             } catch (e) {
                 console.error('Failed to save settings:', e);
-                alert('Failed to save settings. Please try again.');
+                window.vpNotify('Failed to save settings. Please try again.');
             }
         };
     }
@@ -5877,7 +6090,7 @@ function initAdminChangePassword() {
     btn.addEventListener('click', async () => {
         const currentUser = getCurrentUser();
         if (!currentUser?.email) { showToast('No account email on file.', 'error'); return; }
-        if (!confirm(`Send a password reset link to ${currentUser.email}?`)) return;
+        if (!await window.vpConfirm(`Send a password reset link to ${currentUser.email}?`)) return;
         try {
             await sendPasswordReset(currentUser.email);
             showToast('Password reset link sent to your email');
@@ -6134,7 +6347,7 @@ function initCampaignModal() {
                 loadCampaignsDashboard();
             } catch (err) {
                 console.error('Failed to save campaign:', err);
-                alert('Failed to save campaign. Please try again.');
+                window.vpNotify('Failed to save campaign. Please try again.');
             } finally {
                 btn.innerHTML = 'Save Campaign';
                 btn.disabled = false;
@@ -6172,13 +6385,13 @@ window.deleteCampaign = async (id, title) => {
             title = campaigns.find(c => c.id === id)?.title || '';
         } catch { /* keep default */ }
     }
-    if (confirm(`Delete campaign "${title}"? This action cannot be undone.`)) {
+    if (await window.vpConfirm(`Delete campaign "${title}"? This action cannot be undone.`)) {
         try {
             await deleteCampaign(id);
             loadCampaignsDashboard();
         } catch (err) {
             console.error('Failed to delete campaign:', err);
-            alert('Failed to delete campaign.');
+            window.vpNotify('Failed to delete campaign.');
         }
     }
 };
@@ -6306,11 +6519,16 @@ function initDonationIntakeModal() {
                 });
 
                 const currentUser = getCurrentUser();
-                if (currentUser?.phone) {
-                    try {
-                        await sendSmsNotification(currentUser.phone, `[VitalPulse] Donation completed at ${currentUser.name}. Donor ID: ${donorId?.slice(0, 8)}. Thank you for saving lives!`);
-                    } catch (e) { console.warn('SMS notification failed:', e); }
-                }
+                // `phone` is not cached in localStorage (PII), so this reads it
+                // from Firestore. Previously it read `currentUser.phone`, which
+                // login had already deleted — so the condition was always false
+                // and this confirmation SMS never sent, silently.
+                try {
+                    const ownPhone = await fetchOwnContactPhone();
+                    if (ownPhone) {
+                        await sendSmsNotification(ownPhone, `[VitalPulse] Donation completed at ${hospitalScopeName() || 'your facility'}. Donor ID: ${donorId?.slice(0, 8)}. Thank you for saving lives!`);
+                    }
+                } catch (e) { console.warn('SMS notification failed:', e); }
 
                 close();
                 showToast('Donation intake recorded — blood is now in lab quarantine.');
@@ -6318,7 +6536,7 @@ function initDonationIntakeModal() {
                 loadHospitalDashboard();
             } catch (err) {
                 console.error('Failed to complete donation intake:', err);
-                alert(err.message || 'Failed to complete donation intake.');
+                window.vpNotify(err.message || 'Failed to complete donation intake.');
             } finally {
                 btn.disabled = false;
             }
@@ -6410,7 +6628,7 @@ function subscribeHospitalDashboard() {
     if (!feedEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         hospitalRequestsUnsub = subscribeToRequests((requests) => {
@@ -6512,17 +6730,17 @@ function initHospitalNotifications() {
             let unreadCount = _hospitalNotifCache?.unreadCount || 0;
             if (!notifications) {
                 const fetched = await Promise.all([
-                    fetchHospitalNotifications(currentUser.uid, 10),
-                    fetchUnreadHospitalNotificationCount(currentUser.uid)
+                    fetchHospitalNotifications(hospitalScopeId(), 10),
+                    fetchUnreadHospitalNotificationCount(hospitalScopeId())
                 ]);
                 notifications = fetched[0];
                 unreadCount = fetched[1];
                 _hospitalNotifCache = { notifications, unreadCount };
             } else {
-                fetchHospitalNotifications(currentUser.uid, 10).then(n => {
+                fetchHospitalNotifications(hospitalScopeId(), 10).then(n => {
                     _hospitalNotifCache.notifications = n;
                 }).catch(() => {});
-                fetchUnreadHospitalNotificationCount(currentUser.uid).then(c => {
+                fetchUnreadHospitalNotificationCount(hospitalScopeId()).then(c => {
                     _hospitalNotifCache.unreadCount = c;
                 }).catch(() => {});
             }
@@ -6548,7 +6766,7 @@ function initHospitalNotifications() {
                 } else {
                     const header = document.querySelector('#hospitalNotifPanel h3')?.closest('.flex');
                     if (header && unreadCount > 0) {
-                        header.insertAdjacentHTML('beforeend', `<button onclick="(async () => { const cu = getCurrentUser(); if(cu){await markAllHospitalNotificationsRead(cu.uid); const p = document.getElementById('hospitalNotifPanel'); if(p) p.remove();} })()" class="text-[10px] font-bold text-primary hover:underline ml-auto">Mark all read</button>`);
+                        header.insertAdjacentHTML('beforeend', `<button onclick="window.markAllHospitalNotificationsReadAction()" class="text-[10px] font-bold text-primary hover:underline ml-auto">Mark all read</button>`);
                     }
                     body.innerHTML = notifications.map(n => {
                         const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
@@ -6581,8 +6799,8 @@ function initHospitalNotifications() {
         if (!cu) return;
         try {
             const [count, notifications] = await Promise.all([
-                fetchUnreadHospitalNotificationCount(cu.uid),
-                fetchHospitalNotifications(cu.uid, 10)
+                fetchUnreadHospitalNotificationCount(hospitalScopeId()),
+                fetchHospitalNotifications(hospitalScopeId(), 10)
             ]);
             _hospitalNotifCache = { notifications, unreadCount: count };
             const badge = document.getElementById('hospitalNotifBadge');
@@ -6615,7 +6833,7 @@ async function loadHospitalActivityLog() {
     if (!logEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const logs = await fetchRecentLogs(15);
@@ -6666,7 +6884,7 @@ async function loadFullHospitalActivityLog(filter = 'all', searchTerm = '') {
     const countEl = document.getElementById('hospitalLogModalCount');
     if (!body) return;
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     body.innerHTML = '<div class="text-center text-slate-400 py-8 text-sm">Loading...</div>';
     try {
@@ -6757,8 +6975,8 @@ function initHospitalActivityLogModal() {
 
     const clearAll = async () => {
         const currentUser = getCurrentUser();
-        const hospitalName = currentUser?.name || 'General Hospital';
-        if (!confirm('Clear your hospital\'s activity log? This cannot be undone.')) return;
+        const hospitalName = hospitalScopeName();
+        if (!await window.vpConfirm('Clear your hospital\'s activity log? This cannot be undone.')) return;
         try {
             await clearHospitalActivityLogs(hospitalName);
             showToast('Activity log cleared');
@@ -6766,7 +6984,7 @@ function initHospitalActivityLogModal() {
             loadHospitalActivityLog();
         } catch (e) {
             console.error('Failed to clear hospital activity log:', e);
-            alert('Failed to clear activity log.');
+            window.vpNotify('Failed to clear activity log.');
         }
     };
     if (clearBtnModal) clearBtnModal.addEventListener('click', clearAll);
@@ -6799,9 +7017,9 @@ function initIssueBloodModal() {
             const units = parseInt(document.getElementById('issueUnits').value, 10);
             const currentStock = parseInt(document.getElementById('issueCurrentQty').value, 10);
 
-            if (!bloodType) { alert('Please select a blood type from the inventory.'); return; }
+            if (!bloodType) { window.vpNotify('Please select a blood type from the inventory.'); return; }
             if (units > currentStock) {
-                if (!confirm(`Only ${currentStock} units of ${bloodType} available. Issue ${units} anyway? This will result in negative stock.`)) return;
+                if (!await window.vpConfirm(`Only ${currentStock} units of ${bloodType} available. Issue ${units} anyway? This will result in negative stock.`)) return;
             }
 
             const btn = form.querySelector('button[type="submit"]');
@@ -6817,7 +7035,7 @@ function initIssueBloodModal() {
                     ward: document.getElementById('issueWard').value,
                     requestingDoctor: document.getElementById('issueDoctor').value,
                     diagnosis: document.getElementById('issueDiagnosis').value,
-                    hospital: currentUser.name || 'General Hospital',
+                    hospital: hospitalScopeName(),
                     crossmatchConfirmed,
                     crossmatchResult: crossmatchConfirmed ? 'Compatible' : 'Not Tested',
                     crossmatchTechId: document.getElementById('issueCrossmatchTech')?.value || '',
@@ -6829,7 +7047,7 @@ function initIssueBloodModal() {
                 loadHospitalDashboard();
             } catch (err) {
                 console.error('Failed to issue blood:', err);
-                alert(err.message || 'Failed to issue blood. Please try again.');
+                window.vpNotify(err.message || 'Failed to issue blood. Please try again.');
             } finally {
                 btn.innerHTML = 'Confirm Issue to Patient';
                 btn.disabled = false;
@@ -6943,14 +7161,14 @@ function initThresholdModal() {
             const bloodType = document.getElementById('thresholdBloodType').value;
             const value = parseInt(document.getElementById('thresholdValue').value, 10);
 
-            if (!bloodType || isNaN(value) || value < 0) { alert('Please enter a valid threshold value.'); return; }
+            if (!bloodType || isNaN(value) || value < 0) { window.vpNotify('Please enter a valid threshold value.'); return; }
 
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Saving...';
             btn.disabled = true;
 
             const currentUser = getCurrentUser();
-            const hospName = currentUser?.name || 'General Hospital';
+            const hospName = hospitalScopeName();
             try {
                 await setInventoryThreshold(bloodType, value, hospName);
                 close();
@@ -6958,7 +7176,7 @@ function initThresholdModal() {
                 loadHospitalInventoryData();
             } catch (err) {
                 console.error('Failed to set threshold:', err);
-                alert('Failed to set threshold.');
+                window.vpNotify('Failed to set threshold.');
             } finally {
                 btn.innerHTML = 'Save Threshold';
                 btn.disabled = false;
@@ -7074,7 +7292,7 @@ function initRemoveStockModal() {
             btn.disabled = true;
 
             const currentUser = getCurrentUser();
-            const hospName = currentUser?.name || 'General Hospital';
+            const hospName = hospitalScopeName();
             try {
                 const bloodType = document.getElementById('removeStockBloodType').value;
                 const units = parseInt(document.getElementById('removeStockUnits').value, 10);
@@ -7086,7 +7304,7 @@ function initRemoveStockModal() {
                 loadHospitalInventoryData();
             } catch (err) {
                 console.error('Failed to remove stock:', err);
-                alert('Failed to remove stock.');
+                window.vpNotify('Failed to remove stock.');
             } finally {
                 btn.innerHTML = 'Remove from Inventory';
                 btn.disabled = false;
@@ -7123,7 +7341,7 @@ async function loadInventoryMovements() {
     if (!container) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const movements = await fetchInventoryMovements(hospitalName);
@@ -7181,7 +7399,7 @@ async function loadHemovigilanceView() {
     if (!listEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const reports = await fetchHemovigilanceReports(hospitalName);
@@ -7250,7 +7468,7 @@ window.updateHemoStatus = async (reportId, status) => {
         loadHemovigilanceView();
     } catch (err) {
         console.error('Failed to update report status:', err);
-        alert('Failed to update report status.');
+        window.vpNotify('Failed to update report status.');
     }
 };
 
@@ -7270,7 +7488,7 @@ function initHemovigilanceModal() {
                 batchId: document.getElementById('hemoBatchId').value,
                 patientInitials: document.getElementById('hemoPatientInitials').value,
                 description: document.getElementById('hemoDescription').value,
-                hospitalName: currentUser?.name || 'General Hospital',
+                hospitalName: hospitalScopeName(),
                 reportedBy: currentUser?.name || null
             });
             window.closeHemovigilanceModal();
@@ -7278,7 +7496,7 @@ function initHemovigilanceModal() {
             loadHemovigilanceView();
         } catch (err) {
             console.error('Failed to submit hemovigilance report:', err);
-            alert('Failed to submit report. Please try again.');
+            window.vpNotify('Failed to submit report. Please try again.');
         } finally {
             btn.disabled = false;
         }
@@ -7335,7 +7553,7 @@ function renderForecastGrid(forecasts) {
 
 async function loadForecastingView() {
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const liveForecast = await computeDemandForecast(hospitalName);
@@ -7368,7 +7586,7 @@ async function loadForecastingView() {
 }
 
 window.generateDemandForecast = async (btn) => {
-    const hospitalName = getCurrentUser()?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
     if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
     try {
         const forecasts = await computeDemandForecast(hospitalName);
@@ -7382,7 +7600,7 @@ window.generateDemandForecast = async (btn) => {
         loadForecastingView();
     } catch (err) {
         console.error('Failed to generate demand forecast:', err);
-        alert('Failed to generate forecast. Please try again.');
+        window.vpNotify('Failed to generate forecast. Please try again.');
     } finally {
         if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
     }
@@ -7460,7 +7678,7 @@ function initMythArticleModal() {
             loadMythBustingView();
         } catch (err) {
             console.error('Failed to publish article:', err);
-            alert('Failed to publish article. Please try again.');
+            window.vpNotify('Failed to publish article. Please try again.');
         } finally {
             btn.disabled = false;
         }
@@ -7487,7 +7705,7 @@ async function loadCertificatesView() {
     if (!listEl) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const certs = await fetchHospitalIssuedCertificates(hospitalName);
@@ -7535,7 +7753,7 @@ function initIssueCertModal() {
                 bloodType: document.getElementById('certBloodType').value,
                 donationCount: parseInt(document.getElementById('certDonationCount').value, 10),
                 unitsDonated: parseInt(document.getElementById('certUnitsDonated').value, 10),
-                hospitalName: currentUser?.name || 'General Hospital',
+                hospitalName: hospitalScopeName(),
                 issuedBy: currentUser?.name || null
             });
             window.closeIssueCertModal();
@@ -7543,7 +7761,7 @@ function initIssueCertModal() {
             loadCertificatesView();
         } catch (err) {
             console.error('Failed to issue certificate:', err);
-            alert('Failed to issue certificate. Please try again.');
+            window.vpNotify('Failed to issue certificate. Please try again.');
         } finally {
             btn.disabled = false;
         }
@@ -7572,7 +7790,7 @@ async function loadDashboardChart() {
     if (!canvas) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const requests = await fetchHospitalRequests(hospitalName);
@@ -7653,7 +7871,7 @@ window.printRequestSlip = async (requestId) => {
     try {
         const docRef = doc(db, 'requests', requestId);
         const snapshot = await getDoc(docRef);
-        if (!snapshot.exists()) { alert('Request not found.'); return; }
+        if (!snapshot.exists()) { window.vpNotify('Request not found.'); return; }
 
         const reqData = { id: snapshot.id, ...snapshot.data() };
 
@@ -7704,7 +7922,7 @@ window.printRequestSlip = async (requestId) => {
         printWindow.document.close();
     } catch (err) {
         console.error('Failed to print slip:', err);
-        alert('Failed to generate print slip.');
+        window.vpNotify('Failed to generate print slip.');
     }
 };
 
@@ -7712,7 +7930,7 @@ window.printDonorSlip = async (donationId) => {
     try {
         const docRef = doc(db, 'donation_requests', donationId);
         const snapshot = await getDoc(docRef);
-        if (!snapshot.exists()) { alert('Donation not found.'); return; }
+        if (!snapshot.exists()) { window.vpNotify('Donation not found.'); return; }
         const data = { id: snapshot.id, ...snapshot.data() };
         const printWindow = window.open('', '_blank', 'width=600,height=800');
         printWindow.document.write(`
@@ -7746,7 +7964,7 @@ window.printDonorSlip = async (donationId) => {
         printWindow.document.close();
     } catch (err) {
         console.error('Failed to print donation slip:', err);
-        alert('Failed to generate donation slip.');
+        window.vpNotify('Failed to generate donation slip.');
     }
 };
 
@@ -7857,7 +8075,7 @@ async function loadHospitalCampaignsView() {
     if (!grid) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
     const hospitalCity = currentUser?.city || '';
 
     try {
@@ -7933,7 +8151,7 @@ window.handleJoinCampaign = async (campaignId, hospitalName, hospitalCity) => {
         loadHospitalCampaignsView();
     } catch (err) {
         console.error('Failed to join campaign:', err);
-        alert(err.message || 'Failed to join campaign.');
+        window.vpNotify(err.message || 'Failed to join campaign.');
     }
 };
 
@@ -7944,7 +8162,7 @@ window.handleLeaveCampaign = async (campaignId, hospitalName) => {
         loadHospitalCampaignsView();
     } catch (err) {
         console.error('Failed to leave campaign:', err);
-        alert(err.message || 'Failed to leave campaign.');
+        window.vpNotify(err.message || 'Failed to leave campaign.');
     }
 };
 
@@ -7957,7 +8175,7 @@ async function loadNotificationHistory() {
     if (!container) return;
 
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = hospitalScopeName();
 
     try {
         const logs = await fetchNotificationLog(hospitalName);
@@ -8003,8 +8221,7 @@ function initNotificationFeatures() {
     const testBtn = document.getElementById('btnSendTestNotification');
     if (testBtn) {
         testBtn.addEventListener('click', async () => {
-            const currentUser = getCurrentUser();
-            const phone = currentUser?.phone || '+237 6XX XXX XXX';
+            const phone = (await fetchOwnContactPhone()) || '+237 6XX XXX XXX';
             try {
                 const result = await sendWhatsAppNotification(phone, `[VitalPulse] Test notification from ${currentUser?.name || 'Hospital'} — All systems operational.`);
                 if (result.link) {
@@ -8014,7 +8231,7 @@ function initNotificationFeatures() {
                 loadNotificationHistory();
             } catch (err) {
                 console.error('Failed to send test:', err);
-                alert('Failed to send test notification.');
+                window.vpNotify('Failed to send test notification.');
             }
         });
     }

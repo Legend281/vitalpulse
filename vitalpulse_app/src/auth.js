@@ -1,6 +1,7 @@
 import {
     createUserWithEmailAndPassword,
     signInWithEmailAndPassword,
+    signInWithCustomToken,
     signOut,
     onAuthStateChanged,
     updateProfile,
@@ -12,7 +13,7 @@ import {
 import { doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from './firebase';
-import { authenticateStaffDirectLoginCall, formatStaffAuthPassword, tryAutoHealStaffAccount } from './db';
+import { authenticateStaffDirectLoginCall } from './db';
 
 const checkDuplicateCniFn = httpsCallable(getFunctions(), 'checkDuplicateCni');
 
@@ -32,7 +33,6 @@ export async function resolveSignInEmail(identifier) {
 // to be invoked from here rather than firing automatically.
 const onDonorSignUpFn = httpsCallable(getFunctions(), 'onDonorSignUp');
 
-let currentUser = null;
 export async function hashNationalId(nationalIdText) {
     if (!nationalIdText) return null;
     const clean = nationalIdText.trim().replace(/[\s-]/g, '').toUpperCase() + '_VITALPULSE_SALT_2026';
@@ -201,9 +201,11 @@ export async function registerUser(email, password, role, additionalData) {
         );
 
         const newUser = { uid: user.uid, email, role, kycBootstrapFailed, ...additionalData };
-        // Strip sensitive PII from localStorage — phone, city, raw CNI never stored client-side
+        // Strip sensitive PII from localStorage — phone and raw CNI never stored
+        // client-side. `city` is intentionally kept: see the equivalent comment in
+        // loginUser() — stripping it stamped every emergency request with
+        // `city: 'Cameroon'` and silently disabled donor matching entirely.
         delete newUser.phone;
-        delete newUser.city;
         delete newUser.nationalId;
         localStorage.setItem('vitalpulse_user', JSON.stringify(newUser));
         return newUser;
@@ -273,109 +275,115 @@ export async function setLoginPersistence(remember) {
     await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
 }
 
+/**
+ * Resolves the hospital a user belongs to, as BOTH keys the app needs:
+ *   - hospitalId   — the hospital account's uid, used by claims-scoped rules
+ *   - hospitalName — the hospital's display name, used by every hospital-scoped
+ *                    Firestore query (inventory/requests/incoming donors are all
+ *                    keyed on the name, not the id)
+ *
+ * For a hospital account these are its own uid/name. For a staff sub-account
+ * they come from the hospital it is scoped to — NOT from the staff member, whose
+ * own name is a person's name. Getting this wrong is what made every staff
+ * dashboard render empty: `where('hospital','==','Patricia')` matches nothing.
+ */
+async function resolveHospitalIdentity(uid, userData, claims) {
+    const hospitalId = claims?.hospitalId || userData?.hospitalId || null;
+
+    // Not hospital-scoped at all (donor/admin) — nothing to resolve.
+    if (!hospitalId && !isHospitalAccount(userData, claims)) {
+        return { hospitalId: null, hospitalName: null, hospitalCity: null };
+    }
+
+    // The account IS the hospital.
+    if (!hospitalId) {
+        return { hospitalId: uid, hospitalName: userData?.name || null, hospitalCity: userData?.city || null };
+    }
+
+    if (userData?.hospitalName && userData?.hospitalCity) {
+        return { hospitalId, hospitalName: userData.hospitalName, hospitalCity: userData.hospitalCity };
+    }
+
+    try {
+        const snap = await getDoc(doc(db, 'users', hospitalId));
+        if (snap.exists()) {
+            const h = snap.data();
+            return {
+                hospitalId,
+                hospitalName: userData?.hospitalName || h.name || null,
+                // The hospital's city, NOT the staff member's. Emergency requests
+                // are stamped with this and matched on it — a nurse's personal city
+                // (usually absent) would break matching for the whole facility.
+                hospitalCity: h.city || null,
+            };
+        }
+    } catch (e) {
+        console.warn('Could not resolve hospital identity for', hospitalId, e?.message || e);
+    }
+    return { hospitalId, hospitalName: userData?.hospitalName || null, hospitalCity: null };
+}
+
+function isHospitalAccount(userData, claims) {
+    if (userData?.role === 'hospital') return true;
+    const roles = Array.isArray(claims?.roles) ? claims.roles : [];
+    return roles.includes('hospital_admin') || claims?.role === 'hospital_admin';
+}
+
+const STAFF_PIN_PATTERN = /^\d{4}$/;
+
 export async function loginUser(email, password) {
     const cleanEmail = (email || '').trim().toLowerCase();
-    console.log('[Auth Debug] Starting loginUser for:', cleanEmail);
     let userCredential;
 
-    // Attempt 1: Raw password
     try {
-        console.log('[Auth Debug] Attempt 1: signInWithEmailAndPassword (raw password)');
         userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-        console.log('[Auth Debug] Attempt 1 SUCCESS');
     } catch (primaryErr) {
-        console.warn('[Auth Debug] Attempt 1 failed:', primaryErr?.code || primaryErr?.message);
-
-        // Attempt 2: Padded staff PIN password ('VP_PIN_' + password)
+        // Staff sub-accounts sign in with a 4-digit PIN, not a password. The PIN is
+        // verified SERVER-SIDE (functions/src/staffManagement.ts) against a salted
+        // scrypt hash, rate-limited, and exchanged for a Firebase custom token.
+        //
+        // The old flow instead derived an Auth password from the PIN ('VP_PIN_1234')
+        // and tried it here, then fell back to a client-side "auto-heal" that read a
+        // seeded credential out of the bundle. Both are gone: recovering a PIN no
+        // longer grants account access, because the PIN is no longer a password.
+        if (!STAFF_PIN_PATTERN.test(String(password || '').trim())) {
+            throw primaryErr;
+        }
         try {
-            const padded = formatStaffAuthPassword(password);
-            console.log('[Auth Debug] Attempt 2: signInWithEmailAndPassword with padded PIN:', padded);
-            userCredential = await signInWithEmailAndPassword(auth, cleanEmail, padded);
-            console.log('[Auth Debug] Attempt 2 SUCCESS');
-        } catch (secondaryErr) {
-            console.warn('[Auth Debug] Attempt 2 failed:', secondaryErr?.code || secondaryErr?.message);
-
-            // Attempt 3: Auto-heal staff account from local registry
-            console.log('[Auth Debug] Attempt 3: Invoking tryAutoHealStaffAccount...');
-            let healed = false;
-            try {
-                healed = await tryAutoHealStaffAccount(cleanEmail, password);
-                console.log('[Auth Debug] tryAutoHealStaffAccount returned:', healed);
-            } catch (healErr) {
-                console.warn('[Auth Debug] tryAutoHealStaffAccount error:', healErr?.message || healErr);
-            }
-
-            if (healed) {
-                try {
-                    const padded = formatStaffAuthPassword(password);
-                    console.log('[Auth Debug] Attempt 4 (post-heal): signInWithEmailAndPassword with:', padded);
-                    userCredential = await signInWithEmailAndPassword(auth, cleanEmail, padded);
-                    console.log('[Auth Debug] Attempt 4 SUCCESS');
-                } catch (retryErr) {
-                    console.error('[Auth Debug] Attempt 4 failed after heal:', retryErr);
-                    throw primaryErr;
-                }
-            } else {
-                console.error('[Auth Debug] All login attempts failed. Re-throwing primary error:', primaryErr);
-                throw primaryErr;
-            }
+            const staffRes = await authenticateStaffDirectLoginCall({ email: cleanEmail, pin: password });
+            if (!staffRes?.token) throw primaryErr;
+            userCredential = await signInWithCustomToken(auth, staffRes.token);
+        } catch (staffErr) {
+            // Surface the server's message for real staff failures (locked out,
+            // deactivated); otherwise keep the original password error so a
+            // mistyped donor password doesn't read as a staff problem.
+            const isStaffSignal = staffErr?.message
+                && !/incorrect email or 4-digit pin/i.test(staffErr.message)
+                && staffErr !== primaryErr;
+            throw isStaffSignal ? staffErr : primaryErr;
         }
     }
+
     try {
         const user = userCredential.user;
 
         let role = 'donor';
         let userData = {};
 
-        // Gracefully handle Firestore permission errors & self-provision staff user docs
         try {
-            const userDocRef = doc(db, 'users', user.uid);
-            const userDoc = await getDoc(userDocRef);
-
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
             if (userDoc.exists()) {
                 userData = userDoc.data();
                 role = userData.role || role;
-            } else {
-                // User doc does not exist — check if this authenticated user matches a staff account
-                const staffRegRaw = localStorage.getItem('vitalpulse_staff_registry');
-                let staffRecord = null;
-                if (staffRegRaw) {
-                    try {
-                        const reg = JSON.parse(staffRegRaw);
-                        staffRecord = reg[cleanEmail];
-                    } catch (e) { /* ignore */ }
-                }
-
-                if (staffRecord) {
-                    console.log('[Auth Debug] Resolving staff user profile for:', cleanEmail, staffRecord);
-                    userData = {
-                        uid: user.uid,
-                        email: cleanEmail,
-                        name: staffRecord.name || cleanEmail.split('@')[0],
-                        role: staffRecord.roles ? staffRecord.roles[0] : (staffRecord.role || 'reception'),
-                        roles: staffRecord.roles || [staffRecord.role || 'reception'],
-                        hospitalId: staffRecord.hospitalId,
-                        isStaffAccount: true,
-                        createdAt: new Date().toISOString()
-                    };
-                    role = userData.role;
-                    // Self-provision users/{uid} document now that client is authenticated as user.uid
-                    try {
-                        await setDoc(userDocRef, userData);
-                        console.log('[Auth Debug] Successfully self-provisioned users/' + user.uid + ' profile doc');
-                    } catch (writeErr) {
-                        console.warn('[Auth Debug] Failed to self-provision users doc:', writeErr);
-                    }
-                }
             }
         } catch (firestoreError) {
             console.warn("Firestore read failed (rules may be locked), defaulting to donor role:", firestoreError);
         }
 
-        // Custom claims (role/kycStatus/suspended) are the REAL authority — the Firestore
-        // `role` field above is cosmetic routing only (see firestore.rules' header comment).
-        // Force a refresh so a claim change since the last cached token (suspension, KYC
-        // review) is reflected immediately rather than up to ~1h later.
+        // Custom claims (role/roles/hospitalId/kycStatus/suspended) are the REAL
+        // authority — the Firestore `role` field is cosmetic routing only. Force a
+        // refresh so a claim change since the last cached token (suspension, KYC
+        // review, a just-granted staff role) is reflected immediately.
         let claims = {};
         try {
             const tokenResult = await user.getIdTokenResult(true);
@@ -384,42 +392,56 @@ export async function loginUser(email, password) {
             console.warn('Failed to read ID token claims:', claimsError);
         }
 
+        const { hospitalId, hospitalName, hospitalCity } = await resolveHospitalIdentity(user.uid, userData, claims);
+
         const fullUser = {
             uid: user.uid,
             email: user.email,
             name: user.displayName || userData.name || cleanEmail.split('@')[0],
             ...userData,
-            // Deliberately placed AFTER the ...userData spread so the token claim always
-            // wins if a field ever collides — role here overrides userData.role.
+            // After the ...userData spread so a token claim always wins on collision.
             role: claims.role || userData.role || role,
-            // Multi-role array from custom claims (set by grantRole/createStaffAccount).
-            // Frontend roleGating.js reads this for hasAnyRole evaluation.
             roles: Array.isArray(claims.roles) ? claims.roles : (Array.isArray(userData.roles) ? userData.roles : undefined),
+            hospitalId,
+            hospitalName,
+            hospitalCity,
             kycStatus: claims.kycStatus || null,
             suspended: claims.suspended === true,
         };
 
-        if (userData.isStaffAccount || userData.hospitalId || ['nurse', 'reception', 'receptionist', 'lab_tech'].includes(fullUser.role)) {
-            const staffRoles = fullUser.roles || [fullUser.role || 'reception'];
+        const staffRoles = Array.isArray(fullUser.roles) ? fullUser.roles : [];
+        const isStaff = userData.isStaffAccount === true
+            || (!!claims.hospitalId && !!claims.staffUid)
+            || staffRoles.some(r => ['reception', 'nurse', 'lab_tech', 'hospital_staff'].includes(r));
+
+        if (isStaff) {
             fullUser.isStaffDirectLogin = true;
             try {
                 sessionStorage.setItem('vitalpulse_active_staff', JSON.stringify({
                     uid: user.uid,
                     name: fullUser.name,
-                    roles: staffRoles,
+                    roles: staffRoles.length > 0 ? staffRoles : [fullUser.role],
                     switchedAt: new Date().toISOString(),
                     isDirectLogin: true,
                 }));
-            } catch (e) { /* ignore */ }
+            } catch (e) { /* sessionStorage unavailable — role gating falls back to claims */ }
         }
-        // Strip sensitive PII from localStorage
+
+        // PII hygiene: phone/nationalId/cniHash never enter localStorage — callers
+        // that genuinely need a phone number read it from Firestore at the point of
+        // use (see fetchOwnContactPhone).
+        //
+        // `city` is deliberately KEPT. Stripping it silently broke the matching
+        // engine: every emergency request was stamped `city: 'Cameroon'` (the
+        // `currentUser.city || 'Cameroon'` fallback), which matches no donor and no
+        // entry in CITY_COORDINATES, so autoMatchDonors returned an empty candidate
+        // set for every request ever created — no SMS, no in-app alert, nobody
+        // notified. A city name is not PHI; it is already public on every request.
         delete fullUser.phone;
-        delete fullUser.city;
         delete fullUser.nationalId;
         delete fullUser.cniHash;
         localStorage.setItem('vitalpulse_user', JSON.stringify(fullUser));
-        // Stamp last activity on the user doc (fire-and-forget so a failed write never
-        // blocks the login itself).
+
         try {
             await updateDoc(doc(db, 'users', user.uid), { lastActiveAt: new Date().toISOString() });
         } catch (e) {
@@ -427,34 +449,6 @@ export async function loginUser(email, password) {
         }
         return fullUser;
     } catch (error) {
-        try {
-            const staffRes = await authenticateStaffDirectLoginCall({ email, pin: password });
-            if (staffRes && staffRes.success) {
-                const staffUser = {
-                    uid: staffRes.staffUid,
-                    email: staffRes.email,
-                    name: staffRes.name,
-                    role: staffRes.roles[0],
-                    roles: staffRes.roles,
-                    hospitalId: staffRes.hospitalId,
-                    isStaffDirectLogin: true,
-                };
-                localStorage.setItem('vitalpulse_user', JSON.stringify(staffUser));
-                sessionStorage.setItem('vitalpulse_active_staff', JSON.stringify({
-                    uid: staffRes.staffUid,
-                    name: staffRes.name,
-                    roles: staffRes.roles,
-                    switchedAt: new Date().toISOString(),
-                    isDirectLogin: true,
-                }));
-                return staffUser;
-            }
-        } catch (staffErr) {
-            console.warn('Staff login attempt result:', staffErr?.message);
-            if (staffErr?.message && !staffErr.message.includes('No staff account found')) {
-                throw staffErr;
-            }
-        }
         console.error("Login error:", error);
         throw error;
     }
@@ -470,30 +464,78 @@ export async function logoutUser() {
     window.location.href = 'login.html';
 }
 
-export function onAuthChange(callback) {
-    return onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-            const userData = userDoc.exists() ? userDoc.data() : { role: 'donor' };
-            currentUser = { uid: user.uid, email: user.email, ...userData };
-            localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
-            callback(currentUser);
-        } else {
-            currentUser = null;
-            localStorage.removeItem('vitalpulse_user');
-            callback(null);
-        }
-    });
-}
+// REMOVED 2026-08-08: onAuthChange(). It was exported but never called anywhere,
+// and it wrote a DIFFERENT session shape than loginUser() — no claims, no
+// resolved hospital identity, and it re-introduced the PII that loginUser
+// strips. Had anything ever wired it up, it would have silently downgraded every
+// session. Use waitForAuthUser() + fetchVerifiedUser() below instead.
 
 export function getCurrentUser() {
     const stored = localStorage.getItem('vitalpulse_user');
     return stored ? JSON.parse(stored) : null;
 }
 
+/**
+ * The hospital NAME to scope Firestore queries by (inventory, requests, incoming
+ * donors and issuance are all keyed on the hospital's display name).
+ *
+ * For a staff sub-account this is the HOSPITAL's name, resolved at login and
+ * cached on the session as `hospitalName`. It deliberately no longer falls back
+ * to `user.name`: for a receptionist that is the person's own name, and the
+ * silent fallback is what made every staff-facing view query for a nonexistent
+ * hospital and render empty. When the identity is genuinely unresolved we return
+ * null so callers can show an error instead of querying for a wrong hospital.
+ */
 export function getEffectiveHospitalName(user) {
-    if (!user) return 'General Hospital';
-    return user.hospitalName || user.hospital || user.name || 'General Hospital';
+    if (!user) return null;
+    if (user.hospitalName) return user.hospitalName;
+    // A hospital's own account: its display name IS the hospital name. Staff
+    // accounts always carry hospitalId, so this branch can't catch them.
+    if (!user.hospitalId && user.role === 'hospital') return user.name || null;
+    return null;
+}
+
+/** The hospital's uid — what claims-scoped Firestore rules compare against. */
+export function getEffectiveHospitalId(user) {
+    if (!user) return null;
+    if (user.hospitalId) return user.hospitalId;
+    if (user.role === 'hospital') return user.uid || null;
+    return null;
+}
+
+/**
+ * The hospital's city — used to stamp and match emergency requests.
+ *
+ * Never falls back to a hardcoded city. `city: currentUser.city || 'Cameroon'`
+ * was the old pattern, and because `city` was stripped from the session it
+ * stamped EVERY emergency request with 'Cameroon' — a value that matches no
+ * donor and no entry in CITY_COORDINATES, so autoMatchDonors returned an empty
+ * candidate list for every request ever created and no donor was ever alerted.
+ * Returning null here forces the caller to handle "unknown city" honestly.
+ */
+export function getEffectiveHospitalCity(user) {
+    if (!user) return null;
+    if (user.hospitalCity) return user.hospitalCity;
+    if (!user.hospitalId && user.role === 'hospital') return user.city || null;
+    return null;
+}
+
+/**
+ * Reads the signed-in user's own phone number from Firestore on demand.
+ * `phone` is deliberately not cached in localStorage (PII), so the handful of
+ * call sites that genuinely need it — outbound SMS confirmations — fetch it
+ * here rather than silently reading `undefined` and skipping the send.
+ */
+export async function fetchOwnContactPhone() {
+    const current = getCurrentUser();
+    if (!current?.uid) return null;
+    try {
+        const snap = await getDoc(doc(db, 'users', current.uid));
+        return snap.exists() ? (snap.data().phone || null) : null;
+    } catch (e) {
+        console.warn('Could not read own contact phone:', e?.message || e);
+        return null;
+    }
 }
 
 // Resolves with the actual signed-in Firebase user (or null), straight from the

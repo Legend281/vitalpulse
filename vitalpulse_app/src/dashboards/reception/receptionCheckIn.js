@@ -1,7 +1,7 @@
 import { doc, getDoc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { logActivity, findRequestByCheckInToken, checkInDonor } from '../../db.js';
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
  * verifyAndCheckInToken - Handles donor passcode (VP-XXXX) search and front-desk check-in.
@@ -12,18 +12,27 @@ export async function verifyAndCheckInToken(tokenInput, hospitalName = '') {
     throw new Error('Please enter a valid donor check-in passcode (e.g. VP-9482)');
   }
 
-  // 1. Search for matching donation request or donor check-in token
-  const matched = await findRequestByCheckInToken(code);
-  if (!matched) {
-    throw new Error(`No active donor check-in record found for passcode "${code}". Check code or register as walk-in.`);
+  if (!hospitalName) {
+    throw new Error('Your account is not linked to a hospital yet, so donors cannot be checked in here.');
   }
 
-  const requestId = matched.requestId || matched.id;
-  const donorId = matched.donorId;
-  const donorName = matched.donorName || matched.name || 'Donor';
+  // 1. Resolve the pass code across requests / public_requests / donation_requests,
+  //    scoped to this hospital. This used to call findRequestByCheckInToken(code)
+  //    with the collection argument omitted, so it threw on `collection(db,
+  //    undefined)` — the front-desk check-in box never worked at all.
+  const matched = await findRequestByCheckInToken(code, hospitalName);
+  if (!matched) {
+    throw new Error(`No active donor check-in record found for passcode "${code}" at your hospital. Check the code or register the donor as a walk-in.`);
+  }
 
-  // 2. Perform check-in state update
-  await checkInDonor(requestId, donorId);
+  const requestId = matched.id;
+  const donorId = matched.matchedDonor || matched.donorId || null;
+  const donorName = matched.donorName || 'Donor';
+
+  // 2. Advance the journey. The second argument is the source collection the
+  //    code was found in — previously a donorId was passed here, which
+  //    checkInDonor silently ignored.
+  await checkInDonor(requestId, matched.sourceCollection);
 
   await logActivity(
     'Front-Desk Donor Arrival',
@@ -88,7 +97,7 @@ export async function saveDonorEtaNote(requestId, donorName, noteText) {
   await addDoc(collection(db, 'reception_notes'), {
     requestId: requestId || null,
     donorName: donorName || 'Donor',
-    hospitalName: currentUser?.name || 'Hospital Reception',
+    hospitalName: getEffectiveHospitalName(currentUser),
     note: cleanNote,
     createdBy: currentUser?.email || 'Receptionist',
     createdAt: now

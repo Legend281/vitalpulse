@@ -13,11 +13,9 @@ orderBy,
 limit,
 startAfter,
 onSnapshot,
-runTransaction,
-collectionGroup
+runTransaction
 } from "firebase/firestore";
-import { db, secondaryAuth } from './firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, signOut } from 'firebase/auth';
+import { db } from './firebase';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getCurrentUser } from './auth';
 
@@ -154,11 +152,27 @@ export async function fetchActiveRequests() {
 }
 
 export async function createEmergencyRequest(requestData) {
-    // Stamp the owning hospital's uid so the claims-based security rules (staged
-    // firestore.rules) can scope the request to the creator's hospitalId. For admin
-    // Central-Command broadcasts there is no owning hospital; the rules' system_admin
-    // branch permits those without a hospitalId.
-    const hospitalId = getCurrentUser()?.uid || requestData.hospitalId || null;
+    // Stamp the OWNING HOSPITAL's uid so the claims-based rules can scope the
+    // request. This must be the hospital's own uid, never the signed-in user's:
+    // for a staff sub-account those differ, and the old `getCurrentUser()?.uid`
+    // stamped the nurse's uid — which no rule's sameHospital() check can match,
+    // so the request became unreadable and unwritable by the very hospital that
+    // created it. Callers pass an explicitly resolved hospitalId (see
+    // requireHospitalScope in main.js); the getCurrentUser() fallback only
+    // applies to a hospital's own account, where uid IS the hospitalId. Admin
+    // Central-Command broadcasts have no owning hospital and pass null.
+    const current = getCurrentUser();
+    const hospitalId = requestData.hospitalId
+        || (current?.hospitalId ? current.hospitalId : (current?.role === 'hospital' ? current.uid : null));
+
+    if (!requestData.city) {
+        // A request with no city can never be matched: autoMatchDonors resolves
+        // coordinates from it and filters candidates by it. Failing loudly here
+        // beats the old `|| 'Cameroon'` fallback, which produced a request that
+        // looked fine and silently notified nobody.
+        throw new Error('Cannot create a request without a city. Set your hospital city in Settings first.');
+    }
+
     const docRef = await addDoc(collection(db, 'requests'), {
         ...requestData,
         hospitalId,
@@ -186,7 +200,53 @@ export async function createEmergencyRequest(requestData) {
     return result;
 }
 
-export async function fetchMatchedRequestsForDonor(bloodType, location) {
+// One radius for the whole app. Donor-facing feeds, public-request broadcast and
+// autoMatchDonors' non-critical tier all use this so a donor never sees a request
+// they wouldn't have been alerted about, or vice versa.
+export const DEFAULT_DONOR_RADIUS_KM = 50;
+
+/**
+ * The donor's effective location — ONE model, used by every matching path.
+ *
+ * Previously the model was half-applied: enabling GPS wrote lat/lng (which the
+ * public-request radius filter used) plus a `gpsCity` field that nothing in the
+ * codebase ever read, while hospital-request matching stayed on exact equality
+ * against the REGISTERED city. So turning GPS on moved the radius origin to the
+ * donor's true position while leaving city matching where it was, and requests
+ * silently disappeared from the feed with the banner still showing the new city.
+ *
+ * Now: if GPS coordinates are on file they define both the coordinates AND the
+ * effective city (via the nearest-city reverse lookup stored as `gpsCity`);
+ * otherwise the registered city's centroid is used for both.
+ */
+export function getEffectiveDonorLocation(user) {
+    if (!user) return { lat: null, lon: null, city: null, source: 'none' };
+
+    const hasGps = user.locationSource === 'gps' && user.lat != null && user.lng != null;
+    if (hasGps) {
+        const coords = getCoordinatesForLocation(null, user.lat, user.lng);
+        if (coords) {
+            return { lat: coords.lat, lon: coords.lon, city: user.gpsCity || user.city || null, source: 'gps' };
+        }
+    }
+    const cityCoords = getCoordinatesForLocation(user.city);
+    return {
+        lat: cityCoords?.lat ?? null,
+        lon: cityCoords?.lon ?? null,
+        city: user.city || null,
+        source: cityCoords ? 'city' : 'none',
+    };
+}
+
+/**
+ * @param {string} bloodType
+ * @param {string|null} location  the donor's effective city
+ * @param {{lat?: number, lon?: number, radiusKm?: number}} [geo]  when the donor
+ *   has usable coordinates, requests within `radiusKm` of them also match, not
+ *   just exact-city-string ones. Without this a donor 5 km outside the city
+ *   boundary is invisible to the hospital next door.
+ */
+export async function fetchMatchedRequestsForDonor(bloodType, location, geo = {}) {
     // Read cap so one donor's dashboard can never pull an unbounded number of Open requests
     // no matter how large the deployment gets. Compatibility + city are computed/filtered
     // client-side below (blood-type compatibility isn't a simple equality query), so we take a
@@ -212,10 +272,24 @@ export async function fetchMatchedRequestsForDonor(bloodType, location) {
         return getCompatibleDonorTypes(needed, r.componentType || 'Whole Blood').includes(bloodType);
     });
     if (location) {
-        // Show requests in the donor's own city, plus system-wide/national broadcasts
-        results = results.filter(r =>
-            r.city === location || r.city === 'National' || r.hospital === 'Central Command'
-        );
+        // Own city, OR within radius of the donor's real position, OR a
+        // system-wide broadcast. City comparison is case/whitespace-insensitive:
+        // 'Buea' vs 'buea ' used to be treated as two different places.
+        const norm = (c) => (c || '').trim().toLowerCase();
+        const target = norm(location);
+        const { lat, lon, radiusKm = DEFAULT_DONOR_RADIUS_KM } = geo || {};
+        results = results.filter(r => {
+            if (norm(r.city) === target) return true;
+            if (r.city === 'National' || r.hospital === 'Central Command') return true;
+            if (lat != null && lon != null) {
+                const reqCoords = getCoordinatesForLocation(r.city, r.lat, r.lng);
+                if (reqCoords) {
+                    const dist = calculateDistanceKm(lat, lon, reqCoords.lat, reqCoords.lon);
+                    if (dist !== null && dist <= radiusKm) return true;
+                }
+            }
+            return false;
+        });
     }
     // Most-urgent-first, then most-recent — so a donor waking up to a full feed sees the
     // requests that matter most at the top. Display pagination (5 at a time) happens in the UI.
@@ -507,6 +581,19 @@ export async function donorCancelAssignedRequest(requestId, donorId) {
         throw new Error('You are not the assigned donor for this request.');
     }
 
+    // Lifecycle guard. Withdrawal only makes sense before the donor has been
+    // physically checked in — after that a real unit may already have been drawn
+    // and placed in lab quarantine. Without this check, a call from the console
+    // at any later stage reset the request to Open and nulled matchedDonor,
+    // orphaning the collected unit and its donor linkage. The UI already hides
+    // the button past this point; this makes it true of the data path too.
+    const WITHDRAWABLE_STATUSES = ['Donor Assigned', 'Donor En Route'];
+    if (!WITHDRAWABLE_STATUSES.includes(reqData.status)) {
+        throw new Error(
+            `This donation can no longer be withdrawn (status: "${reqData.status}"). Speak to the hospital directly.`
+        );
+    }
+
     const resetStatus = sourceCollection === 'public_requests' ? 'Broadcasting' : 'Open';
     await updateDoc(reqDoc, {
         status: resetStatus,
@@ -615,7 +702,14 @@ export async function addHospitalNotification(hospitalId, title, message, type =
     }
 }
 
+// NOTE: `hospitalId` here is the HOSPITAL account's uid, which is what
+// addHospitalNotification() addresses every notification to. Call sites used to
+// pass the signed-in user's uid, which is the same thing for a hospital account
+// but NOT for a staff sub-account — so every receptionist, nurse and lab tech
+// had a permanently empty notification bell (donor assigned, donor en route,
+// donation completed, lab result, low stock: none of it ever appeared).
 export async function fetchHospitalNotifications(hospitalId, max = 20) {
+    if (!hospitalId) return [];
     // Sorted/limited client-side to avoid requiring a composite index for hospitalId + createdAt.
     const q = query(
         collection(db, 'hospital_notifications'),
@@ -627,6 +721,7 @@ export async function fetchHospitalNotifications(hospitalId, max = 20) {
 }
 
 export async function fetchUnreadHospitalNotificationCount(hospitalId) {
+    if (!hospitalId) return 0;
     const q = query(
         collection(db, 'hospital_notifications'),
         where('hospitalId', '==', hospitalId),
@@ -840,7 +935,13 @@ export async function autoMatchDonors(requestId, requestData) {
 
     const componentType = requestData.componentType || 'Whole Blood';
     const compatibleTypes = getCompatibleDonorTypes(bloodTypeNeeded, componentType);
-    const maxRadiusKm = (requestData.urgency === 'critical' || requestData.isEmergency) ? 50 : 25;
+    // Same radius the donor-facing feed uses (DEFAULT_DONOR_RADIUS_KM), widened
+    // for critical/emergency. Keeping these in sync matters: if the alert radius
+    // were narrower than the feed radius, a donor would see a request they were
+    // never alerted to; if wider, they'd be alerted to one they cannot find.
+    const maxRadiusKm = (requestData.urgency === 'critical' || requestData.isEmergency)
+        ? DEFAULT_DONOR_RADIUS_KM
+        : Math.round(DEFAULT_DONOR_RADIUS_KM / 2);
 
     // Resolve hospital coordinates (or fallback to city coords)
     const hospCoords = getCoordinatesForLocation(location, requestData.lat, requestData.lon);
@@ -866,13 +967,16 @@ export async function autoMatchDonors(requestId, requestData) {
         // Donor GPS coords are stored as lat/lng (see donor-dashboard.js's
         // enableLiveGpsLocation), not lat/lon — pass donor.lng here, not donor.lon,
         // or this always falls through to the city-centroid fallback.
-        const donorCoords = getCoordinatesForLocation(donor.city, donor.lat, donor.lng);
+        // Same effective-location model the donor's own feed uses, so the alert
+        // list and what the donor can actually see never diverge.
+        const effective = getEffectiveDonorLocation(donor);
+        const donorCoords = effective.lat != null ? { lat: effective.lat, lon: effective.lon } : null;
         let dist = null;
         if (hospCoords && donorCoords) {
             dist = calculateDistanceKm(hospCoords.lat, hospCoords.lon, donorCoords.lat, donorCoords.lon);
         }
 
-        const isExactCity = location && donor.city && donor.city.trim().toLowerCase() === location.trim().toLowerCase();
+        const isExactCity = location && effective.city && effective.city.trim().toLowerCase() === location.trim().toLowerCase();
         const isWithinRadius = dist !== null && dist <= maxRadiusKm;
 
         // Include donor if system-wide, exact city match, OR within geographic radius (25km/50km)
@@ -2177,464 +2281,251 @@ export async function fetchHospitalRequests(hospitalName) {
         .sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
 }
 
-// Front-desk / admin manual check-in only ever has the pass code the donor shows at reception —
-// not the underlying request id — so this is the lookup both the hospital's "Enter Donor
-// Check-in Code" box and admin's shadow-hospital intake box need before they can act.
-export async function findRequestByCheckInToken(checkInToken, collectionName) {
-    const normalized = (checkInToken || '').replace(/[^A-Za-z0-9-]/g, '').toUpperCase();
-    if (!normalized) return null;
-    let q = query(collection(db, collectionName), where('checkInToken', '==', normalized));
-    let snapshot = await getDocs(q);
-    
-    if (snapshot.empty && collectionName !== 'donation_requests') {
-        const donationReqQ = query(collection(db, 'donation_requests'), where('checkInToken', '==', normalized));
-        snapshot = await getDocs(donationReqQ);
-    }
+// The three collections a check-in pass code can belong to. `requests` and
+// `public_requests` are emergency journeys; `donation_requests` is a donor's
+// self-scheduled booking, which also gets a pass code (7-day window) but used to
+// have no reachable check-in path at all — reception's lookup demanded status
+// 'Donor En Route', which a booking never reaches, so a scheduled donor arriving
+// with a valid code was always turned away.
+const CHECK_IN_COLLECTIONS = ['requests', 'public_requests', 'donation_requests'];
 
-    if (snapshot.empty) return null;
-    const docSnap = snapshot.docs[0];
-    const data = docSnap.data();
+// Statuses a record may hold at the moment reception verifies the pass code.
+// Emergency journeys must be en route; bookings must be pending/approved.
+const CHECK_IN_ELIGIBLE_STATUSES = {
+    requests: ['Donor En Route'],
+    public_requests: ['Donor En Route'],
+    donation_requests: ['pending', 'approved'],
+};
 
-    if (data.checkInTokenExpiresAt && new Date(data.checkInTokenExpiresAt) < new Date()) {
-        throw new Error('This check-in pass code has expired.');
-    }
-
-    return { id: docSnap.id, ...data };
+function hospitalOf(data) {
+    return data.hospital || data.hospitalName || data.preferredLocation || null;
 }
 
-// intakeData carries what the hospital captured at the physical intake step: units actually
-// collected, component type, expiry, an optional lab-confirmed blood type, and screening
-// answers gathered from the donor before accepting the request. This is what makes the
-// emergency-request donation path — the app's main real-world donation flow — actually create
-// a real, testable blood unit instead of just closing the request with no record at all.
-export async function checkInDonor(requestId) {
-    let reqDoc = doc(db, 'requests', requestId);
-    let sourceCollection = 'requests';
+/**
+ * Front-desk pass code lookup. Reception only ever has the code the donor shows,
+ * not the underlying record id, so this resolves the code across all three
+ * collections and reports which one it came from.
+ *
+ * @param {string} checkInToken  the VP-XXXX-XXXX code
+ * @param {string|null} hospitalName  when given, the record must belong to this
+ *   hospital — a desk must not be able to check in another facility's donor.
+ *   Previously the caller filtered this itself and only for `requests`.
+ */
+export async function findRequestByCheckInToken(checkInToken, hospitalName = null) {
+    const normalized = (checkInToken || '').replace(/[^A-Za-z0-9-]/g, '').toUpperCase();
+    if (!normalized) return null;
+
+    for (const sourceCollection of CHECK_IN_COLLECTIONS) {
+        const snapshot = await getDocs(query(
+            collection(db, sourceCollection),
+            where('checkInToken', '==', normalized),
+            limit(5)
+        ));
+        for (const docSnap of snapshot.docs) {
+            const data = docSnap.data();
+            if (hospitalName && hospitalOf(data) !== hospitalName) continue;
+
+            if (data.checkInTokenExpiresAt && new Date(data.checkInTokenExpiresAt) < new Date()) {
+                throw new Error('This check-in pass code has expired. Ask the donor to re-accept the request.');
+            }
+            return { id: docSnap.id, sourceCollection, ...data };
+        }
+    }
+    return null;
+}
+
+/**
+ * Step 2->3 handoff, donor half: "I have arrived, here is my code."
+ *
+ * This deliberately does NOT advance the journey. The donor signals arrival and
+ * surfaces their pass code; only a member of hospital staff, having physically
+ * seen the donor and their CNI, completes the check-in (checkInDonor below).
+ *
+ * Before this split, the donor's own button called checkInDonor directly — the
+ * donor self-certified their arrival, the pass code was decorative, and the code
+ * path skipped the expiry check that only lives in the reception lookup. It also
+ * could not work at all: no Firestore rule lets a donor write 'Checked In'.
+ */
+export async function donorMarkArrived(requestId, donorId, isPublic = false) {
+    const reqRef = doc(db, isPublic ? 'public_requests' : 'requests', requestId);
+
+    const reqData = await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(reqRef);
+        if (!snapshot.exists()) throw new Error('Request not found');
+        const data = snapshot.data();
+
+        if (data.matchedDonor && data.matchedDonor !== donorId) {
+            throw new Error('You are not the assigned donor for this request.');
+        }
+        if (data.status !== 'Donor En Route') {
+            throw new Error('Start your trip before checking in at reception.');
+        }
+        if (data.checkInTokenExpiresAt && new Date(data.checkInTokenExpiresAt) < new Date()) {
+            throw new Error('Your check-in pass code has expired. Please contact the hospital.');
+        }
+
+        transaction.update(reqRef, {
+            arrivedAt: new Date().toISOString(),
+            receptionStatus: 'Awaiting Verification',
+        });
+        return data;
+    });
+
+    const hospitalName = hospitalOf(reqData);
+    await logActivity(
+        'Donor Arrived at Reception',
+        `Donor signalled arrival for request #${requestId.slice(0, 8)} at ${hospitalName || 'Unknown'} — awaiting front-desk verification.`,
+        'info'
+    ).catch(() => {});
+
+    // Tell the desk somebody is standing in front of them.
+    if (hospitalName) {
+        const hospitalSnap = await getDocs(query(
+            collection(db, 'users'),
+            where('name', '==', hospitalName),
+            where('role', '==', 'hospital'),
+            limit(5)
+        ));
+        for (const hDoc of hospitalSnap.docs) {
+            await addHospitalNotification(
+                hDoc.id,
+                'Donor Waiting at Reception',
+                `A donor has arrived for request #${requestId.slice(0, 8).toUpperCase()} and is waiting to be verified at the front desk. Ask for their pass code.`,
+                'info',
+                'donors'
+            ).catch(() => {});
+        }
+    }
+
+    return reqData;
+}
+
+/**
+ * Step 3, staff half: front desk confirms the donor is physically present and
+ * their identity matches, then advances the journey to 'Checked In'.
+ *
+ * @param {string} requestId
+ * @param {string|null} sourceCollection  from findRequestByCheckInToken; when
+ *   omitted the collection is probed, preserving older call sites.
+ */
+export async function checkInDonor(requestId, sourceCollection = null) {
+    const candidates = sourceCollection ? [sourceCollection] : CHECK_IN_COLLECTIONS;
+    let reqDoc = null;
+    let resolvedCollection = null;
     let reqData;
 
     await runTransaction(db, async (transaction) => {
-        let snapshot = await transaction.get(reqDoc);
-
-        if (!snapshot.exists()) {
-            reqDoc = doc(db, 'public_requests', requestId);
-            sourceCollection = 'public_requests';
-            snapshot = await transaction.get(reqDoc);
+        for (const name of candidates) {
+            const ref = doc(db, name, requestId);
+            const snapshot = await transaction.get(ref);
+            if (snapshot.exists()) {
+                reqDoc = ref;
+                resolvedCollection = name;
+                reqData = snapshot.data();
+                break;
+            }
         }
+        if (!reqDoc) throw new Error('Request not found');
 
-        if (!snapshot.exists()) throw new Error('Request not found');
-        reqData = snapshot.data();
-
-        if (reqData.status !== 'Donor En Route') {
-            throw new Error('Request must be in "Donor En Route" status before check-in.');
+        const eligible = CHECK_IN_ELIGIBLE_STATUSES[resolvedCollection] || ['Donor En Route'];
+        if (!eligible.includes(reqData.status)) {
+            throw new Error(
+                `This donor's status is "${reqData.status}" — check-in requires ${eligible.map(s => `"${s}"`).join(' or ')}.`
+            );
         }
 
         const now = new Date().toISOString();
         const currentUser = getCurrentUser();
-        await transaction.update(reqDoc, {
+        transaction.update(reqDoc, {
             status: 'Checked In',
             checkedInAt: now,
-            checkedInByStaffUid: currentUser?.uid || null
+            checkedInByStaffUid: currentUser?.uid || null,
+            receptionStatus: 'Checked In',
         });
     });
 
-    await logActivity('Donor Checked In', `Donor checked in at reception for request #${requestId.slice(0, 8)} at ${reqData.hospital || reqData.hospitalName || 'Unknown'}`, 'info');
+    await logActivity(
+        'Donor Checked In',
+        `Donor checked in at reception for request #${requestId.slice(0, 8)} at ${hospitalOf(reqData) || 'Unknown'}`,
+        'info'
+    );
 
-    const donorId = reqData.matchedDonor;
+    const donorId = reqData.matchedDonor || reqData.donorId;
     if (donorId) {
-        const msg = `[VitalPulse] 🏥 Reception Check-In Verified! You have checked in at ${reqData.hospital || reqData.hospitalName || 'the hospital'}. Please proceed to the donation room for vitals & blood draw.`;
+        const msg = `[VitalPulse] 🏥 Reception Check-In Verified! You have checked in at ${hospitalOf(reqData) || 'the hospital'}. Please proceed to the donation room for vitals & blood draw.`;
         await addDonorNotification(donorId, 'Reception Check-In Confirmed', msg, 'info').catch(() => {});
     }
-    return reqData;
+    return { ...reqData, sourceCollection: resolvedCollection };
 }
 
-async function hashPinFallback(pin) {
-    if (!pin) return null;
-    try {
-        if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-            const encoder = new TextEncoder();
-            const buffer = await window.crypto.subtle.digest('SHA-256', encoder.encode('VitalPulse_PIN_' + pin));
-            return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-    } catch (e) { /* fall through */ }
-
-    // Fallback for non-secure HTTP local IP context (e.g. http://192.168.1.116:5173)
-    const str = 'VitalPulse_PIN_' + pin;
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash |= 0;
-    }
-    return 'pin_hash_' + Math.abs(hash).toString(16);
-}
-
-function isLocalDev() {
-    if (typeof window === 'undefined') return false;
-    const h = window.location.hostname;
-    return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.') || h.endsWith('.local');
-}
-
-export function formatStaffAuthPassword(pin) {
-    if (!pin) return 'VP_PIN_1234';
-    const pinStr = String(pin).trim();
-    if (pinStr.length >= 6) return pinStr;
-    return 'VP_PIN_' + pinStr;
-}
-
-async function createStaffAccountFirestoreFallback(data) {
-    const { name, email, roles, hospitalId, pin } = data;
-    if (!hospitalId || !name || !email || !roles) {
-        throw new Error('Missing required staff fields (name, email, roles, hospitalId).');
-    }
-    const cleanEmail = email.trim().toLowerCase();
-
-    let staffUid = 'staff_' + Math.random().toString(36).slice(2, 10);
-
-    // Try creating a real Firebase Auth user via secondaryAuth instance (does not log out active admin)
-    try {
-        if (pin) {
-            const authPassword = formatStaffAuthPassword(pin);
-            const authUserRes = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, authPassword);
-            if (authUserRes && authUserRes.user) {
-                staffUid = authUserRes.user.uid;
-            }
-        }
-    } catch (authErr) {
-        console.warn('secondaryAuth createUserWithEmailAndPassword warning:', authErr?.message || authErr);
-    }
-
-    const pinHash = await hashPinFallback(pin);
-    const staffData = {
-        uid: staffUid,
-        name,
-        email: cleanEmail,
-        roles: Array.isArray(roles) ? roles : [roles],
-        role: Array.isArray(roles) ? roles[0] : roles,
-        hospitalId,
-        active: true,
-        isStaffAccount: true,
-        pinHash,
-        createdAt: new Date().toISOString()
-    };
-
-    // Write to users collection so native Firebase Auth login resolves staff role directly
-    try {
-        await setDoc(doc(db, 'users', staffUid), {
-            uid: staffUid,
-            email: cleanEmail,
-            name,
-            role: staffData.role,
-            roles: staffData.roles,
-            hospitalId,
-            isStaffAccount: true,
-            createdAt: new Date().toISOString()
-        });
-    } catch (e) {
-        console.warn('Failed to set staff user doc:', e);
-    }
-
-    await setDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid), staffData);
-    updateLocalStaffRegistry(staffData);
-    try {
-        await setDoc(doc(db, 'staff_accounts', cleanEmail), staffData);
-    } catch (e) {
-        console.warn('Failed to set staff_accounts index doc:', e);
-    }
-    return { success: true, staffUid, email: cleanEmail, roles: staffData.roles, hospitalId };
-}
-
-const SEEDED_STAFF_REGISTRY = {
-    'patricia.ngu@centralhosp.cm': {
-        name: 'Patricia Ngu',
-        email: 'patricia.ngu@centralhosp.cm',
-        roles: ['nurse', 'lab_tech'],
-        role: 'nurse',
-        hospitalId: 'central_hospital_yde',
-        pin: '4321',
-        active: true
-    }
-};
-
-export async function tryAutoHealStaffAccount(cleanEmail, pin) {
-    console.log('[AutoHeal Debug] Entering tryAutoHealStaffAccount for:', cleanEmail);
-    if (!cleanEmail || !pin) {
-        console.warn('[AutoHeal Debug] Missing cleanEmail or pin');
-        return false;
-    }
-    try {
-        const emailKey = cleanEmail.trim().toLowerCase();
-        let staffData = null;
-
-        // 1. Check local staff registry in localStorage
-        const raw = localStorage.getItem('vitalpulse_staff_registry');
-        if (raw) {
-            try {
-                const reg = JSON.parse(raw);
-                staffData = reg[emailKey];
-            } catch (e) { /* ignore */ }
-        }
-
-        // 2. Fallback to SEEDED_STAFF_REGISTRY if not found in local registry
-        if (!staffData && SEEDED_STAFF_REGISTRY[emailKey]) {
-            staffData = SEEDED_STAFF_REGISTRY[emailKey];
-            console.log('[AutoHeal Debug] Found staff record in SEEDED_STAFF_REGISTRY:', staffData);
-        }
-
-        if (!staffData) {
-            console.warn('[AutoHeal Debug] No staff record found in local or seeded registry for:', emailKey);
-            return false;
-        }
-
-        console.log('[AutoHeal Debug] Staff record found:', staffData.name, 'Active:', staffData.active);
-
-        if (staffData && staffData.active !== false) {
-            let pinMatches = false;
-            if (staffData.pin && String(staffData.pin).trim() === String(pin).trim()) {
-                pinMatches = true;
-            } else if (staffData.pinHash) {
-                const computedHash = await hashPinFallback(pin);
-                if (computedHash === staffData.pinHash) pinMatches = true;
-            } else if (!staffData.pin && !staffData.pinHash) {
-                pinMatches = true;
-            }
-
-            if (pinMatches) {
-                const authPassword = formatStaffAuthPassword(pin);
-                console.log('[AutoHeal Debug] Calling secondaryAuth createUserWithEmailAndPassword with password:', authPassword);
-                try {
-                    const authRes = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, authPassword);
-                    if (authRes && authRes.user) {
-                        console.log('[AutoHeal Debug] Created secondaryAuth user, UID:', authRes.user.uid);
-                        await signOut(secondaryAuth);
-                        return true;
-                    }
-                } catch (createErr) {
-                    if (createErr?.code === 'auth/email-already-in-use') {
-                        console.log('[AutoHeal Debug] Email already in use. Attempting candidate password recovery...');
-                        const candidates = [
-                            '1234',
-                            'VP_PIN_1234',
-                            pin,
-                            staffData.pin,
-                            formatStaffAuthPassword(staffData.pin || '1234')
-                        ];
-
-                        for (const cand of candidates) {
-                            if (!cand) continue;
-                            try {
-                                const candRes = await signInWithEmailAndPassword(secondaryAuth, cleanEmail, cand);
-                                if (candRes && candRes.user) {
-                                    console.log('[AutoHeal Debug] Recovered existing Auth user with candidate password:', cand);
-                                    try {
-                                        await updatePassword(candRes.user, authPassword);
-                                        console.log('[AutoHeal Debug] Successfully updated user password to:', authPassword);
-                                    } catch (updErr) {
-                                        console.warn('[AutoHeal Debug] Could not update password (may already be set):', updErr?.message || updErr);
-                                    }
-                                    await signOut(secondaryAuth);
-                                    return true;
-                                }
-                            } catch (candErr) {
-                                // Continue trying next candidate password
-                            }
-                        }
-                        console.warn('[AutoHeal Debug] All candidate password attempts failed for existing user.');
-                    } else {
-                        throw createErr;
-                    }
-                }
-            } else {
-                console.warn('[AutoHeal Debug] PIN hash mismatch!');
-            }
-        }
-    } catch (e) {
-        console.warn('[AutoHeal Debug] tryAutoHeal error:', e?.code || e?.message || e);
-    }
-    return false;
-}
-
-function updateLocalStaffRegistry(staffData) {
-    if (!staffData || !staffData.email) return;
-    try {
-        const raw = localStorage.getItem('vitalpulse_staff_registry');
-        const registry = raw ? JSON.parse(raw) : {};
-        registry[staffData.email.trim().toLowerCase()] = staffData;
-        localStorage.setItem('vitalpulse_staff_registry', JSON.stringify(registry));
-    } catch (e) { /* ignore */ }
-}
-
-export async function authenticateStaffDirectLoginCall(data) {
-    const { email, pin } = data || {};
-    if (!email || !pin) throw new Error('Email and 4-digit PIN are required.');
-    const cleanEmail = email.trim().toLowerCase();
-
-    let staffData = null;
-
-    // Step 0: Check local staff registry (instant & works when unauthenticated)
-    try {
-        const raw = localStorage.getItem('vitalpulse_staff_registry');
-        if (raw) {
-            const reg = JSON.parse(raw);
-            if (reg[cleanEmail]) {
-                staffData = reg[cleanEmail];
-            }
-        }
-    } catch (e) { /* fall through */ }
-
-    // Step 1: Check top-level index doc in Firestore
-    if (!staffData) {
-        try {
-            const snap = await getDoc(doc(db, 'staff_accounts', cleanEmail));
-            if (snap.exists()) {
-                staffData = snap.data();
-                updateLocalStaffRegistry(staffData);
-            }
-        } catch (e) { /* unauthenticated client — fall through */ }
-    }
-
-    // 2. Fallback via collectionGroup
-    if (!staffData) {
-        try {
-            const q = query(collectionGroup(db, 'staff'), where('email', '==', cleanEmail));
-            const querySnap = await getDocs(q);
-            if (!querySnap.empty) {
-                staffData = querySnap.docs[0].data();
-            }
-        } catch (e) { /* unauthenticated client — fall through */ }
-    }
-
-    // 3. Robust fallback: scan hospital subcollections (handles existing accounts created before index existed & case variations)
-    if (!staffData) {
-        try {
-            const usersSnap = await getDocs(collection(db, 'users'));
-            for (const userDoc of usersSnap.docs) {
-                const uData = userDoc.data();
-                if (uData && (uData.role === 'hospital' || uData.role === 'hospital_admin' || (typeof uData.role === 'string' && uData.role.startsWith('hospital')))) {
-                    const staffSnap = await getDocs(collection(db, 'hospitals', userDoc.id, 'staff'));
-                    for (const sDoc of staffSnap.docs) {
-                        const d = sDoc.data();
-                        if (d && d.email && d.email.trim().toLowerCase() === cleanEmail) {
-                            staffData = d;
-                            // Auto-heal: create staff_accounts index doc for instant future logins
-                            try {
-                                await setDoc(doc(db, 'staff_accounts', cleanEmail), staffData);
-                            } catch (e) { /* ignore */ }
-                            break;
-                        }
-                    }
-                    if (staffData) break;
-                }
-            }
-        } catch (e) { /* unauthenticated client — fall through */ }
-    }
-
-    if (!staffData) {
-        throw new Error('No staff account found for this email address.');
-    }
-    if (staffData.active === false) {
-        throw new Error('This staff account has been deactivated by the Hospital Admin.');
-    }
-
-    const computedHash = await hashPinFallback(pin);
-    if (staffData.pinHash && computedHash !== staffData.pinHash) {
-        throw new Error('Incorrect password or 4-digit PIN.');
-    }
-
-    return {
-        success: true,
-        staffUid: staffData.uid,
-        name: staffData.name,
-        email: staffData.email,
-        roles: staffData.roles || [staffData.role],
-        hospitalId: staffData.hospitalId,
-    };
-}
-
-async function verifyStaffPinFirestoreFallback(data) {
-    const { staffUid, pin, hospitalId } = data;
-    if (!staffUid || !hospitalId) {
-        throw new Error('staffUid and hospitalId required.');
-    }
-    const snap = await getDoc(doc(db, 'hospitals', hospitalId, 'staff', staffUid));
-    if (!snap.exists()) {
-        throw new Error('Staff account not found.');
-    }
-    const staffData = snap.data();
-    if (staffData.active === false) {
-        throw new Error('Staff account is inactive.');
-    }
-    if (staffData.pinHash) {
-        const computedHash = await hashPinFallback(pin);
-        if (computedHash !== staffData.pinHash) {
-            throw new Error('Incorrect 4-digit PIN.');
-        }
-    }
-    return { success: true, staffUid: staffData.uid, name: staffData.name, roles: staffData.roles || [staffData.role] };
-}
+// ============================================
+// HOSPITAL STAFF SUB-ACCOUNTS
+// ============================================
+//
+// SECURITY REWRITE 2026-08-08. Everything in this section used to run in the
+// browser: staff records (with their PIN hash) were written client-side to a
+// world-readable `staff_accounts/{email}` collection, the PIN comparison itself
+// happened here, the Firebase Auth password was DERIVED from the 4-digit PIN
+// (`VP_PIN_1234`), and a real staff credential was hardcoded in the bundle as a
+// "seeded registry". Together that was an unauthenticated hospital-takeover
+// path. All of it is deleted; `functions/src/staffManagement.ts` is now the only
+// place staff credentials are handled, and it returns a Firebase custom token.
+//
+// There are deliberately NO client-side fallbacks any more. The old
+// `if (cloudFunctionFailed) doItInTheBrowser()` pattern could not set custom
+// claims, so it silently produced staff accounts that every Firestore rule and
+// every Cloud Function authz check would later deny — while hiding the fact
+// that Functions were not deployed. A hard failure with a readable message is
+// strictly better than a fallback that fabricates a broken account.
 
 export async function createStaffAccountCall(data) {
-    if (isLocalDev()) {
-        return createStaffAccountFirestoreFallback(data);
-    }
-    try {
-        const fn = httpsCallable(getFunctions(), 'createStaffAccount');
-        const res = await fn(data);
-        return res.data;
-    } catch (err) {
-        console.warn('Cloud Function createStaffAccount failed, executing Firestore fallback:', err);
-        return createStaffAccountFirestoreFallback(data);
-    }
+    const fn = httpsCallable(getFunctions(), 'createStaffAccount');
+    const res = await fn(data);
+    return res.data;
 }
 
 export async function verifyStaffPinCall(data) {
-    if (isLocalDev()) {
-        return verifyStaffPinFirestoreFallback(data);
-    }
-    try {
-        const fn = httpsCallable(getFunctions(), 'verifyStaffPin');
-        const res = await fn(data);
-        return res.data;
-    } catch (err) {
-        console.warn('Cloud Function verifyStaffPin failed, executing Firestore fallback:', err);
-        return verifyStaffPinFirestoreFallback(data);
-    }
+    const fn = httpsCallable(getFunctions(), 'verifyStaffPin');
+    const res = await fn(data);
+    return res.data;
 }
 
+/**
+ * Staff sign-in with email + 4-digit PIN.
+ *
+ * Returns `{ token, ... }` where `token` is a Firebase custom token the caller
+ * exchanges via signInWithCustomToken (see auth.js). The PIN is verified
+ * server-side against a salted scrypt hash that no client can read, and the
+ * function is rate-limited with a persisted 5-attempt/15-minute lockout.
+ */
+export async function authenticateStaffDirectLoginCall(data) {
+    const { email, pin } = data || {};
+    if (!email || !pin) throw new Error('Email and 4-digit PIN are required.');
+    const fn = httpsCallable(getFunctions(), 'authenticateStaffDirectLogin');
+    const res = await fn({ email: email.trim().toLowerCase(), pin: String(pin).trim() });
+    return res.data;
+}
+
+/**
+ * Staff roster for the Staff Roster view.
+ *
+ * This is a READ. It used to also fire createUserWithEmailAndPassword for every
+ * staff member on every load — an "auto-provision" side effect that produced the
+ * 400-per-staff-member identitytoolkit spam in the console, burned Auth quota,
+ * and re-published every PIN hash to the public `staff_accounts` collection each
+ * time the page rendered. Provisioning belongs to createStaffAccount; a read
+ * path must not write.
+ */
 export async function fetchHospitalStaff(hospitalId) {
     if (!hospitalId) return [];
-    const q = query(collection(db, 'hospitals', hospitalId, 'staff'));
-    const snap = await getDocs(q);
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    list.forEach(async (staff) => {
-        if (staff && staff.email) {
-            const cleanEmail = staff.email.trim().toLowerCase();
-            updateLocalStaffRegistry(staff);
-            setDoc(doc(db, 'staff_accounts', cleanEmail), staff).catch(() => {});
-
-            // Auto-provision Auth account for pre-existing staff created before secondaryAuth was added
-            try {
-                const defaultPin = staff.pin || '1234';
-                const authPassword = formatStaffAuthPassword(defaultPin);
-                const authRes = await createUserWithEmailAndPassword(secondaryAuth, cleanEmail, authPassword);
-                if (authRes && authRes.user) {
-                    const uid = authRes.user.uid;
-                    await setDoc(doc(db, 'users', uid), {
-                        uid,
-                        email: cleanEmail,
-                        name: staff.name || cleanEmail.split('@')[0],
-                        role: staff.roles ? staff.roles[0] : (staff.role || 'nurse'),
-                        roles: staff.roles || [staff.role || 'nurse'],
-                        hospitalId,
-                        isStaffAccount: true,
-                        createdAt: new Date().toISOString()
-                    });
-                }
-            } catch (e) {
-                // auth/email-already-in-use is expected for previously provisioned users
-            }
-        }
+    const snap = await getDocs(query(collection(db, 'hospitals', hospitalId, 'staff')));
+    // pinHash/pinSalt are stripped defensively: the rules already restrict this
+    // subcollection to the owning hospital, but there is no reason for credential
+    // material to reach the DOM even for an authorised admin.
+    return snap.docs.map(d => {
+        const { pinHash, pinSalt, pinAlgo, ...safe } = d.data();
+        return { id: d.id, ...safe };
     });
-    return list;
 }
 
 // Several post-acceptance steps (lab clearance, issuance) need to update the original request
@@ -2657,27 +2548,52 @@ async function updateSourceRequestStatus(sourceRequestId, updates) {
 }
 
 export async function completeDonorArrival(requestId, intakeData = {}) {
-    // Falls back to public_requests just like donorSetEnRoute/checkInDonor already do — a
-    // donor who came through a community/public plea must be able to reach this step too,
-    // not just donors matched via a hospital-initiated emergency request.
-    let reqDoc = doc(db, 'requests', requestId);
-    let snapshot = await getDoc(reqDoc);
-    if (!snapshot.exists()) {
-        reqDoc = doc(db, 'public_requests', requestId);
-        snapshot = await getDoc(reqDoc);
+    // Resolves across all three journey collections. `donation_requests` was
+    // missing before, so recording the blood draw for a SCHEDULED donor found no
+    // document at all: reqData came back empty, donorId was undefined, and the
+    // function silently returned without creating an inventory batch, a donation
+    // record, or a lab-test entry. The donor's booking simply stayed 'approved'
+    // forever with no trace that they had donated.
+    let reqDoc = null;
+    let snapshot = null;
+    let sourceCollection = null;
+    for (const name of ['requests', 'public_requests', 'donation_requests']) {
+        const ref = doc(db, name, requestId);
+        const snap = await getDoc(ref);
+        if (snap.exists()) { reqDoc = ref; snapshot = snap; sourceCollection = name; break; }
     }
-    const reqData = snapshot.exists() ? snapshot.data() : {};
-    const hospitalName = reqData.hospital || reqData.hospitalName || 'Unknown Hospital';
+    if (!snapshot) throw new Error('Donation record not found.');
+
+    const reqData = snapshot.data();
+    const hospitalName = reqData.hospital || reqData.hospitalName || reqData.preferredLocation || 'Unknown Hospital';
+
+    // A blood draw can only be recorded for a donor who is physically present,
+    // i.e. one reception has verified and checked in. This previously advanced
+    // from ANY status, so a mis-click on a donor who was still en route (or one
+    // whose donation had already been recorded) created a second inventory batch
+    // and a second donation record for the same person.
+    if (reqData.status !== 'Checked In') {
+        throw new Error(
+            `Cannot record a blood draw for a donor with status "${reqData.status}". They must be checked in at reception first.`
+        );
+    }
 
     const now = new Date().toISOString();
-    if (snapshot.exists()) {
+    // A scheduled booking IS the donation record, so recordDonationIntake updates
+    // it in place rather than creating a second one.
+    const existingDonationId = sourceCollection === 'donation_requests' ? requestId : null;
+    if (!existingDonationId) {
         await updateDoc(reqDoc, {
             status: 'Donation Complete',
             donationCompletedAt: now
         });
     }
 
-    const donorId = reqData.matchedDonor;
+    // `donorId` on a scheduled booking; `matchedDonor` on an emergency journey.
+    const donorId = reqData.matchedDonor || reqData.donorId;
+    if (!donorId) {
+        throw new Error('This record has no linked donor, so a donation cannot be recorded against it.');
+    }
     let donor = {};
     if (donorId) {
         const donorSnap = await getDoc(doc(db, 'users', donorId));
@@ -2687,6 +2603,7 @@ export async function completeDonorArrival(requestId, intakeData = {}) {
     let intakeResult = null;
     if (donorId) {
         intakeResult = await recordDonationIntake({
+            donationRequestId: existingDonationId,
             donorId,
             donorName: donor.name || reqData.donorName || 'Donor',
             donorEmail: donor.email || null,
@@ -2700,7 +2617,8 @@ export async function completeDonorArrival(requestId, intakeData = {}) {
             screeningAnswers: intakeData.screeningAnswers || null,
             screeningFlags: intakeData.screeningFlags || (reqData.donorScreeningPassed === false ? ['flagged_at_accept'] : []),
             screeningPassed: intakeData.screeningPassed !== undefined ? intakeData.screeningPassed !== false : reqData.donorScreeningPassed !== false,
-            sourceRequestId: requestId,
+            // A booking has no separate source request to link back to.
+            sourceRequestId: existingDonationId ? (reqData.sourceRequestId || null) : requestId,
             notes: intakeData.notes || ''
         });
     }
@@ -3701,19 +3619,23 @@ export async function fetchPublicRequestsForDonor(donorLat, donorLng, donorBlood
         where('status', '==', 'Broadcasting')
     ));
 
-    const compatible = getCompatibleDonorTypes(null); // fallback
-    const donorCanDonate = (requestedType) => {
-        // Simple compatibility: exact match or O- universal donor
-        return requestedType === donorBloodType || donorBloodType === 'O-';
+    // Component-aware compatibility, matching every other matching path in the
+    // app. The previous check was `requestedType === donorBloodType ||
+    // donorBloodType === 'O-'` — exact match only, which hid public requests
+    // from donors who can legally serve them (an O+ donor was never shown an A+,
+    // B+ or AB+ plea) and ignored the plasma inversion entirely.
+    const donorCanDonate = (requestedType, componentType) => {
+        if (!requestedType || !donorBloodType) return false;
+        return getCompatibleDonorTypes(requestedType, componentType || 'Whole Blood').includes(donorBloodType);
     };
 
     return snap.docs
         .map(d => ({ id: d.id, ...d.data() }))
         .filter(r => {
-            if (!donorCanDonate(r.bloodType)) return false;
+            if (!donorCanDonate(r.bloodType, r.componentType)) return false;
             if (!r.cityLat || !r.cityLng || !donorLat || !donorLng) return true; // no coords = show anyway
             const dist = calculateDistanceKm(donorLat, donorLng, r.cityLat, r.cityLng);
-            return dist <= (r.escalationRadiusKm || 25);
+            return dist <= (r.escalationRadiusKm || DEFAULT_DONOR_RADIUS_KM);
         })
         .map(r => {
             const dist = (r.cityLat && r.cityLng && donorLat && donorLng)

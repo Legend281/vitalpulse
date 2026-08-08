@@ -19,7 +19,7 @@ import {
   acceptRequest as acceptRequestDb,
   donorSetEnRoute as donorSetEnRouteDb,
   donorCancelAssignedRequest as donorCancelAssignedRequestDb,
-  checkInDonor as checkInDonorDb,
+  donorMarkArrived as donorMarkArrivedDb,
   getCompatibleBloodTypes,
   getBloodTypeDisplayInfo,
   logActivity,
@@ -28,6 +28,8 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   CITY_COORDINATES,
+  getEffectiveDonorLocation,
+  DEFAULT_DONOR_RADIUS_KM,
   fetchCareReminders,
   dismissCareReminder,
   fetchMythArticles,
@@ -2015,15 +2017,20 @@ export async function loadDonorDashboard() {
   try {
     const engagement = await computeDonorEngagement(currentUser.uid).catch(() => null);
 
-    // getCoordinatesForLocation lowercases/normalizes the city name before looking it up in
-    // CITY_COORDINATES — a raw CITY_COORDINATES[currentUser.city] index (the old code here)
-    // silently fails for any city stored with capitalization, which is the normal case.
-    const donorCoords = getCoordinatesForLocation(currentUser.city, currentUser.lat, currentUser.lng) || CITY_COORDINATES['yaoundé'];
-    const donorLat = donorCoords?.lat;
-    const donorLng = donorCoords?.lon;
+    // ONE location model for both feeds (see getEffectiveDonorLocation): GPS
+    // position and its nearest-city label when live GPS is on, registered-city
+    // centroid otherwise. Previously the two feeds disagreed — the public feed
+    // moved to the donor's true GPS position while hospital requests kept
+    // matching on the registered city string — so enabling GPS made requests
+    // vanish from the feed while the banner cheerfully reported the new city.
+    const effective = getEffectiveDonorLocation(currentUser);
+    const donorLat = effective.lat;
+    const donorLng = effective.lon;
 
     const [matchedRequests, publicRequests] = await Promise.all([
-      fetchMatchedRequestsForDonor(currentUser.bloodType, currentUser.city).catch(() => []),
+      fetchMatchedRequestsForDonor(currentUser.bloodType, effective.city, {
+        lat: donorLat, lon: donorLng, radiusKm: DEFAULT_DONOR_RADIUS_KM,
+      }).catch(() => []),
       fetchPublicRequestsForDonor(donorLat, donorLng, currentUser.bloodType).catch(() => [])
     ]);
 
@@ -2551,9 +2558,17 @@ function renderDonorJourneyCard(r) {
       <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-on-surface-variant hover:text-error bg-surface-container-low hover:bg-error-container/40 px-3 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
       <button onclick="window.donorMarkEnRoute('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-extrabold text-on-primary bg-primary hover:opacity-90 px-4 py-2.5 rounded-xl shadow-sm shadow-primary/20 transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">directions_car</span> Start Trip</button>`;
   } else if (r.status === 'Donor En Route') {
+    // The donor SIGNALS arrival; hospital reception is what actually advances the
+    // journey to "Checked In", after seeing the donor and verifying their pass
+    // code + CNI. This button used to call checkInDonor() directly, so the donor
+    // checked themselves in, the pass code was decorative, and the expiry check
+    // (which lives in reception's lookup) was bypassed entirely.
+    const awaiting = r.receptionStatus === 'Awaiting Verification';
     actions = `
       <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-on-surface-variant hover:text-error bg-surface-container-low hover:bg-error-container/40 px-3 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
-      <button onclick="window.donorCheckIn('${r.id}')" class="press-scale text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-xl shadow-sm transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> Arrived at Reception</button>`;
+      ${awaiting
+        ? `<span class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200"><span class="material-symbols-outlined text-sm">hourglass_top</span> Waiting for reception</span>`
+        : `<button onclick="window.donorMarkArrived('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-xl shadow-sm transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> I've Arrived — Show Pass Code</button>`}`;
   } else {
     actions = `<span class="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-sky-100 text-sky-800 border border-sky-200'}">${esc(r.status)}</span>`;
   }
@@ -2577,8 +2592,9 @@ function renderDonorJourneyCard(r) {
       </div>`;
   }).join('');
 
+  const awaitingVerification = r.status === 'Donor En Route' && r.receptionStatus === 'Awaiting Verification';
   const passcodeTicket = r.checkInToken ? `
-    <div class="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 shadow-xs">
+    <div class="bg-emerald-50/90 border ${awaitingVerification ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'} rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 shadow-xs">
       <div class="flex items-center gap-3.5">
         <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-sm shrink-0">
           <span class="material-symbols-outlined text-2xl">qr_code_2</span>
@@ -2588,7 +2604,9 @@ function renderDonorJourneyCard(r) {
           <p class="text-2xl font-mono font-black tracking-widest text-emerald-900">${esc(r.checkInToken)}</p>
         </div>
       </div>
-      <p class="text-xs font-semibold text-emerald-800 max-w-xs text-center sm:text-right">Show this passcode or your physical CNI card to hospital reception staff when you arrive.</p>
+      <p class="text-xs font-semibold text-emerald-800 max-w-xs text-center sm:text-right">${awaitingVerification
+        ? 'Reception has been notified you are here. Show this code and your CNI card to the front desk to complete check-in.'
+        : 'Show this passcode or your physical CNI card to hospital reception staff when you arrive.'}</p>
     </div>
   ` : '';
 
@@ -3557,6 +3575,70 @@ window.vpAlert = (opts = {}) => new Promise((resolve) => {
   modal.classList.remove('hidden'); modal.classList.add('flex');
   confirmBtn.focus();
 });
+/**
+ * Fire-and-forget styled notice — the drop-in replacement for `alert()`.
+ *
+ * Deliberately NOT awaited by callers: `alert()` sites are scattered through
+ * both sync and async code, and requiring `await` at each one is how a sweep
+ * like this introduces silent bugs. This shows the same modal and returns
+ * immediately.
+ */
+window.vpNotify = (message, type = 'error', title = null) => {
+  const defaults = { error: 'Something went wrong', warning: 'Please check', success: 'Done', info: 'Notice' };
+  window.vpAlert({ type, title: title || defaults[type] || 'Notice', message, confirmText: 'OK' });
+};
+
+/**
+ * Styled replacement for `prompt()`. Resolves to the entered string, or null if
+ * dismissed — matching prompt()'s contract so call sites keep their `=== null`
+ * cancellation checks.
+ */
+window.vpPrompt = (message, opts = {}) => new Promise((resolve) => {
+  const modal = ensureVpAlertModalInDom();
+  const msgEl = document.getElementById('vpAlertMessage');
+  const titleEl = document.getElementById('vpAlertTitle');
+  const iconWrap = document.getElementById('vpAlertIconWrap');
+  const confirmBtn = document.getElementById('vpAlertConfirm');
+  const cancelBtn = document.getElementById('vpAlertCancel');
+  const backdrop = document.getElementById('vpAlertBackdrop');
+
+  iconWrap.className = 'w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 ' + VP_ALERT_STYLES.question.wrap;
+  document.getElementById('vpAlertIcon').textContent = 'edit_note';
+  titleEl.textContent = opts.title || 'Please provide a reason';
+  titleEl.classList.remove('hidden');
+
+  const inputId = 'vpPromptInput';
+  msgEl.innerHTML = `
+    <p class="mb-3">${message}</p>
+    ${opts.multiline
+      ? `<textarea id="${inputId}" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-red-200 focus:border-red-500" placeholder="${opts.placeholder || ''}"></textarea>`
+      : `<input id="${inputId}" type="text" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-red-200 focus:border-red-500" placeholder="${opts.placeholder || ''}">`}`;
+  msgEl.classList.remove('hidden');
+
+  confirmBtn.textContent = opts.confirmText || 'Submit';
+  confirmBtn.className = 'press-scale flex-1 py-3 rounded-2xl font-extrabold text-sm transition-opacity cursor-pointer bg-primary hover:opacity-90 text-on-primary';
+  cancelBtn.textContent = opts.cancelText || 'Cancel';
+  cancelBtn.classList.remove('hidden');
+
+  const finish = (result) => {
+    modal.classList.add('hidden'); modal.classList.remove('flex');
+    confirmBtn.onclick = null; cancelBtn.onclick = null; backdrop.onclick = null;
+    document.removeEventListener('keydown', onKey);
+    resolve(result);
+  };
+  const read = () => document.getElementById(inputId)?.value ?? '';
+  const onKey = (e) => {
+    if (e.key === 'Escape') finish(null);
+    else if (e.key === 'Enter' && !opts.multiline) { e.preventDefault(); finish(read()); }
+  };
+  confirmBtn.onclick = () => finish(read());
+  cancelBtn.onclick = () => finish(null);
+  backdrop.onclick = () => finish(null);
+  document.addEventListener('keydown', onKey);
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+  setTimeout(() => document.getElementById(inputId)?.focus(), 30);
+});
+
 window.vpConfirm = (message, opts = {}) => window.vpAlert({
   type: opts.danger ? 'warning' : 'question',
   title: opts.title || 'Please confirm',
@@ -3739,19 +3821,62 @@ window.donorCancelRequest = async (requestId) => {
   }
 };
 
-window.donorCheckIn = async (requestId) => {
-  if (!await window.vpConfirm('Confirm you have arrived at the hospital reception and are ready to donate.', { title: 'Check in now?', confirmText: 'Check In' })) return;
+// Donor half of the check-in handshake: tells the hospital "I'm here" and puts
+// the pass code front and centre. It does NOT advance the journey — a member of
+// reception staff does that after physically verifying the donor (see
+// checkInDonor in db.js and the front-desk pass code box in main.js).
+window.donorMarkArrived = async (requestId, donorId, isPublic) => {
+  if (!await window.vpConfirm(
+    'Let the hospital know you have arrived. Then show your pass code and CNI card to the front desk — a staff member completes your check-in.',
+    { title: "You've arrived?", confirmText: "Yes, I'm at reception" }
+  )) return;
   try {
     _enRouteTrackingId = null;
     stopLiveLocationSharing();
-    await checkInDonorDb(requestId);
-    showToast('Checked in successfully! Proceed to the donation room.');
+    await donorMarkArrivedDb(requestId, donorId, isPublic);
+    showToast('Reception has been notified. Show them your pass code to check in.');
     loadDonorDashboard();
   } catch (err) {
-    console.error('Check-in failed:', err);
-    showToast(err.message || 'Check-in failed. Please try again.', 'error');
+    console.error('Arrival signal failed:', err);
+    showToast(err.message || 'Could not notify reception. Please speak to the front desk.', 'error');
   }
 };
+
+/**
+ * Shows "matching near X · use my registered city instead" next to the GPS
+ * status once GPS has moved the donor away from their registered city. Without a
+ * way back, a donor who granted GPS while travelling had no way to understand or
+ * undo why their home city's requests had disappeared.
+ */
+function renderGpsResetControl(registeredCity, gpsCity) {
+  const statusEl = document.getElementById('gpsStatusText');
+  if (!statusEl || !gpsCity || !registeredCity) return;
+  if (gpsCity.toLowerCase() === registeredCity.toLowerCase()) return;
+
+  let reset = document.getElementById('gpsResetToCity');
+  if (!reset) {
+    reset = document.createElement('button');
+    reset.id = 'gpsResetToCity';
+    reset.className = 'ml-2 text-[11px] font-bold text-primary underline hover:no-underline cursor-pointer';
+    statusEl.insertAdjacentElement('afterend', reset);
+  }
+  reset.textContent = `Use ${registeredCity} instead`;
+  reset.onclick = async () => {
+    const currentUser = getCurrentUser();
+    if (!currentUser) return;
+    try {
+      const updates = { lat: null, lng: null, gpsCity: null, locationSource: 'city' };
+      await updateUserProfile(currentUser.uid, updates);
+      localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser, ...updates }));
+      if (statusEl) statusEl.textContent = `Matching near ${registeredCity}`;
+      reset.remove();
+      showToast(`Back to matching near ${registeredCity}.`);
+      loadDonorDashboard();
+    } catch (e) {
+      showToast('Could not switch back to your registered city.', 'error');
+    }
+  };
+}
 
 window.enableLiveGpsLocation = async () => {
   const currentUser = getCurrentUser();
@@ -3766,9 +3891,15 @@ window.enableLiveGpsLocation = async () => {
       await updateUserProfile(currentUser.uid, updates);
       const updated = { ...currentUser, ...updates };
       localStorage.setItem('vitalpulse_user', JSON.stringify(updated));
-      const nearestStr = loc.nearestDistKm ? ` near ${loc.city || registeredCity} (${loc.nearestDistKm} km)` : '';
-      showToast(`Live GPS enabled — ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${nearestStr}`);
-      if (statusEl) statusEl.textContent = `GPS Active · ${loc.city || registeredCity} (${loc.lat.toFixed(2)}, ${loc.lng.toFixed(2)})`;
+      // Say plainly what changed. Enabling GPS moves which requests you are
+      // matched to — previously it silently re-filtered the feed (sometimes
+      // emptying it) while reporting only coordinates, which read as a bug.
+      const movedCity = loc.city && loc.city.toLowerCase() !== registeredCity.toLowerCase();
+      showToast(movedCity
+        ? `Live GPS on — now matching you near ${loc.city} instead of ${registeredCity}.`
+        : `Live GPS on — matching you near ${loc.city || registeredCity}.`);
+      if (statusEl) statusEl.textContent = `GPS Active · matching near ${loc.city || registeredCity}`;
+      renderGpsResetControl(registeredCity, loc.city);
       loadDonorDashboard();
     } else {
       const msg = loc.reason && loc.reason.includes('HTTPS')

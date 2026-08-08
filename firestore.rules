@@ -257,15 +257,19 @@ service cloud.firestore {
                     && request.resource.data.keys().hasAll(['hospital', 'requestedAt'])
                     && (('bloodType' in request.resource.data) || ('type' in request.resource.data));
 
-      // Donor accepts an Open request (self-assignment only). Client write shape:
-      // db.js assignDonorToRequest (runTransaction) — status + matchedDonor + matchedAt
-      // + checkInToken + donorScreeningPassed. B7: gated on isKycEligible (grandfathered
-      // for pre-existing donors — see the function's own comment above).
+      // Donor accepts an Open request (self-assignment only).
+      //
+      // RECONCILED 2026-08-08 against the ACTUAL client write. db.js's
+      // acceptRequest transaction writes SEVEN fields — the two missing from
+      // this whitelist (`checkInTokenExpiresAt`, `nudgeSent`) meant
+      // unchangedExcept() failed and the whole accept was denied. The rule read
+      // as though it permitted accepting; it never did.
       allow update: if isDonor() && isKycEligible(request.auth.uid)
                     && resource.data.status == 'Open'
                     && request.resource.data.status == 'Donor Assigned'
                     && request.resource.data.matchedDonor == request.auth.uid
-                    && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken', 'donorScreeningPassed']);
+                    && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken',
+                                        'checkInTokenExpiresAt', 'nudgeSent', 'donorScreeningPassed']);
 
       // The matched donor marks themselves en route.
       allow update: if isDonor()
@@ -273,6 +277,36 @@ service cloud.firestore {
                     && resource.data.status == 'Donor Assigned'
                     && request.resource.data.status == 'Donor En Route'
                     && unchangedExcept(['status', 'enRouteAt']);
+
+      // Live position while en route (db.js updateDonorLiveLocation), so the
+      // hospital's tracking map can show an approaching donor. No rule permitted
+      // these fields before, so every write was denied — silently, because the
+      // caller try/catches — and the map sat on "Waiting for signal…" forever.
+      // Status is NOT in the whitelist: this can only ever move the pin.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status == 'Donor En Route'
+                    && unchangedExcept(['donorLat', 'donorLng', 'donorLocationUpdatedAt']);
+
+      // The matched donor signals arrival at reception (db.js donorMarkArrived).
+      // Deliberately cannot set status: only hospital staff move a request to
+      // 'Checked In', after physically verifying the donor's pass code and CNI.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status == 'Donor En Route'
+                    && request.resource.data.status == 'Donor En Route'
+                    && unchangedExcept(['arrivedAt', 'receptionStatus']);
+
+      // The matched donor withdraws before check-in (db.js donorCancelAssignedRequest).
+      // Only from the two pre-arrival statuses — after check-in a unit may already
+      // have been drawn, so releasing the request would orphan it.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status in ['Donor Assigned', 'Donor En Route']
+                    && request.resource.data.status == 'Open'
+                    && request.resource.data.matchedDonor == null
+                    && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken',
+                                        'enRouteAt', 'donorScreeningPassed']);
 
       // Owning hospital confirms donor arrival / resolves the request.
       allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
@@ -294,9 +328,16 @@ service cloud.firestore {
       // cancellationReason. No whitelist can enforce strict sequencing — the owning
       // hospital is the operational authority and every transition is audited
       // client-side via logActivity.
+      // RECONCILED 2026-08-08: `checkedInByStaffUid` and `receptionStatus` are
+      // both written by checkInDonor() and were absent here, so the hospital's
+      // own check-in was denied — the single transition the whole front desk
+      // depends on. `labResolvedAt` is written by resolveLabTest's follow-up.
       allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
                     && request.resource.data.status in ['Checked In', 'Donation Complete', 'Lab Cleared', 'Issued', 'Resolved', 'Cancelled', 'Lab Rejected']
-                    && unchangedExcept(['status', 'checkedInAt', 'donationCompletedAt', 'labClearedAt', 'issuedAt', 'resolvedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason', 'updatedAt']);
+                    && unchangedExcept(['status', 'checkedInAt', 'checkedInByStaffUid', 'receptionStatus',
+                                        'donationCompletedAt', 'labClearedAt', 'labResolvedAt', 'issuedAt',
+                                        'resolvedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason',
+                                        'calledToRoom', 'calledAt', 'updatedAt']);
 
       // system_admin retains operational override (audited manually until Phase 3
       // moves all of these transitions into Cloud Functions per Master Plan 1.5).
@@ -357,10 +398,17 @@ service cloud.firestore {
       // 'Lab Cleared'/'Lab Rejected'), issueBloodToPatient ('Issued', issuedAt). Deny-by-
       // default means enumerating every field the legit client writes — not a free-form
       // write, but a full enumeration of the documented intake schema.
+      // RECONCILED 2026-08-08: 'Checked In' added to the status set, plus
+      // checkedInAt/checkedInByStaffUid/receptionStatus/calledToRoom/calledAt to
+      // the whitelist. A self-scheduled booking is issued a 7-day check-in pass
+      // code, but no rule permitted the front desk to actually check that donor
+      // in — so a scheduled donor arriving with a valid code could never be
+      // admitted, and the booking sat at 'approved' forever.
       allow update: if (isHospitalRole() || isSystemAdmin())
-                    && request.resource.data.status in ['approved', 'rejected', 'completed', 'cancelled', 'Issued', 'Lab Cleared', 'Lab Rejected']
+                    && request.resource.data.status in ['approved', 'rejected', 'Checked In', 'completed', 'cancelled', 'Issued', 'Lab Cleared', 'Lab Rejected']
                     && unchangedExcept(['status', 'approvedAt', 'rejectionReason', 'rejectedAt', 'cancelledAt',
                                         'cancellationNote', 'completedAt', 'labResolvedAt', 'issuedAt', 'updatedAt',
+                                        'checkedInAt', 'checkedInByStaffUid', 'receptionStatus', 'calledToRoom', 'calledAt',
                                         'donorId', 'donorName', 'donorEmail', 'donorPhone', 'cniHash', 'hospital',
                                         'bloodType', 'labConfirmedBloodType', 'bloodTypeMismatch', 'componentType',
                                         'units', 'screeningAnswers', 'screeningFlags', 'screeningPassed',
@@ -587,14 +635,44 @@ service cloud.firestore {
     // The app writes audit_logs client-side via logAuditTrail() (try/catch, non-blocking).
     // Rules lock it admin-read + no client writes, matching the activity_logs decision:
     // Phase 3's writeAudit Cloud Function is the real home. Flagged, not silently deferred.
+    // ---------- Hospital staff sub-accounts ----------
+    // The staff doc carries the PIN credential material (pinHash/pinSalt). Reads
+    // stay scoped to the owning hospital's own admins so the roster page works;
+    // ALL writes are denied to every client, including hospital_admin, because
+    // staff creation/PIN rotation now happens exclusively in
+    // functions/src/staffManagement.ts (Admin SDK, which bypasses these rules).
+    //
+    // Before 2026-08-08 this was `allow write: if ... hasAnyRole(['hospital_admin'])`,
+    // and the client wrote the hash itself. Combined with staff_accounts below,
+    // that was a full unauthenticated hospital-takeover path.
     match /hospitals/{hospitalId}/staff/{staffUid} {
-      allow read: if signedIn() && (sameHospital(hospitalId) || isSystemAdmin());
-      allow write: if signedIn() && ((sameHospital(hospitalId) && hasAnyRole(['hospital_admin'])) || isSystemAdmin());
+      allow read: if signedIn() && ((sameHospital(hospitalId) && hasAnyRole(['hospital_admin'])) || isSystemAdmin());
+      allow write: if false;
     }
 
+    // ---------- Staff email -> hospital routing index (server-only) ----------
+    // Replaces the old `staff_accounts/{email}` collection, which was
+    // `allow get, list: if true` — i.e. ANY unauthenticated visitor could list
+    // every hospital staff member in the country together with the SHA-256 of
+    // their 4-digit PIN, and `allow write: if signedIn()` let any donor forge or
+    // overwrite a staff record. `staff_index` holds no credential material at
+    // all (email -> {hospitalId, staffUid}) and is still readable by nobody:
+    // only authenticateStaffDirectLogin touches it, via the Admin SDK.
+    match /staff_index/{email} {
+      allow read, write: if false;
+    }
+
+    // Legacy collection, retained ONLY to keep it explicitly denied while the
+    // existing documents are purged. Do not reintroduce: it is the collection
+    // that leaked every staff PIN hash publicly.
     match /staff_accounts/{email} {
-      allow get, list: if true;
-      allow write: if signedIn();
+      allow read, write: if false;
+    }
+
+    // Rate-limit/lockout counters for staff PIN verification. Server-only —
+    // a client that could write here could reset its own lockout.
+    match /staff_login_attempts/{key} {
+      allow read, write: if false;
     }
 
     match /audit_logs/{id} {

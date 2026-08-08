@@ -77,6 +77,27 @@ function computeAggregates(batches: BatchLike[]): {
 }
 
 const STOCK_ADDER_ROLES = new Set(['lab_tech', 'hospital_staff', 'hospital_admin', 'system_admin']);
+
+/**
+ * Roles allowed to record a DONOR INTAKE — a unit drawn from a donor who is
+ * physically present — as opposed to logging arbitrary stock.
+ *
+ * `nurse` is included here but deliberately NOT in STOCK_ADDER_ROLES. Step 4 of
+ * the donation journey (the blood draw) happens in the donation room, and the
+ * "Record Blood Draw" button lives on the Incoming Donors view, which the app's
+ * own permission map grants to reception/nurse/hospital_admin. Before this split
+ * a nurse pressing that button always got permission-denied, because the only
+ * add-stock path required lab_tech or above.
+ *
+ * The distinction is meaningful, not a loophole: an intake add is bound to a
+ * real donation record (`sourceDonationId`) and always enters quarantine as
+ * 'Waiting for Lab Test', so a nurse still cannot create issuable stock, cannot
+ * clear a unit (LAB_RESOLVER_ROLES), and cannot issue one (ISSUANCE_ROLES).
+ * `reception` is excluded — reception checks donors in, it does not draw blood.
+ *
+ * FLAGGED FOR SECURITY LEAD REVIEW (authz change, per AGENTS.md).
+ */
+const DONOR_INTAKE_ROLES = new Set(['nurse', 'lab_tech', 'hospital_staff', 'hospital_admin', 'system_admin']);
 const STOCK_REMOVER_ROLES = new Set(['hospital_staff', 'hospital_admin', 'system_admin']);
 const THRESHOLD_MANAGER_ROLES = new Set(['hospital_staff', 'hospital_admin', 'system_admin']);
 const LAB_RESOLVER_ROLES = new Set(['lab_tech', 'hospital_admin', 'system_admin']);
@@ -147,12 +168,17 @@ async function resolveTargetHospital(
 }
 
 async function addInventoryStockHandler(request: CallableRequest) {
-  const caller = requireCaller(request, STOCK_ADDER_ROLES);
+  // Parse first so the role set can depend on WHAT is being added: a donor
+  // intake (carries sourceDonationId, always quarantined) admits nurses; a
+  // free-form stock add does not.
   const parsed = addInventoryStockSchema.safeParse(request.data);
   if (!parsed.success) {
     throw new HttpsError('invalid-argument', 'Invalid addInventoryStock payload.', parsed.error.flatten());
   }
   const input = parsed.data;
+
+  const isDonorIntake = !!input.sourceDonationId && input.testStatus !== 'Cleared';
+  const caller = requireCaller(request, isDonorIntake ? DONOR_INTAKE_ROLES : STOCK_ADDER_ROLES);
   const { hospitalId, hospitalName } = await resolveTargetHospital(caller, input);
   const docRef = db.collection('inventory').doc(invDocId(hospitalName, input.bloodType));
 
