@@ -179,6 +179,28 @@ function renderLobbyWaitingQueue(donors = []) {
 }
 
 /**
+ * openJourneyContinuationCard - Shows the ongoing journey when a spent pass code
+ * is scanned: donor, blood type, stage, and the exact next operational step.
+ */
+function openJourneyContinuationCard(s) {
+  const setName = document.getElementById('journeyDonorName');
+  if (setName) setName.textContent = s.donorName;
+  const setTitle = document.getElementById('journeyStageTitle');
+  if (setTitle) setTitle.textContent = `Step ${s.stage} of 6 — ${s.stageLabel}`;
+  const setBlood = document.getElementById('journeyBloodBadge');
+  if (setBlood) setBlood.textContent = s.bloodType;
+  const setHint = document.getElementById('journeyNextHint');
+  if (setHint) setHint.textContent = s.nextHint;
+
+  const goLab = document.getElementById('btnJourneyGoLab');
+  const goNurse = document.getElementById('btnJourneyGoNurse');
+  if (goLab) goLab.classList.toggle('hidden', s.nextView !== 'lab');
+  if (goNurse) goNurse.classList.toggle('hidden', s.nextView !== 'nurse-issued');
+
+  if (typeof window.openModal === 'function') window.openModal('journeyContinuationModal');
+}
+
+/**
  * bindReceptionPasscodeCheckIn - Connects passcode inputs (VP-XXXX) to verifyAndCheckInToken
  */
 function bindReceptionPasscodeCheckIn() {
@@ -195,6 +217,16 @@ function bindReceptionPasscodeCheckIn() {
       // The HOSPITAL's name, not the receptionist's — the desk must only be able
       // to check in its own facility's donors.
       const result = await verifyAndCheckInToken(val, getEffectiveHospitalName(getCurrentUser()));
+
+      // A code whose journey already moved past the desk: pull the stage up so
+      // the SAME process can continue (Intake done -> Lab, Lab done -> Nurse).
+      // The journey is surfaced, not blocked — but never re-checked-in.
+      if (result.success === false && result.already) {
+        openJourneyContinuationCard(result);
+        if (inputEl) inputEl.value = '';
+        return;
+      }
+
       showToast(`✅ Checked in ${result.donorName} (${result.code})`);
       if (inputEl) inputEl.value = '';
 
@@ -343,6 +375,17 @@ function bindPatientRequisitionModal() {
  * bindGlobalReceptionActions - Attaches window action helpers for reception UI
  */
 function bindGlobalReceptionActions() {
+  window.journeyContinuationGo = (view) => {
+    if (typeof window.closeModal === 'function') window.closeModal('journeyContinuationModal');
+    // Jump to the exact operational view where the SAME process continues:
+    // Lab Testing Queue for a drawn unit, Nurse bedside for a cleared one.
+    if (typeof window.switchHospitalView === 'function') {
+      window.switchHospitalView(view);
+    } else {
+      showToast('Open the ' + (view === 'lab' ? 'Lab' : 'Nurse') + ' panel from the sidebar to continue.', 'info');
+    }
+  };
+
   window.callNextDonorAction = async (requestId, donorName) => {
     try {
       const res = await callNextDonor(requestId, donorName);

@@ -2429,13 +2429,18 @@ export async function checkInDonor(requestId, sourceCollection = null) {
         if (!eligible.includes(reqData.status)) {
             // A finished journey must not be re-checked-in: this would let a donor
             // (or a reused pass code) mint a second donation record and inventory
-            // batch for the same visit. Pass codes are per-booking, so the fix is
-            // a new booking, not a new check-in.
-            const consumed = ['Donation Complete', 'Lab Cleared', 'Issued'];
-            if (resolvedCollection === 'donation_requests' && consumed.includes(reqData.status)) {
+            // batch for the same visit. Pass codes are single-use, so there is
+            // nothing reception can do for a code whose journey moved past the
+            // desk — the lab and issue steps happen from the hospital dashboards.
+            const consumed = ['Donation Complete', 'Lab Cleared', 'Issued', 'completed'];
+            if (consumed.includes(reqData.status)) {
+                const isBooking = resolvedCollection === 'donation_requests';
                 throw new Error(
-                    `This pass code belongs to a completed donation (status "${reqData.status}"). ` +
-                    `The donor cannot be checked in again with it — to donate again they must book a NEW appointment, which issues a fresh code.`
+                    isBooking
+                        ? `This pass code belongs to a finished donation (status "${reqData.status}"). ` +
+                            `It cannot be checked in again — to donate again, the donor must book a NEW appointment, which issues a fresh code.`
+                        : `This pass code was already used for this donation (status "${reqData.status}"). ` +
+                            `The blood is now in laboratory testing — the Lab Testing Queue and issue step continue from the hospital dashboards, not reception. Pass codes are single-use, so no re-check-in is possible.`
                 );
             }
             throw new Error(

@@ -29,6 +29,34 @@ export async function verifyAndCheckInToken(tokenInput, hospitalName = '') {
   const donorId = matched.matchedDonor || matched.donorId || null;
   const donorName = matched.donorName || 'Donor';
 
+  // Re-scan of a code whose journey already moved past the front desk. We do
+  // NOT re-write 'Checked In' — that would let the same donation be recorded
+  // twice (duplicate inventory batch). Instead we pull the current stage up so
+  // the desk can continue the SAME process from where it stopped: a drawn unit
+  // goes to the Lab Testing Queue, a cleared one to Nurse issuance.
+  const STAGES = [
+    { statuses: ['Donation Complete', 'completed'], stage: 4, label: 'Blood Drawn · At Lab', view: 'lab', hint: 'Blood was already collected. Continue from the Lab Testing Queue — clear the unit so it becomes available stock.' },
+    { statuses: ['Lab Cleared', 'Lab Rejected'], stage: 5, label: 'Lab Cleared · Ready to Issue', view: 'nurse-issued', hint: 'The unit was already cleared by the lab. Continue from the Nurse bedside view and issue it to the patient to finish the journey.' },
+    { statuses: ['Issued', 'Resolved', 'Completed'], stage: 6, label: 'Journey Complete', view: null, hint: 'This donation has reached its final step (unit issued to a patient). There is nothing left to do — the pass code is spent by design.' },
+  ];
+  const stage = STAGES.find(s => s.statuses.includes(matched.status));
+  if (stage) {
+    return {
+      success: false,
+      already: true,
+      stage: stage.stage,
+      stageLabel: stage.label,
+      nextView: stage.view,
+      nextHint: stage.hint,
+      requestId,
+      donorId,
+      donorName,
+      code,
+      bloodType: matched.bloodType || matched.type || 'Unknown',
+      hospital: matched.hospital || matched.hospitalName || hospitalName
+    };
+  }
+
   // 2. Advance the journey. The second argument is the source collection the
   //    code was found in — previously a donorId was passed here, which
   //    checkInDonor silently ignored.
