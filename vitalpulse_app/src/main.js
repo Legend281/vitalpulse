@@ -6564,12 +6564,15 @@ function initDonationIntakeModal() {
                 } catch (e) { console.warn('SMS notification failed:', e); }
 
                 close();
-                showToast('Donation intake recorded — blood is now in lab quarantine.');
+                showToast('Donation recorded! Next step: open the Lab Testing tab and clear this unit — it stays "Waiting for Lab Test" (not counted as available stock) until you do.');
                 loadHospitalDonors();
                 loadHospitalDashboard();
             } catch (err) {
                 console.error('Failed to complete donation intake:', err);
-                window.vpNotify(err.message || 'Failed to complete donation intake.');
+                const msg = (err?.code === 'internal' || err?.message?.startsWith('internal'))
+                    ? 'Intake backend is not reachable yet — the blood-inventory functions are not deployed (a production/deployment issue, not your data). Contact the admin to deploy them, then retry.'
+                    : (err?.message || 'Failed to complete donation intake.');
+                window.vpNotify(msg);
             } finally {
                 btn.disabled = false;
             }
