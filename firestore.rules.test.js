@@ -57,9 +57,12 @@ beforeEach(async () => {
 
     await setDoc(doc(db, 'requests/R1'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Open', isEmergency: true, requestedAt: 'now' });
     await setDoc(doc(db, 'requests/R2'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor Assigned', matchedDonor: 'donorA', matchedAt: 'now', requestedAt: 'now', isEmergency: true });
-    // R3: donorA already en route — the state the live-GPS, arrival-signal and
-    // reception check-in rules operate on.
-    await setDoc(doc(db, 'requests/R3'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor En Route', matchedDonor: 'donorA', matchedAt: 'now', enRouteAt: 'now', requestedAt: 'now', isEmergency: true });
+    // R7: donorA already en route — the state the live-GPS, arrival-signal and
+    // reception check-in rules operate on. Deliberately NOT R3/R4/R5/R6: those IDs
+    // belong to the create tests below, which need the document to be ABSENT so
+    // that setDoc is evaluated as a create. Seeding one of them silently turned
+    // its create into an update and failed the rule it was asserting.
+    await setDoc(doc(db, 'requests/R7'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Donor En Route', matchedDonor: 'donorA', matchedAt: 'now', enRouteAt: 'now', requestedAt: 'now', isEmergency: true });
 
     await setDoc(doc(db, 'public_requests/PR1'), { hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-', status: 'Broadcasting' });
 
@@ -257,36 +260,36 @@ describe('requests', () => {
     // No rule permitted these fields before, so updateDonorLiveLocation was
     // denied on every tick (silently — the caller try/catches) and the
     // hospital's tracking map never moved off "Waiting for signal…".
-    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R7'), {
       donorLat: 4.15, donorLng: 9.24, donorLocationUpdatedAt: 'now',
     })));
 
   it('HOSTILE: a donor cannot smuggle a status change into a location update', async () =>
-    assertFails(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+    assertFails(updateDoc(doc(ctx('donorA'), 'requests/R7'), {
       donorLat: 4.15, donorLng: 9.24, status: 'Checked In',
     })));
 
   it('the matched donor signals arrival WITHOUT advancing to Checked In', async () =>
-    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+    assertSucceeds(updateDoc(doc(ctx('donorA'), 'requests/R7'), {
       status: 'Donor En Route', arrivedAt: 'now', receptionStatus: 'Awaiting Verification',
     })));
 
   it('HOSTILE: a donor cannot check THEMSELVES in — only hospital staff may', async () =>
     // The whole point of the reception handshake: the pass code has to be
     // presented to a person. Self-check-in made it decorative.
-    assertFails(updateDoc(doc(ctx('donorA'), 'requests/R3'), {
+    assertFails(updateDoc(doc(ctx('donorA'), 'requests/R7'), {
       status: 'Checked In', checkedInAt: 'now',
     })));
 
   it('the owning hospital checks a donor in with the full write shape', async () =>
     // checkInDonor writes checkedInByStaffUid and receptionStatus too; both were
     // missing from the whitelist, so the front desk's own check-in was denied.
-    assertSucceeds(updateDoc(doc(ctx('staffH1'), 'requests/R3'), {
+    assertSucceeds(updateDoc(doc(ctx('staffH1'), 'requests/R7'), {
       status: 'Checked In', checkedInAt: 'now', checkedInByStaffUid: 'staffH1', receptionStatus: 'Checked In',
     })));
 
   it('HOSTILE: staff of another hospital cannot check in this hospital\'s donor', async () =>
-    assertFails(updateDoc(doc(ctx('staffH2'), 'requests/R3'), {
+    assertFails(updateDoc(doc(ctx('staffH2'), 'requests/R7'), {
       status: 'Checked In', checkedInAt: 'now', checkedInByStaffUid: 'staffH2',
     })));
 });
