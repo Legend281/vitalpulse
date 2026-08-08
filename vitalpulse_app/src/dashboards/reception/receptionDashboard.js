@@ -244,6 +244,7 @@ function bindReceptionPasscodeCheckIn() {
     heroInput.onkeypress = (e) => {
       if (e.key === 'Enter') handleCheckIn(heroInput);
     };
+    heroInput.dataset.receptionBound = '1';
   }
 
   const tabBtn = document.getElementById('btnVerifyCheckInToken');
@@ -253,6 +254,7 @@ function bindReceptionPasscodeCheckIn() {
     tabInput.onkeypress = (e) => {
       if (e.key === 'Enter') handleCheckIn(tabInput);
     };
+    tabInput.dataset.receptionBound = '1';
   }
 }
 
@@ -375,6 +377,10 @@ function bindPatientRequisitionModal() {
  * bindGlobalReceptionActions - Attaches window action helpers for reception UI
  */
 function bindGlobalReceptionActions() {
+  // Exposed so the hospital front-desk lookup (main.js) can show the same
+  // journey-continuation card instead of failing a spent pass code.
+  window.showJourneyContinuationCard = openJourneyContinuationCard;
+
   window.journeyContinuationGo = (view) => {
     if (typeof window.closeModal === 'function') window.closeModal('journeyContinuationModal');
     // Jump to the exact operational view where the SAME process continues:

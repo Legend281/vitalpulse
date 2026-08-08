@@ -1,6 +1,6 @@
 import { doc, getDoc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
-import { logActivity, findRequestByCheckInToken, checkInDonor } from '../../db.js';
+import { logActivity, findRequestByCheckInToken, checkInDonor, getCheckInJourneyStage } from '../../db.js';
 import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
@@ -34,12 +34,7 @@ export async function verifyAndCheckInToken(tokenInput, hospitalName = '') {
   // twice (duplicate inventory batch). Instead we pull the current stage up so
   // the desk can continue the SAME process from where it stopped: a drawn unit
   // goes to the Lab Testing Queue, a cleared one to Nurse issuance.
-  const STAGES = [
-    { statuses: ['Donation Complete', 'completed'], stage: 4, label: 'Blood Drawn · At Lab', view: 'lab', hint: 'Blood was already collected. Continue from the Lab Testing Queue — clear the unit so it becomes available stock.' },
-    { statuses: ['Lab Cleared', 'Lab Rejected'], stage: 5, label: 'Lab Cleared · Ready to Issue', view: 'nurse-issued', hint: 'The unit was already cleared by the lab. Continue from the Nurse bedside view and issue it to the patient to finish the journey.' },
-    { statuses: ['Issued', 'Resolved', 'Completed'], stage: 6, label: 'Journey Complete', view: null, hint: 'This donation has reached its final step (unit issued to a patient). There is nothing left to do — the pass code is spent by design.' },
-  ];
-  const stage = STAGES.find(s => s.statuses.includes(matched.status));
+  const stage = getCheckInJourneyStage(matched);
   if (stage) {
     return {
       success: false,

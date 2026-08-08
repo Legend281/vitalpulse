@@ -2299,6 +2299,23 @@ function hospitalOf(data) {
     return data.hospital || data.hospitalName || data.preferredLocation || null;
 }
 
+// Journey stages for a pass code that already moved PAST the front desk.
+// Re-scan does not re-check-in (that would let one donation be recorded
+// twice) — it surfaces where the SAME journey stopped and where to continue.
+const POST_DESK_STAGES = [
+    { statuses: ['Donation Complete', 'completed'], stage: 4, label: 'Blood Drawn · At Lab', view: 'lab', hint: 'Blood was already collected. Continue from the Lab Testing Queue — clear the unit so it becomes available stock.' },
+    { statuses: ['Lab Cleared', 'Lab Rejected'], stage: 5, label: 'Lab Cleared · Ready to Issue', view: 'nurse-issued', hint: 'The unit was already cleared by the lab. Continue from the Nurse bedside view and issue it to the patient to finish the journey.' },
+    { statuses: ['Issued', 'Resolved', 'Completed'], stage: 6, label: 'Journey Complete', view: null, hint: 'This donation has reached its final step (unit issued to a patient). The pass code is spent by design.' },
+];
+
+// Reads the current stage of an already-advanced journey, or null when the
+// record can still be checked in normally. Shared by every check-in surface
+// (reception dashboard, hospital front-desk lookup) so no path can diverge.
+export function getCheckInJourneyStage(reqData) {
+    if (!reqData || !reqData.status) return null;
+    return POST_DESK_STAGES.find(s => s.statuses.includes(reqData.status)) || null;
+}
+
 /**
  * Front-desk pass code lookup. Reception only ever has the code the donor shows,
  * not the underlying record id, so this resolves the code across all three
