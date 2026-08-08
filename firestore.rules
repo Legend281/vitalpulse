@@ -59,6 +59,51 @@ service cloud.firestore {
       return signedIn() && rolesList().hasAny(targetRoles);
     }
 
+    // K8 FIX (tracker K8, raised 2026-08-07, fixed 2026-08-08). These three functions were
+    // called in 20 places across this file but defined in none of them. A call to an
+    // undefined function is not a compile error here — the ruleset loads, and the call
+    // throws at evaluation time, which the engine treats as a denial. So the affected rules
+    // failed CLOSED (no data was ever exposed) but were simply dead: 11 rules tests failed
+    // for this reason alone, covering hospital staff reading their own inventory, creating
+    // requests, reading their own notifications and issuance log, plus campaigns and
+    // system_settings for everyone.
+    //
+    // Why role() barely changes anything: rolesList() already falls back to [role] when the
+    // plural `roles` claim is absent, so `rolesList().hasAny(['donor'])` covers `role ==
+    // 'donor'` on its own. Every `|| role() == ...` below is therefore a redundant
+    // right-hand branch — it only ever evaluated when the left side had already returned
+    // false, where it now returns false too instead of throwing. grantRole.ts always writes
+    // `role` as a member of `roles` (see functions/src/grantRole.ts), so the two can't
+    // disagree in a way that would grant more than the left side already does.
+    function role() {
+      return request.auth.token.get('role', '');
+    }
+
+    // '' rather than null: an absent claim must not accidentally equal a real hospitalId.
+    function myHospitalId() {
+      return request.auth.token.get('hospitalId', '');
+    }
+
+    // "Signed in with a role that was actually granted." Deliberately NOT built on
+    // rolesList()/hasAnyRole(): rolesList() defaults a claimless account to ['donor'], and
+    // reusing that here would let a signed-in user whose grantRole never ran read the user
+    // directory, campaigns and system_settings — the exact case the "signed-in user with no
+    // role claim is denied everywhere" test covers, which until now passed only because
+    // this function threw.
+    //
+    // KNOWN GAP, PRE-EXISTING, FLAGGED NOT FIXED (needs the Security Lead's call — it is a
+    // live-account decision, not a rules one): rolesList()'s `'donor'` default means
+    // isDonor() still returns true for a signed-in account with no role claim at all, so
+    // donor-scoped collections remain open to one. That predates this fix and is untouched
+    // by it. Tightening the default would deny any real account currently running without a
+    // claim (see tracker K10 for how one could get into that state) — hence flagged rather
+    // than changed unilaterally.
+    function hasRole() {
+      return signedIn()
+             && (request.auth.token.get('roles', []).size() > 0
+                 || request.auth.token.get('role', '') != '');
+    }
+
     function isDonor()         { return signedIn() && (rolesList().hasAny(['donor']) || role() == 'donor'); }
     function isHospitalRole()  { return signedIn() && (rolesList().hasAny(['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']) || role() in ['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']); }
     function canManageStock()  { return signedIn() && (rolesList().hasAny(['nurse', 'hospital_staff', 'hospital_admin']) || role() in ['hospital_staff', 'hospital_admin']); }
