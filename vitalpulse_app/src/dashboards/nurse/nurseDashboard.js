@@ -1,4 +1,4 @@
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 import { createNursePatientRequest, fetchNurseActiveRequests } from './nurseClinicalRequest.js';
 import { verifyAndIssueBloodBag } from './nurseBedsideVerification.js';
 import { logTransfusionVitals, fetchActiveTransfusions } from './nurseVitalsMonitor.js';
@@ -23,7 +23,7 @@ export function initNurseDashboard() {
  */
 export async function loadNurseOverview() {
   const currentUser = getCurrentUser();
-  const hospitalName = currentUser?.name || 'General Hospital';
+  const hospitalName = getEffectiveHospitalName(currentUser);
 
   try {
     const requests = await fetchNurseActiveRequests(hospitalName);

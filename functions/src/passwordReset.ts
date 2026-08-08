@@ -182,6 +182,6 @@ export async function confirmPasswordResetHandler(request: CallableRequest) {
   return { success: true };
 }
 
-export const requestPasswordReset = onCall({ secrets: [RESEND_API_KEY] }, requestPasswordResetHandler);
-export const checkPasswordResetToken = onCall(checkPasswordResetTokenHandler);
-export const confirmPasswordReset = onCall(confirmPasswordResetHandler);
+export const requestPasswordReset = onCall({ secrets: [RESEND_API_KEY], cors: true }, requestPasswordResetHandler);
+export const checkPasswordResetToken = onCall({ cors: true }, checkPasswordResetTokenHandler);
+export const confirmPasswordReset = onCall({ cors: true }, confirmPasswordResetHandler);

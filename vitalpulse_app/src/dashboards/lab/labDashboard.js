@@ -1,6 +1,6 @@
 import { collection, getDocs, query } from 'firebase/firestore';
 import { db } from '../../firebase.js';
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 import { resolveLabTest } from '../../db.js';
 import { showToast } from '../../main.js';
 
@@ -76,7 +76,7 @@ export const fetchPendingLabTests = async (hospitalName) => {
  */
 export async function loadLabOverview() {
   const currentUser = getCurrentUser();
-  const hospitalName = currentUser?.name || 'General Hospital';
+  const hospitalName = getEffectiveHospitalName(currentUser);
 
   try {
     const batches = await fetchAllLabBatches(hospitalName);

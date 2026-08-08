@@ -44,4 +44,4 @@ export async function resolveSignInIdentifierHandler(request: CallableRequest) {
   return { email: typeof email === 'string' ? email : null };
 }
 
-export const resolveSignInIdentifier = onCall(resolveSignInIdentifierHandler);
+export const resolveSignInIdentifier = onCall({ cors: true }, resolveSignInIdentifierHandler);

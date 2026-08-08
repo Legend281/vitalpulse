@@ -1,7 +1,7 @@
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { fetchRecentLogs } from '../../db.js';
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
  * renderReceptionActivityStream - Displays filtered front-desk reception events
@@ -12,7 +12,7 @@ export async function renderReceptionActivityStream() {
 
   try {
     const currentUser = getCurrentUser();
-    const hospitalName = currentUser?.name || 'General Hospital';
+    const hospitalName = getEffectiveHospitalName(currentUser);
 
     // 1. Fetch system logs
     const allLogs = await fetchRecentLogs(30);

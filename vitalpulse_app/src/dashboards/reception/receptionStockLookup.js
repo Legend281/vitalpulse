@@ -1,7 +1,7 @@
 import { collection, addDoc, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { fetchInventory, logActivity } from '../../db.js';
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
  * fetchReceptionStockSummary - Read-only query for front-desk staff to answer patient family questions.
@@ -48,7 +48,7 @@ export async function savePatientRequisitionHold(reqData) {
   }
 
   const currentUser = getCurrentUser();
-  const hospitalName = currentUser?.name || 'General Hospital';
+  const hospitalName = getEffectiveHospitalName(currentUser);
   const now = new Date().toISOString();
 
   const docRef = await addDoc(collection(db, 'patient_requisitions'), {

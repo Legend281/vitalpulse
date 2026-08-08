@@ -123,5 +123,5 @@ export async function setHospitalActiveHandler(request: CallableRequest) {
   return { success: true, active, staffAffected };
 }
 
-export const deactivateHospital = onCall(setHospitalActiveHandler);
-export const reactivateHospital = onCall(setHospitalActiveHandler);
+export const deactivateHospital = onCall({ cors: true }, setHospitalActiveHandler);
+export const reactivateHospital = onCall({ cors: true }, setHospitalActiveHandler);

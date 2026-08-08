@@ -1,4 +1,4 @@
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 import { fetchIncomingDonors } from '../../db.js';
 import { verifyAndCheckInToken, callNextDonor, saveDonorEtaNote } from './receptionCheckIn.js';
 import { fetchReceptionStockSummary, savePatientRequisitionHold, fetchPatientRequisitions, deletePatientRequisition } from './receptionStockLookup.js';
@@ -24,7 +24,7 @@ export function initReceptionDashboard() {
  */
 export async function loadReceptionOverview() {
   const currentUser = getCurrentUser();
-  const hospitalName = currentUser?.name || 'General Hospital';
+  const hospitalName = getEffectiveHospitalName(currentUser);
 
   try {
     const donors = await fetchIncomingDonors(hospitalName);

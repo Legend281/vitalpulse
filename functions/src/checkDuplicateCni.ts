@@ -57,4 +57,4 @@ export async function checkDuplicateCniHandler(request: CallableRequest) {
   return { duplicate };
 }
 
-export const checkDuplicateCni = onCall(checkDuplicateCniHandler);
+export const checkDuplicateCni = onCall({ cors: true }, checkDuplicateCniHandler);

@@ -491,6 +491,11 @@ export function getCurrentUser() {
     return stored ? JSON.parse(stored) : null;
 }
 
+export function getEffectiveHospitalName(user) {
+    if (!user) return 'General Hospital';
+    return user.hospitalName || user.hospital || user.name || 'General Hospital';
+}
+
 // Resolves with the actual signed-in Firebase user (or null), straight from the
 // SDK's own auth state — not the cached localStorage blob. Firebase Auth sessions
 // are shared across every tab of the same browser, so if a different account logs

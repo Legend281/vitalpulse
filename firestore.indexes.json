@@ -65,6 +65,22 @@
         { "fieldPath": "isAvailable", "order": "ASCENDING" },
         { "fieldPath": "city", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "donor_reactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "hospitalName", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "hemovigilance_reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "hospitalName", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

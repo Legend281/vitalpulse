@@ -83,4 +83,4 @@ export async function revokeRoleHandler(request: CallableRequest) {
   return { success: true, suspended: newClaims.suspended === true };
 }
 
-export const revokeRole = onCall(revokeRoleHandler);
+export const revokeRole = onCall({ cors: true }, revokeRoleHandler);

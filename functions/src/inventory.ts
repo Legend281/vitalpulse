@@ -520,11 +520,11 @@ async function issueBloodToPatientHandler(request: CallableRequest) {
   };
 }
 
-export const addInventoryStock = onCall(addInventoryStockHandler);
-export const deductInventoryStock = onCall(deductInventoryStockHandler);
-export const resolveLabTest = onCall(resolveLabTestHandler);
-export const setInventoryThreshold = onCall(setInventoryThresholdHandler);
-export const issueBloodToPatient = onCall(issueBloodToPatientHandler);
+export const addInventoryStock = onCall({ cors: true }, addInventoryStockHandler);
+export const deductInventoryStock = onCall({ cors: true }, deductInventoryStockHandler);
+export const resolveLabTest = onCall({ cors: true }, resolveLabTestHandler);
+export const setInventoryThreshold = onCall({ cors: true }, setInventoryThresholdHandler);
+export const issueBloodToPatient = onCall({ cors: true }, issueBloodToPatientHandler);
 
 // Exported for unit tests only.
 export {

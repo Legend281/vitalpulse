@@ -77,4 +77,4 @@ export async function grantRoleHandler(request: CallableRequest) {
   return { success: true, role, hospitalId: hospitalId ?? null };
 }
 
-export const grantRole = onCall(grantRoleHandler);
+export const grantRole = onCall({ cors: true }, grantRoleHandler);

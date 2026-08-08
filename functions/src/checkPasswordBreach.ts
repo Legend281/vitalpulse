@@ -71,4 +71,4 @@ export async function checkPasswordBreachHandler(request: CallableRequest) {
   return { suffixes, degraded: false };
 }
 
-export const checkPasswordBreach = onCall(checkPasswordBreachHandler);
+export const checkPasswordBreach = onCall({ cors: true }, checkPasswordBreachHandler);

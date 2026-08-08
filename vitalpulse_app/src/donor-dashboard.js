@@ -2498,9 +2498,9 @@ function renderDonorJourneyCard(r) {
   } else if (r.status === 'Donor En Route') {
     actions = `
       <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-on-surface-variant hover:text-error bg-surface-container-low hover:bg-error-container/40 px-3 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
-      <button onclick="window.donorCheckIn('${r.id}')" class="press-scale text-xs font-extrabold text-on-success bg-success hover:opacity-90 px-4 py-2.5 rounded-xl shadow-sm shadow-success/20 transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> Arrived &amp; Check In</button>`;
+      <button onclick="window.donorCheckIn('${r.id}')" class="press-scale text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-xl shadow-sm transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> Arrived at Reception</button>`;
   } else {
-    actions = `<span class="text-xs font-extrabold ${isComplete ? 'text-success' : 'text-on-surface'} px-1">${esc(r.status)}</span>`;
+    actions = `<span class="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-sky-100 text-sky-800 border border-sky-200'}">${esc(r.status)}</span>`;
   }
 
   const nodes = JOURNEY_STEPS.map((s, idx) => {
@@ -2521,6 +2521,21 @@ function renderDonorJourneyCard(r) {
         <span class="text-[9px] font-bold text-center leading-tight ${labelCls}">${s.label}</span>
       </div>`;
   }).join('');
+
+  const passcodeTicket = r.checkInToken ? `
+    <div class="bg-emerald-50/90 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 shadow-xs">
+      <div class="flex items-center gap-3.5">
+        <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-sm shrink-0">
+          <span class="material-symbols-outlined text-2xl">qr_code_2</span>
+        </div>
+        <div>
+          <p class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">Reception Check-In Passcode</p>
+          <p class="text-2xl font-mono font-black tracking-widest text-emerald-900">${esc(r.checkInToken)}</p>
+        </div>
+      </div>
+      <p class="text-xs font-semibold text-emerald-800 max-w-xs text-center sm:text-right">Show this passcode or your physical CNI card to hospital reception staff when you arrive.</p>
+    </div>
+  ` : '';
 
   return `
   <div class="hover-lift bg-surface-container-lowest p-5 md:p-6 rounded-3xl border border-y border-r border-outline-variant/20 ${borderCls} shadow-sm space-y-5">
@@ -2554,7 +2569,7 @@ function renderDonorJourneyCard(r) {
 
     ${detailsBlock}
 
-    ${passCode ? `<div class="flex items-center gap-2 flex-wrap"><span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider">Reception pass code</span>${passCode}</div>` : ''}
+    ${passcodeTicket}
   </div>`;
 }
 
@@ -3426,10 +3441,34 @@ const VP_ALERT_STYLES = {
   error: { icon: 'error', wrap: 'bg-error/12 text-error' },
   question: { icon: 'help', wrap: 'bg-primary/12 text-primary' },
 };
+function ensureVpAlertModalInDom() {
+  let modal = document.getElementById('vpAlertModal');
+  if (modal) return modal;
+
+  const div = document.createElement('div');
+  div.id = 'vpAlertModal';
+  div.className = 'fixed inset-0 z-[9999] hidden items-center justify-center p-4 sm:p-6 overflow-y-auto';
+  div.innerHTML = `
+    <div id="vpAlertBackdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity"></div>
+    <div class="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-100 z-10 text-center animate-in fade-in zoom-in duration-200">
+      <div id="vpAlertIconWrap" class="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-red-50 text-red-600">
+        <span id="vpAlertIcon" class="material-symbols-outlined text-2xl">info</span>
+      </div>
+      <h3 id="vpAlertTitle" class="text-lg font-black text-slate-900 mb-2"></h3>
+      <div id="vpAlertMessage" class="text-xs font-medium text-slate-600 space-y-2 mb-6"></div>
+      <div class="flex items-center gap-3">
+        <button id="vpAlertCancel" type="button" class="hidden flex-1 py-3 rounded-2xl font-extrabold text-sm bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer">Cancel</button>
+        <button id="vpAlertConfirm" type="button" class="flex-1 py-3 rounded-2xl font-extrabold text-sm bg-red-600 text-white hover:bg-red-700 transition-colors cursor-pointer">OK</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(div);
+  return div;
+}
+
 window.vpAlert = (opts = {}) => new Promise((resolve) => {
   const { type = 'info', title = '', message = '', confirmText = 'OK', cancelText = null, danger = false } = opts;
-  const modal = document.getElementById('vpAlertModal');
-  if (!modal) { resolve(window.confirm(message || title)); return; } // graceful fallback
+  const modal = ensureVpAlertModalInDom();
   const s = VP_ALERT_STYLES[type] || VP_ALERT_STYLES.info;
   const iconWrap = document.getElementById('vpAlertIconWrap');
   const titleEl = document.getElementById('vpAlertTitle');
@@ -3668,17 +3707,13 @@ window.enableLiveGpsLocation = async () => {
   try {
     const loc = await captureUserLocation(registeredCity);
     if (loc.source === 'gps') {
-      const updates = { lat: loc.lat, lng: loc.lng, locationSource: 'gps' };
-      // If GPS mapped to a different nearest city, update donor's city too
-      if (loc.city && loc.city.toLowerCase() !== registeredCity.toLowerCase()) {
-        updates.city = loc.city;
-      }
+      const updates = { lat: loc.lat, lng: loc.lng, gpsCity: loc.city, locationSource: 'gps' };
       await updateUserProfile(currentUser.uid, updates);
       const updated = { ...currentUser, ...updates };
       localStorage.setItem('vitalpulse_user', JSON.stringify(updated));
-      const nearestStr = loc.nearestDistKm ? ` near ${loc.city} (${loc.nearestDistKm} km)` : '';
+      const nearestStr = loc.nearestDistKm ? ` near ${loc.city || registeredCity} (${loc.nearestDistKm} km)` : '';
       showToast(`Live GPS enabled — ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}${nearestStr}`);
-      if (statusEl) statusEl.textContent = `GPS Active · ${loc.city} (${loc.lat.toFixed(2)}, ${loc.lng.toFixed(2)})`;
+      if (statusEl) statusEl.textContent = `GPS Active · ${loc.city || registeredCity} (${loc.lat.toFixed(2)}, ${loc.lng.toFixed(2)})`;
       loadDonorDashboard();
     } else {
       const msg = loc.reason && loc.reason.includes('HTTPS')

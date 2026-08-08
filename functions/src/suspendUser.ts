@@ -90,5 +90,5 @@ export async function setUserSuspensionHandler(request: CallableRequest) {
   return { success: true, suspended: suspend };
 }
 
-export const suspendUser = onCall(setUserSuspensionHandler);
-export const reactivateUser = onCall(setUserSuspensionHandler);
+export const suspendUser = onCall({ cors: true }, setUserSuspensionHandler);
+export const reactivateUser = onCall({ cors: true }, setUserSuspensionHandler);

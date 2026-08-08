@@ -165,5 +165,5 @@ export async function verifyStaffPinHandler(request: CallableRequest) {
   return { success: true, staffUid: staffData.uid, name: staffData.name, roles: staffData.roles || [staffData.role] };
 }
 
-export const createStaffAccount = onCall(createStaffAccountHandler);
-export const verifyStaffPin = onCall(verifyStaffPinHandler);
+export const createStaffAccount = onCall({ cors: true }, createStaffAccountHandler);
+export const verifyStaffPin = onCall({ cors: true }, verifyStaffPinHandler);

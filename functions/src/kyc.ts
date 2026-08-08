@@ -118,7 +118,7 @@ export async function bootstrapDonorAccountHandler(request: CallableRequest) {
   return { success: true, kycStatus: 'not_submitted' };
 }
 
-export const onDonorSignUp = onCall(bootstrapDonorAccountHandler);
+export const onDonorSignUp = onCall({ cors: true }, bootstrapDonorAccountHandler);
 
 const EXTENSION_BY_MIME_TYPE: Record<(typeof KYC_MIME_TYPES)[number], string> = {
   'image/jpeg': 'jpg',
@@ -241,7 +241,7 @@ export async function submitKycHandler(request: CallableRequest) {
   return { success: true, kycDocRef, kycDocBackRef };
 }
 
-export const submitKYC = onCall(submitKycHandler);
+export const submitKYC = onCall({ cors: true }, submitKycHandler);
 
 /**
  * submitLivenessSelfie — a second, separate piece of KYC evidence: a live camera capture of
@@ -328,7 +328,7 @@ export async function submitLivenessSelfieHandler(request: CallableRequest) {
   return { success: true, livenessSelfieRef };
 }
 
-export const submitLivenessSelfie = onCall(submitLivenessSelfieHandler);
+export const submitLivenessSelfie = onCall({ cors: true }, submitLivenessSelfieHandler);
 
 /**
  * verifyDonor / rejectDonorKyc — system_admin-only review decision. One shared handler
@@ -432,5 +432,5 @@ export async function reviewDonorKycHandler(request: CallableRequest, decision: 
   return { success: true, kycStatus: decision };
 }
 
-export const verifyDonor = onCall((request: CallableRequest) => reviewDonorKycHandler(request, 'verified'));
-export const rejectDonorKyc = onCall((request: CallableRequest) => reviewDonorKycHandler(request, 'rejected'));
+export const verifyDonor = onCall({ cors: true }, (request: CallableRequest) => reviewDonorKycHandler(request, 'verified'));
+export const rejectDonorKyc = onCall({ cors: true }, (request: CallableRequest) => reviewDonorKycHandler(request, 'rejected'));
