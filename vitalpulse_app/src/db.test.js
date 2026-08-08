@@ -416,144 +416,146 @@ describe('deactivateHospital/reactivateHospital (Phase 3)', () => {
     });
 });
 
-describe('Inventory Cloud Functions (Phase 3)', () => {
+describe('Inventory lifecycle on the free Spark plan (sparkBridge)', () => {
+    function installTxStore(seed = {}) {
+        // runTransactions fake over a per-test in-memory store keyed by ref path.
+        runTransaction.mockImplementation(async (_db, fn) => {
+            const tx = {
+                get: async (ref) => {
+                    const key = `${ref.path}/${ref.id}`;
+                    return { exists: () => seed[key] !== undefined, data: () => seed[key] };
+                },
+                set: (ref, data) => {
+                    const key = `${ref.path}/${ref.id}`;
+                    seed[key] = { ...(seed[key] || {}), ...data };
+                },
+                update: (ref, data) => {
+                    const key = `${ref.path}/${ref.id}`;
+                    seed[key] = { ...(seed[key] || {}), ...data };
+                },
+            };
+            return fn(tx);
+        });
+        return seed;
+    }
+
+    function hospitalSession() {
+        localStorage.setItem('vitalpulse_user', JSON.stringify({ uid: 'h1', role: 'hospital', name: 'General Hospital' }));
+    }
+
     beforeEach(() => {
         vi.clearAllMocks();
+        hospitalSession();
+        getDocs.mockResolvedValue(fakeSnapshot([]));
     });
 
-    it('updateInventoryStock(add) calls addInventoryStock and never writes Firestore directly', async () => {
+    it('updateInventoryStock(add) runs a local transaction and seeds "Waiting for Lab Test" (no Cloud Function)', async () => {
         const { updateInventoryStock } = await import('./db.js');
-        functionsMocks.callables.addInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 12 } });
+        const store = installTxStore();
 
-        const result = await updateInventoryStock('O+', 5, 'add', 'General Hospital', { componentType: 'Plasma', expiresAt: '2026-09-01' });
+        const result = await updateInventoryStock('O+', 5, 'add', 'General Hospital', { componentType: 'Plasma', sourceDonationId: 'D1' });
 
-        expect(functionsMocks.callables.addInventoryStock).toHaveBeenCalledWith({
-            bloodType: 'O+',
-            units: 5,
-            componentType: 'Plasma',
-            expiresAt: '2026-09-01',
-        });
-        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 12 });
-        expect(updateDoc).not.toHaveBeenCalled();
+        const doc = store['inventory/General_Hospital_O+'];
+        expect(doc).toBeDefined();
+        expect(doc.batches).toHaveLength(1);
+        expect(doc.batches[0].testStatus).toBe('Waiting for Lab Test');
+        expect(doc.batches[0].sourceDonationId).toBe('D1');
+        expect(doc.batches[0].componentType).toBe('Plasma');
+        expect(doc.batches[0].units).toBe(5);
+        expect(doc.unitsAvailable).toBe(0); // quarantined — NOT available stock
+        expect(doc.unitsPendingTest).toBe(5);
+        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 0 });
+        expect(httpsCallable).not.toHaveBeenCalled();
     });
 
-    it('updateInventoryStock(add) omits optional fields entirely rather than sending null', async () => {
-        const { updateInventoryStock } = await import('./db.js');
-        functionsMocks.callables.addInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 1 } });
-
-        await updateInventoryStock('O+', 1, 'add', 'General Hospital', {});
-
-        expect(functionsMocks.callables.addInventoryStock).toHaveBeenCalledWith({
-            bloodType: 'O+',
-            units: 1,
-            componentType: 'Whole Blood',
-        });
-    });
-
-    it('updateInventoryStock(remove) calls deductInventoryStock, not addInventoryStock', async () => {
-        const { updateInventoryStock } = await import('./db.js');
-        functionsMocks.callables.deductInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 3, deducted: 2 } });
-
-        const result = await updateInventoryStock('O+', 2, 'remove', 'General Hospital');
-
-        expect(functionsMocks.callables.deductInventoryStock).toHaveBeenCalledWith({ bloodType: 'O+', units: 2 });
-        expect(functionsMocks.callables.addInventoryStock).not.toHaveBeenCalled();
-        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 3 });
-    });
-
-    it('deductInventoryStock calls the Cloud Function and never runs a client transaction', async () => {
-        const { deductInventoryStock } = await import('./db.js');
-        functionsMocks.callables.deductInventoryStock.mockResolvedValueOnce({ data: { unitsAvailable: 6, deducted: 4 } });
+    it('deductInventoryStock only ever touches Cleared batches (FEFO), leaving the untested batch quarantined', async () => {
+        const { updateInventoryStock, deductInventoryStock } = await import('./db.js');
+        const store = installTxStore();
+        await updateInventoryStock('O+', 4, 'add', 'General Hospital', { testStatus: 'Cleared' });
+        await updateInventoryStock('O+', 6, 'add', 'General Hospital', {});
+        const invKey = 'inventory/General_Hospital_O+';
+        expect(store[invKey].unitsAvailable).toBe(4);
 
         const result = await deductInventoryStock('O+', 4, 'spoilage', 'General Hospital');
 
-        expect(functionsMocks.callables.deductInventoryStock).toHaveBeenCalledWith({
-            bloodType: 'O+',
-            units: 4,
-            reason: 'spoilage',
-        });
-        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 6, deducted: 4 });
-        expect(updateDoc).not.toHaveBeenCalled();
+        expect(result.deducted).toBe(4);
+        expect(store[invKey].unitsAvailable).toBe(0);
+        expect(store[invKey].unitsPendingTest).toBe(6);
+        expect(store[invKey].batches.filter((b) => b.testStatus === 'Waiting for Lab Test')).toHaveLength(1);
+        expect(httpsCallable).not.toHaveBeenCalled();
     });
 
-    it('deductInventoryStock rejects a non-positive unit count without ever calling the Cloud Function', async () => {
-        const { deductInventoryStock } = await import('./db.js');
-        await expect(deductInventoryStock('O+', 0, 'spoilage', 'General Hospital')).rejects.toThrow();
-        expect(functionsMocks.callables.deductInventoryStock).not.toHaveBeenCalled();
+    it('resolveLabTest moves a pending batch to Cleared — the Lab Testing queue path', async () => {
+        const { updateInventoryStock, resolveLabTest } = await import('./db.js');
+        const store = installTxStore();
+        await updateInventoryStock('O+', 3, 'add', 'General Hospital', {});
+        const batchId = store['inventory/General_Hospital_O+'].batches[0].id;
+        getDoc.mockResolvedValueOnce({ exists: () => false }); // no linked donation record
+
+        const resolved = await resolveLabTest('General Hospital', 'O+', batchId, 'Cleared', null, { labTechName: 'Lab-1' });
+
+        expect(resolved.testStatus).toBe('Cleared');
+        expect(resolved.labTechName).toBe('Lab-1');
+        expect(store['inventory/General_Hospital_O+'].unitsAvailable).toBe(3);
+        expect(store['inventory/General_Hospital_O+'].unitsPendingTest).toBe(0);
+        expect(httpsCallable).not.toHaveBeenCalled();
     });
 
-    it('resolveLabTest calls the Cloud Function with only the supplied optional fields and notifies from the response', async () => {
-        const { resolveLabTest } = await import('./db.js');
-        getDocs.mockResolvedValue(fakeSnapshot([]));
-        functionsMocks.callables.resolveLabTest.mockResolvedValueOnce({
-            data: { batch: { id: 'b1', units: 3, componentType: 'Whole Blood', sourceDonationId: null } },
-        });
+    it('resolveLabTest refuses a batch that is not waiting', async () => {
+        const { updateInventoryStock, resolveLabTest } = await import('./db.js');
+        const store = installTxStore();
+        await updateInventoryStock('O+', 2, 'add', 'General Hospital', { testStatus: 'Cleared' });
+        const batchId = store['inventory/General_Hospital_O+'].batches[0].id;
 
-        const result = await resolveLabTest('General Hospital', 'O+', 'b1', 'Cleared', null, { labTechName: 'T. Nkeng' });
-
-        expect(functionsMocks.callables.resolveLabTest).toHaveBeenCalledWith({
-            bloodType: 'O+',
-            batchId: 'b1',
-            result: 'Cleared',
-            labTechName: 'T. Nkeng',
-        });
-        expect(result).toEqual({ id: 'b1', units: 3, componentType: 'Whole Blood', sourceDonationId: null });
-        expect(updateDoc).not.toHaveBeenCalledWith(expect.objectContaining({ path: 'inventory' }), expect.anything());
+        await expect(resolveLabTest('General Hospital', 'O+', batchId, 'Rejected, Not Safe')).rejects.toThrow(/already been resolved/);
     });
 
-    it('resolveLabTest rejects an invalid result value without ever calling the Cloud Function', async () => {
-        const { resolveLabTest } = await import('./db.js');
-        await expect(resolveLabTest('General Hospital', 'O+', 'b1', 'Probably Fine')).rejects.toThrow();
-        expect(functionsMocks.callables.resolveLabTest).not.toHaveBeenCalled();
-    });
+    it('issueBloodToPatient refuses uncleared stock, and on issue writes the issuance_log', async () => {
+        const { updateInventoryStock, issueBloodToPatient } = await import('./db.js');
+        const store = installTxStore();
+        await updateInventoryStock('O+', 4, 'add', 'General Hospital', { testStatus: 'Cleared' });
+        await updateInventoryStock('O+', 6, 'add', 'General Hospital', {});
 
-    it('setInventoryThreshold calls the Cloud Function and never reads/writes the inventory doc directly', async () => {
-        const { setInventoryThreshold } = await import('./db.js');
-
-        await setInventoryThreshold('O+', 10, 'General Hospital');
-
-        expect(functionsMocks.callables.setInventoryThreshold).toHaveBeenCalledWith({ bloodType: 'O+', threshold: 10 });
-        expect(updateDoc).not.toHaveBeenCalled();
-    });
-});
-
-describe('issueBloodToPatient (Phase 3)', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        getDocs.mockResolvedValue(fakeSnapshot([]));
-    });
-
-    it('calls the issueBloodToPatient Cloud Function and never writes inventory/issuance_log directly', async () => {
-        const { issueBloodToPatient } = await import('./db.js');
-        functionsMocks.callables.issueBloodToPatient.mockResolvedValueOnce({
-            data: { unitsAvailable: 4, issuanceLogId: 'ISSUE1', deductedBatches: [] },
-        });
-
-        const result = await issueBloodToPatient('O+', 2, {
+        await expect(issueBloodToPatient('O+', 7, {
             hospital: 'General Hospital',
             patientName: 'Jane Doe',
             crossmatchConfirmed: true,
             crossmatchResult: 'Compatible',
-            ward: 'ICU',
-            diagnosis: 'Trauma',
-        });
+        })).rejects.toThrow(/4 tested and cleared unit/);
 
-        expect(functionsMocks.callables.issueBloodToPatient).toHaveBeenCalledWith({
-            bloodType: 'O+',
-            units: 2,
+        const result = await issueBloodToPatient('O+', 4, {
+            hospital: 'General Hospital',
             patientName: 'Jane Doe',
-            requestingPhysicianName: 'Dr. Unspecified',
             crossmatchConfirmed: true,
             crossmatchResult: 'Compatible',
-            ward: 'ICU',
-            diagnosis: 'Trauma',
         });
-        expect(result).toEqual({ bloodType: 'O+', unitsAvailable: 4 });
-        expect(addDoc).not.toHaveBeenCalledWith(expect.objectContaining({ path: 'issuance_log' }), expect.anything());
-        expect(updateDoc).not.toHaveBeenCalled();
+
+        expect(result.unitsAvailable).toBe(0);
+        expect(addDoc).toHaveBeenCalledWith(
+            expect.objectContaining({ path: 'issuance_log' }),
+            expect.objectContaining({ patientName: 'Jane Doe', crossmatchConfirmed: true, units: 4 }),
+        );
+        expect(httpsCallable).not.toHaveBeenCalled();
     });
 
-    it('HOSTILE: rejects locally, without calling the Cloud Function, if the crossmatch is not confirmed compatible', async () => {
+    it('setInventoryThreshold uses the local bridge', async () => {
+        const { setInventoryThreshold } = await import('./db.js');
+        const store = installTxStore();
+
+        await setInventoryThreshold('AB+', 10, 'General Hospital');
+
+        expect(store['inventory/General_Hospital_AB+'].minimumThreshold).toBe(10);
+        expect(httpsCallable).not.toHaveBeenCalled();
+    });
+});
+
+describe('issueBloodToPatient safety gates (Spark edition)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        getDocs.mockResolvedValue(fakeSnapshot([]));
+    });
+
+    it('HOSTILE: rejects locally, before any call, if the crossmatch is not confirmed compatible', async () => {
         const { issueBloodToPatient } = await import('./db.js');
         await expect(issueBloodToPatient('O+', 2, {
             hospital: 'General Hospital',
@@ -561,10 +563,11 @@ describe('issueBloodToPatient (Phase 3)', () => {
             crossmatchConfirmed: false,
             crossmatchResult: 'Compatible',
         })).rejects.toThrow(/CRITICAL MEDICAL SAFETY GATE/);
-        expect(functionsMocks.callables.issueBloodToPatient).not.toHaveBeenCalled();
+        expect(httpsCallable).not.toHaveBeenCalled();
+        expect(runTransaction).not.toHaveBeenCalled();
     });
 
-    it('HOSTILE: rejects locally if crossmatchResult is anything other than "Compatible"', async () => {
+    it('HOSTILE: rejects if crossmatchResult is anything other than "Compatible"', async () => {
         const { issueBloodToPatient } = await import('./db.js');
         await expect(issueBloodToPatient('O+', 2, {
             hospital: 'General Hospital',
@@ -572,54 +575,7 @@ describe('issueBloodToPatient (Phase 3)', () => {
             crossmatchConfirmed: true,
             crossmatchResult: 'Incompatible',
         })).rejects.toThrow(/CRITICAL MEDICAL SAFETY GATE/);
-        expect(functionsMocks.callables.issueBloodToPatient).not.toHaveBeenCalled();
-    });
-
-    it('omits optional patient fields entirely rather than sending them as empty strings/null', async () => {
-        const { issueBloodToPatient } = await import('./db.js');
-        functionsMocks.callables.issueBloodToPatient.mockResolvedValueOnce({
-            data: { unitsAvailable: 1, issuanceLogId: 'ISSUE2', deductedBatches: [] },
-        });
-
-        await issueBloodToPatient('O+', 1, {
-            hospital: 'General Hospital',
-            patientName: 'Jane Doe',
-            crossmatchConfirmed: true,
-            crossmatchResult: 'Compatible',
-        });
-
-        expect(functionsMocks.callables.issueBloodToPatient).toHaveBeenCalledWith({
-            bloodType: 'O+',
-            units: 1,
-            patientName: 'Jane Doe',
-            requestingPhysicianName: 'Dr. Unspecified',
-            crossmatchConfirmed: true,
-            crossmatchResult: 'Compatible',
-        });
-    });
-
-    it('links each deducted batch\'s source donation request to "Issued" and notifies the donor, using the server-returned batches', async () => {
-        const { issueBloodToPatient } = await import('./db.js');
-        functionsMocks.callables.issueBloodToPatient.mockResolvedValueOnce({
-            data: {
-                unitsAvailable: 4,
-                issuanceLogId: 'ISSUE3',
-                deductedBatches: [{ id: 'b1', units: 2, sourceDonationId: 'D1' }],
-            },
-        });
-        getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ donorId: 'donor-1' }) });
-
-        await issueBloodToPatient('O+', 2, {
-            hospital: 'General Hospital',
-            patientName: 'Jane Doe',
-            crossmatchConfirmed: true,
-            crossmatchResult: 'Compatible',
-        });
-
-        expect(updateDoc).toHaveBeenCalledWith(
-            expect.objectContaining({ path: 'donation_requests' }),
-            expect.objectContaining({ status: 'Issued' }),
-        );
+        expect(httpsCallable).not.toHaveBeenCalled();
     });
 });
 

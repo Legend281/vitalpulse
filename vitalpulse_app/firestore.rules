@@ -21,12 +21,19 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
+    // Role-value mapping (2026-08-08): the app's role field carries either the
+    // legacy scalar ('admin', 'hospital') or the fine-grained values the staff
+    // provisioning writes ('hospital_admin', 'hospital_staff', 'lab_tech',
+    // 'nurse', 'reception', ...) — plus 'system_admin' for the admin UI. The
+    // two helpers below are the single place that maps them so every allow
+    // rule below recognises both spellings. This is a strict widening: no
+    // previously-allowed rule gets narrower.
     function isAdmin() {
-      return isAuth() && getUserRole() == 'admin';
+      return isAuth() && getUserRole() in ['admin', 'system_admin'];
     }
 
-    function isHospital() {
-      return isAuth() && getUserRole() == 'hospital';
+    function isHospitalRole() {
+      return isAuth() && getUserRole() in ['hospital', 'hospital_admin', 'hospital_staff', 'lab_tech', 'nurse', 'reception', 'receptionist', 'nbtp_viewer'];
     }
 
     // Users collection: each user can read/write their own doc; admins can read/write all.
@@ -45,14 +52,14 @@ service cloud.firestore {
     match /requests/{requestId} {
       allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
     // Hospital inventory: hospitals can read/write their own; admins can read/write all
     match /inventory/{hospitalName} {
       allow read: if isAuth();
-      allow write: if isAuth() && (isHospital() || isAdmin());
+      allow write: if isAuth() && (isHospitalRole() || isAdmin());
     }
 
     // Global inventory: admins only
@@ -76,9 +83,9 @@ service cloud.firestore {
     // authenticated user could list the whole collection (bloodType, preferredLocation,
     // notes of every donor). Hospitals/admins may read all (booking management).
     match /donation_requests/{donationId} {
-      allow read: if isAuth() && (isHospital() || isAdmin() || resource.data.donorId == request.auth.uid);
+      allow read: if isAuth() && (isHospitalRole() || isAdmin() || resource.data.donorId == request.auth.uid);
       allow create: if isAuth();
-      allow update: if isAuth() && (isAdmin() || isHospital());
+      allow update: if isAuth() && (isAdmin() || isHospitalRole());
       allow delete: if isAdmin();
     }
 
@@ -86,7 +93,7 @@ service cloud.firestore {
     match /campaigns/{campaignId} {
       allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isAuth() && (isAdmin() || isHospital());
+      allow update: if isAuth() && (isAdmin() || isHospitalRole());
       allow delete: if isAdmin();
     }
 
@@ -114,13 +121,13 @@ service cloud.firestore {
     // Incoming donors (hospital-assigned donor records)
     match /incoming_donors/{donorId} {
       allow read: if isAuth();
-      allow write: if isAuth() && (isHospital() || isAdmin());
+      allow write: if isAuth() && (isHospitalRole() || isAdmin());
     }
 
     // Inventory movements
     match /inventory_movements/{movementId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -134,7 +141,7 @@ service cloud.firestore {
     match /public_requests/{requestId} {
       allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -168,28 +175,28 @@ service cloud.firestore {
     // Blood issuance log — read by auth, write by hospitals/admins
     match /issuance_log/{logId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     // Phone trust records — tracking phone reputation for public request verification
     match /phone_trust/{phoneHash} {
-      allow read: if isAuth() && (isHospital() || isAdmin());
-      allow write: if isAuth() && (isHospital() || isAdmin());
+      allow read: if isAuth() && (isHospitalRole() || isAdmin());
+      allow write: if isAuth() && (isHospitalRole() || isAdmin());
     }
 
     // Shadow hospitals — unregistered hospitals tracked via public requests
     match /shadow_hospitals/{shadowId} {
       allow read: if isAuth();
-      allow write: if isAuth() && (isHospital() || isAdmin());
+      allow write: if isAuth() && (isHospitalRole() || isAdmin());
     }
 
     // ====== PHASE 3: Hemovigilance Reports ======
     match /hemovigilance_reports/{reportId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -197,24 +204,24 @@ service cloud.firestore {
     // Distinct from hemovigilance — this is the DONOR feeling unwell after giving blood.
     match /donor_reactions/{reactionId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
     // ====== PHASE 3: Demand Forecasts ======
     match /demand_forecasts/{forecastId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
     // ====== PHASE 3: Myth-Busting Articles ======
     match /myth_articles/{articleId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -229,8 +236,8 @@ service cloud.firestore {
     // ====== PHASE 3: Life Saver Certificates ======
     match /life_saver_certificates/{certId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -238,8 +245,8 @@ service cloud.firestore {
     // Peer-to-peer between hospitals — no admin approval step by design.
     match /blood_transfers/{transferId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
       allow delete: if isAdmin();
     }
 
@@ -247,9 +254,9 @@ service cloud.firestore {
     // Hospital-scoped — each hospital manages only its own patients.
     match /chronic_patients/{patientId} {
       allow read: if isAuth();
-      allow create: if isAuth() && (isHospital() || isAdmin());
-      allow update: if isAuth() && (isHospital() || isAdmin());
-      allow delete: if isAuth() && (isHospital() || isAdmin());
+      allow create: if isAuth() && (isHospitalRole() || isAdmin());
+      allow update: if isAuth() && (isHospitalRole() || isAdmin());
+      allow delete: if isAuth() && (isHospitalRole() || isAdmin());
     }
 
     // Default: deny everything else

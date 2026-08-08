@@ -18,6 +18,13 @@ runTransaction
 import { db } from './firebase';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getCurrentUser } from './auth';
+import {
+    sparkAddInventoryStock,
+    sparkDeductInventoryStock,
+    sparkResolveLabTest,
+    sparkSetInventoryThreshold,
+    sparkIssueBloodToPatient,
+} from './sparkBridge';
 
 // Input sanitization — strips HTML tags and trims whitespace for string fields
 // stored in Firestore. Prevents stored XSS from user-supplied text.
@@ -1592,44 +1599,34 @@ export async function fetchGlobalInventory() {
     return inventory;
 }
 
-// Phase 3: inventory mutation — including the batch lab-test lifecycle that
-// decides whether blood is safe to issue — is a privileged server-side
-// operation. The old client-side transactions ran this business logic
-// entirely in the browser. These wrappers call the addInventoryStock/
-// deductInventoryStock/resolveLabTest/setInventoryThreshold Cloud Functions,
-// which validate input, resolve+enforce the caller's own hospital scope
-// server-side (never trusting a client-supplied hospital identity for
-// hospital_staff/hospital_admin/lab_tech), run the mutation in a Firestore
-// transaction, and write the audit event. hospitalName is still passed
-// through for display/logging and for system_admin proxy-on-behalf-of-a-
-// shadow-hospital flows (see ensureShadowHospital) — the server derives the
-// real target from the caller's own claim whenever the caller isn't
-// system_admin, so this can't be used to spoof another hospital's stock.
-const addStockFn = httpsCallable(getFunctions(), 'addInventoryStock');
-const deductStockFn = httpsCallable(getFunctions(), 'deductInventoryStock');
-const resolveLabTestFn = httpsCallable(getFunctions(), 'resolveLabTest');
-const setThresholdFn = httpsCallable(getFunctions(), 'setInventoryThreshold');
-const issueBloodFn = httpsCallable(getFunctions(), 'issueBloodToPatient');
-
+// Inventory mutations — including the batch lab-test lifecycle that decides
+// whether blood is safe to issue — are implemented in sparkBridge.js, an exact
+// browser-side mirror of the Cloud Functions (addInventoryStock/deductInventoryStock/
+// resolveLabTest/setInventoryThreshold/issueBloodToPatient): same payloads,
+// same document shapes, same audit events. The free Spark plan cannot host
+// Cloud Functions (every callable 404s live), so the app runs the same
+// business rules client-side inside the same Firestore transactions; the
+// role/hospital-scope gates remain enforced by firestore.rules. If the project
+// later moves to Blaze, swapping back to the callables is a one-file change.
+// Donated blood always starts as 'Waiting for Lab Test' and only becomes
+// issuable after resolveLabTest clears it — never 'Cleared' at add time for
+// donors.
 export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'add', hospitalName, options = {}) {
     if (!hospitalName) throw new Error('hospitalName is required for inventory operations');
     const units = parseInt(unitsToAdd, 10);
 
     let currentUnits;
     if (operation === 'add') {
-        const payload = { bloodType, units, componentType: options.componentType || 'Whole Blood' };
-        // Donated/collected blood must be tested before it can be issued — callers pass
-        // testStatus: 'Waiting for Lab Test' for anything sourced from a donor (the server's
-        // own default), or 'Cleared' when the hospital is logging stock it has already verified.
+        const payload = { bloodType, units, hospitalName, componentType: options.componentType || 'Whole Blood' };
         if (options.expiresAt) payload.expiresAt = options.expiresAt;
         if (options.testStatus) payload.testStatus = options.testStatus;
         if (options.sourceDonationId) payload.sourceDonationId = options.sourceDonationId;
-        const { data } = await addStockFn(payload);
+        const data = await sparkAddInventoryStock(payload);
         currentUnits = data.unitsAvailable;
     } else {
         // Manual stock removal (spoilage/waste/correction) — server deducts oldest
         // batches first, regardless of test status, same as before.
-        const { data } = await deductStockFn({ bloodType, units });
+        const data = await sparkDeductInventoryStock({ bloodType, units, hospitalName });
         currentUnits = data.unitsAvailable;
     }
 
@@ -1647,19 +1644,20 @@ export async function updateInventoryStock(bloodType, unitsToAdd, operation = 'a
 // to issue to a patient for the first time; 'Rejected, Not Safe' excludes them permanently.
 // This is the only path by which donated blood ever becomes issuable — see issueBloodToPatient,
 // which refuses to deduct from any batch that isn't already 'Cleared'.
+// sparkBridge.resolveLabTest mirrors the Cloud Function byte-for-byte in payload/result.
 export async function resolveLabTest(hospitalName, bloodType, batchId, result, rejectionReason = null, extraDetails = {}) {
     if (result !== 'Cleared' && result !== 'Rejected, Not Safe') {
         throw new Error("result must be 'Cleared' or 'Rejected, Not Safe'");
     }
 
-    const payload = { bloodType, batchId, result };
+    const payload = { bloodType, batchId, result, hospitalName };
     if (rejectionReason) payload.rejectionReason = rejectionReason;
     if (extraDetails.labTechName) payload.labTechName = extraDetails.labTechName;
     if (extraDetails.screeningResults) payload.screeningResults = extraDetails.screeningResults;
     if (extraDetails.componentType) payload.componentType = extraDetails.componentType;
     if (extraDetails.expiryDate) payload.expiryDate = extraDetails.expiryDate;
 
-    const { data } = await resolveLabTestFn(payload);
+    const data = await sparkResolveLabTest(payload);
     const resolvedBatch = data.batch;
 
     await logActivity(
@@ -1714,7 +1712,7 @@ export async function resolveLabTest(hospitalName, bloodType, batchId, result, r
 
 export async function setInventoryThreshold(bloodType, threshold, hospitalName) {
     if (!hospitalName) throw new Error('hospitalName is required');
-    await setThresholdFn({ bloodType, threshold: parseInt(threshold, 10) });
+    await sparkSetInventoryThreshold({ bloodType, threshold: parseInt(threshold, 10), hospitalName });
 
     await logActivity(
         'Threshold Updated',
@@ -2731,6 +2729,7 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
     const payload = {
         bloodType,
         units: parseInt(units, 10),
+        hospitalName,
         patientName: patientData.patientName,
         requestingPhysicianName: patientData.requestingPhysicianName || patientData.requestingDoctor || 'Dr. Unspecified',
         crossmatchConfirmed: patientData.crossmatchConfirmed,
@@ -2746,7 +2745,7 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
     if (patientData.diagnosis) payload.diagnosis = patientData.diagnosis;
     if (patientData.crossmatchTechnician) payload.crossmatchTechnician = patientData.crossmatchTechnician;
 
-    const { data } = await issueBloodFn(payload);
+    const data = await sparkIssueBloodToPatient(payload);
 
     await logAuditTrail(
         'UNIT_ISSUED',
@@ -2808,7 +2807,7 @@ export async function deductInventoryStock(bloodType, units, reason = 'adjustmen
     const parsedUnits = parseInt(units, 10);
     if (!parsedUnits || parsedUnits <= 0) throw new Error('Units must be a positive integer');
 
-    const { data } = await deductStockFn({ bloodType, units: parsedUnits, reason });
+    const data = await sparkDeductInventoryStock({ bloodType, units: parsedUnits, reason, hospitalName });
     const result = { bloodType, unitsAvailable: data.unitsAvailable, deducted: data.deducted };
 
     // Non-blocking low stock check after deduction completes
