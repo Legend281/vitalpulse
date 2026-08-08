@@ -46,8 +46,83 @@
 <body class="bg-surface text-on-surface flex min-h-screen">
 <div id="global-loader"><div class="loader-spinner"></div></div>
 
+<!-- MOBILE DRAWER OVERLAY -->
+<div id="adminDrawerOverlay" class="md:hidden fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300"></div>
+
+<!-- MOBILE NAV DRAWER — carries every destination the desktop sidebar has. Before this, mobile
+     admins had a 3-button bottom bar (Overview/Analytics/Settings) and literally could not reach
+     Hospital Verification, User Management, Request Logs, Campaigns, Public Triage, Shadow
+     Hospitals or Safety Oversight, nor log out. Mirrors hospital.html's drawer. -->
+<aside id="adminDrawer" class="md:hidden fixed top-0 left-0 z-[70] h-full w-72 max-w-[85vw] bg-white shadow-2xl -translate-x-full transition-transform duration-300 ease-out flex flex-col">
+  <div class="flex items-center justify-between px-5 pt-6 pb-4 border-b border-slate-100 shrink-0">
+    <div class="flex items-center gap-3 min-w-0">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-rose-500 flex items-center justify-center shadow-md shadow-red-200/40 shrink-0">
+        <span class="material-symbols-outlined text-white text-lg" style="font-variation-settings:'FILL' 1">bloodtype</span>
+      </div>
+      <div class="min-w-0">
+        <div class="font-manrope font-black text-lg tracking-tight truncate"><span class="text-red-600">Vital</span><span class="text-slate-900">Pulse</span></div>
+        <div class="text-[8px] uppercase tracking-[0.2em] text-slate-400 font-extrabold">Admin Portal</div>
+      </div>
+    </div>
+    <button id="adminDrawerClose" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0 cursor-pointer" aria-label="Close menu">
+      <span class="material-symbols-outlined text-lg">close</span>
+    </button>
+  </div>
+
+  <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1 slim-scroll">
+    <p class="text-[9px] uppercase tracking-[0.2em] text-slate-400 font-extrabold px-3 pb-2">Main Menu</p>
+    <button data-admin-nav="overview" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">dashboard</span><span class="truncate">Overview</span>
+    </button>
+    <button data-admin-nav="verifications" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">local_hospital</span><span class="truncate">Hospital Verification</span>
+    </button>
+    <button data-admin-nav="users" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">group</span><span class="truncate">User Management</span>
+    </button>
+    <button data-admin-nav="logs" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">list_alt</span><span class="truncate">Request Logs</span>
+    </button>
+    <button data-admin-nav="analytics" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">insights</span><span class="truncate">Analytics</span>
+    </button>
+    <button data-admin-nav="campaigns" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">campaign</span><span class="truncate">Campaigns</span>
+    </button>
+    <button data-admin-nav="public-triage" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">emergency</span><span class="truncate">Public Triage</span>
+    </button>
+    <button data-admin-nav="shadow-hospitals" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">domain_add</span><span class="truncate">Shadow Hospitals</span>
+    </button>
+    <button data-admin-nav="safety-oversight" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">health_and_safety</span><span class="truncate">Safety Oversight</span>
+    </button>
+    <button data-admin-nav="settings" class="admin-drawer-btn w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-600 hover:text-red-700 hover:bg-red-50 font-semibold text-sm transition-all duration-200 cursor-pointer text-left">
+      <span class="material-symbols-outlined text-lg shrink-0">settings</span><span class="truncate">Settings</span>
+    </button>
+  </nav>
+
+  <div class="shrink-0 px-4 pt-4 border-t border-slate-100 space-y-3 safe-bottom">
+    <button id="adminDrawerUrgent" class="cursor-pointer w-full bg-gradient-to-r from-red-600 to-rose-500 text-white font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-200/40 transition-all duration-200">
+      <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">add_alert</span>
+      Urgent Request
+    </button>
+    <div class="flex items-center gap-3 px-2 py-1">
+      <div class="w-8 h-8 rounded-full bg-gradient-to-br from-red-400 to-red-600 flex items-center justify-center text-white text-xs font-bold shrink-0" id="drawerAdminAvatar">A</div>
+      <div class="min-w-0 flex-1">
+        <p id="drawerAdminName" class="text-xs font-bold text-slate-700 truncate">Admin</p>
+        <p class="text-[9px] text-slate-400 truncate">Administrator</p>
+      </div>
+      <button class="logout-btn w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-red-600 transition-all cursor-pointer shrink-0" title="Logout" aria-label="Logout">
+        <span class="material-symbols-outlined text-base">logout</span>
+      </button>
+    </div>
+  </div>
+</aside>
+
 <!-- SideNavBar Component -->
-<aside class="hidden md:flex flex-col h-screen w-64 bg-white sticky top-0 shrink-0 z-40 border-r border-slate-100">
+<aside class="hidden md:flex flex-col h-screen w-60 lg:w-64 bg-white sticky top-0 shrink-0 z-40 border-r border-slate-100">
 <div class="flex flex-col h-full">
 <!-- Brand Section -->
 <div class="px-5 pt-6 pb-5 shrink-0">
@@ -140,24 +215,37 @@ Urgent Request
 </div>
 </aside>
 <!-- Main Content Canvas -->
-<main class="flex-1 bg-surface min-w-0 pb-20 md:pb-12">
+<main class="flex-1 bg-surface min-w-0 pb-10 md:pb-12">
 <!-- Header -->
-<header class="h-20 bg-surface/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 sticky top-0 z-30">
-<div class="flex items-center gap-3 text-right">
-<p id="adminName" class="text-sm font-bold text-on-surface"></p>
-<p id="adminRole" class="text-[10px] uppercase tracking-widest text-slate-400 font-bold"></p>
+<header class="h-16 md:h-20 bg-surface/80 backdrop-blur-md flex items-center justify-between gap-3 px-4 md:px-8 sticky top-0 z-30 border-b border-outline-variant/15 md:border-transparent">
+<!-- Left: hamburger (mobile) + current page title. #globalHeaderTitle/#globalHeaderSubtitle are
+     what main.js's admin switchView() already writes to — before this they didn't exist here, so
+     the admin header never said which page you were on. -->
+<div class="flex items-center gap-3 min-w-0 flex-1">
+<button id="adminHamburger" class="md:hidden w-9 h-9 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface flex items-center justify-center transition-colors shrink-0 cursor-pointer" aria-label="Open menu">
+<span class="material-symbols-outlined text-xl">menu</span>
+</button>
+<div class="min-w-0">
+<h1 id="globalHeaderTitle" class="text-base md:text-xl font-black text-on-surface tracking-tight truncate leading-tight">System Overview</h1>
+<p id="globalHeaderSubtitle" class="hidden sm:block text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold truncate mt-0.5">Global Dashboard</p>
 </div>
-<div class="flex items-center gap-4">
+</div>
+<div class="flex items-center gap-2 md:gap-3 shrink-0">
+<!-- Desktop search: fluid width instead of the old fixed w-48, so it can't push the row wide -->
+<div class="relative hidden md:block">
+<div class="flex items-center bg-surface-container-low px-4 py-2 rounded-full text-slate-600 gap-3 border border-outline-variant/15 focus-within:border-primary/40 transition-colors">
+<span class="material-symbols-outlined text-lg shrink-0" data-icon="search">search</span>
+<input id="inputAdminSearch" autocomplete="off" class="bg-transparent border-none focus:ring-0 text-sm w-36 lg:w-56 xl:w-64 outline-none min-w-0" placeholder="Search donors, hospitals..." type="text"/>
+</div>
+<div id="adminSearchResults" class="hidden absolute top-full mt-2 right-0 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 max-h-96 overflow-y-auto slim-scroll"></div>
+</div>
+<!-- Mobile search toggle → slide-down overlay below the header (same pattern as hospital.html) -->
+<button id="btnAdminMobileSearch" class="md:hidden w-9 h-9 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center transition-colors cursor-pointer" aria-label="Open search">
+<span class="material-symbols-outlined text-lg">search</span>
+</button>
 <div class="relative">
-<div class="flex items-center bg-surface-container-low px-4 py-2 rounded-full text-slate-600 gap-3 border border-outline-variant/15">
-<span class="material-symbols-outlined text-lg" data-icon="search">search</span>
-<input id="inputAdminSearch" autocomplete="off" class="bg-transparent border-none focus:ring-0 text-sm w-48 outline-none" placeholder="Search donors, hospitals, requests..." type="text"/>
-</div>
-<div id="adminSearchResults" class="hidden absolute top-full mt-2 right-0 w-80 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 max-h-96 overflow-y-auto slim-scroll"></div>
-</div>
-<div class="relative">
-<button id="btnAdminNotifications" class="cursor-pointer w-10 h-10 flex items-center justify-center rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors">
-<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<button id="btnAdminNotifications" class="cursor-pointer w-9 h-9 md:w-10 md:h-10 flex items-center justify-center rounded-xl md:rounded-full bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-lg md:text-2xl" data-icon="notifications">notifications</span>
 <span id="notificationBadge" class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 rounded-full border-2 border-white px-1 text-[9px] font-bold text-white"></span>
 </button>
 
@@ -181,7 +269,32 @@ Urgent Request
 </div>
 </div>
 </div>
+
+<!-- Admin identity — moved from the far left (where it was oddly `text-right`) to the right,
+     next to the other account-level controls. Hidden below lg; the mobile drawer carries it. -->
+<div class="hidden lg:flex items-center gap-2.5 pl-3 ml-1 border-l border-outline-variant/20 min-w-0 max-w-[220px]">
+<div class="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-700 text-white text-xs font-black flex items-center justify-center shrink-0" id="headerAdminAvatar">A</div>
+<div class="min-w-0 text-left">
+<p id="adminName" class="text-sm font-bold text-on-surface truncate leading-tight"></p>
+<p id="adminRole" class="text-[10px] uppercase tracking-widest text-slate-400 font-bold truncate"></p>
+</div>
+</div>
+</div>
 </header>
+
+<!-- Mobile search slide-down (md:hidden). Mirrors hospital.html so both dashboards behave the same. -->
+<div id="adminMobileSearchOverlay" class="hidden md:hidden sticky top-16 z-20 bg-surface/95 backdrop-blur-md border-b border-outline-variant/20 p-3 shadow-lg">
+<div class="flex items-center gap-2">
+<div class="flex-1 flex items-center bg-surface-container-low px-3 py-2 rounded-xl border border-outline-variant/20 min-w-0">
+<span class="material-symbols-outlined text-slate-400 text-lg mr-2 shrink-0">search</span>
+<input id="inputAdminMobileSearch" autocomplete="off" class="w-full bg-transparent outline-none text-sm font-semibold min-w-0" placeholder="Search donors, hospitals, requests..."/>
+</div>
+<button id="btnCloseAdminMobileSearch" class="w-9 h-9 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center shrink-0" aria-label="Close search">
+<span class="material-symbols-outlined text-lg">close</span>
+</button>
+</div>
+<div id="adminMobileSearchResults" class="hidden mt-2 max-h-[60vh] overflow-y-auto slim-scroll bg-white rounded-xl border border-outline-variant/20"></div>
+</div>
 <div id="view-overview" class="block p-4 md:p-8 max-w-[1600px] mx-auto space-y-10">
 <!-- System Health Metrics -->
 <section>
@@ -380,7 +493,7 @@ Urgent Request
 <!-- KYC rejection-reason picker — donor UI/KYC_fix.md Step 4.4's fixed reason list, replacing
      a free-text prompt() so every rejection reason shown to a donor is one of the 8 approved. -->
 <div id="kycRejectReasonModal" class="hidden fixed inset-0 z-50 bg-black/50 items-center justify-center p-6" role="dialog" aria-modal="true">
-  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 max-h-[90vh] overflow-y-auto slim-scroll">
     <h3 class="text-base font-bold text-slate-800">Reason for rejection</h3>
     <p class="text-xs text-slate-500">This will be shown to the donor.</p>
     <select id="kycRejectReasonSelect" class="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700">
@@ -1449,21 +1562,9 @@ Urgent Request
     </div>
 </div>
 </main>
-<!-- BottomNavBar (Mobile Only) -->
-<nav id="view-mobile-nav" class="md:hidden fixed bottom-0 left-0 w-full z-50 bg-white/90 backdrop-blur-xl border-t border-slate-100 shadow-[0_-4px_24px_rgba(0,0,0,0.04)] px-4 pb-6 pt-3 flex justify-around items-center">
-<button onclick="window.adminSwitchView('overview')" class="flex flex-col items-center justify-center text-red-700 bg-red-50 rounded-xl px-3 py-1 cursor-pointer transition-colors duration-200">
-<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
-<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Overview</span>
-</button>
-<button onclick="window.adminSwitchView('analytics')" class="flex flex-col items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl px-3 py-1 cursor-pointer transition-colors duration-200">
-<span class="material-symbols-outlined" data-icon="insights">insights</span>
-<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Analytics</span>
-</button>
-<button onclick="window.adminSwitchView('settings')" class="flex flex-col items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl px-3 py-1 cursor-pointer transition-colors duration-200">
-<span class="material-symbols-outlined" data-icon="settings">settings</span>
-<span class="font-inter text-[10px] uppercase tracking-widest mt-1">Settings</span>
-</button>
-</nav>
+<!-- (The old 3-item mobile bottom bar was removed: it exposed only Overview/Analytics/Settings,
+     leaving the other 7 admin sections plus logout unreachable on a phone. Full navigation now
+     lives in #adminDrawer above, the same pattern donor.html and hospital.html already use.) -->
 <!-- URGENT REQUEST MODAL -->
 <div id="urgentRequestModal" class="hidden fixed inset-0 z-[60] items-center justify-center p-4">
     <div id="urgentRequestBackdrop" class="absolute inset-0 bg-zinc-900/60 backdrop-blur-sm cursor-pointer"></div>
@@ -1561,7 +1662,7 @@ Urgent Request
      those hospitals have no VitalPulse login to do it themselves. -->
 <div id="labTestModal" class="fixed inset-0 z-50 hidden items-center justify-center">
   <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="labTestBackdrop"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-slate-100">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-slate-100 max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-5 text-white flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">

@@ -77,9 +77,37 @@
     font-family: 'Inter', sans-serif;
     background-color: var(--color-surface);
     color: var(--color-on-surface);
+
+    /* `clip`, not `hidden`. Both stop a stray wide element from producing a horizontal
+       scrollbar, but `overflow-x: hidden` turns <body> into a scroll container, which breaks
+       every `position: sticky` header in the app (all three dashboards have one). `clip`
+       creates no scroll container, so sticky keeps working. Browsers without `clip` support
+       simply fall back to today's behavior — nothing is worse off. */
+    overflow-x: clip;
   }
   h1, h2, h3 {
     font-family: 'Manrope', sans-serif;
+  }
+
+  /* iOS Safari zooms the whole page whenever a focused input's font-size is under 16px, and it
+     never zooms back out. The app styles form fields at text-sm/text-xs (14px/12px), so on an
+     iPhone every tap into a field left the user pinch-zooming to see the rest of the form —
+     the single biggest reason this felt like a desktop-only app on a phone. Only applies to
+     touch devices at phone widths, so the desktop type scale is untouched.
+     Checkboxes/radios are excluded: they render no text and font-size only affects their box. */
+  @media (max-width: 640px) and (pointer: coarse) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      font-size: 16px;
+    }
+  }
+
+  /* Kills the ~300ms tap delay that mobile browsers reserve for double-tap-to-zoom. */
+  @media (pointer: coarse) {
+    button, a[href], [role="button"], label, summary {
+      touch-action: manipulation;
+    }
   }
 }
 
@@ -160,6 +188,35 @@
   .pulse-red {
     box-shadow: 0 0 0 0 rgba(175, 16, 26, 0.4);
     animation: pulse-red 2s infinite;
+  }
+
+  /* Keeps a nav drawer's footer (logout, Urgent Request) clear of the iPhone home indicator and
+     Android gesture bar, which otherwise sit on top of the last row of controls. Resolves to 0
+     on every device without an inset, so it is safe to apply unconditionally. */
+  .safe-bottom {
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+  }
+
+  /* Horizontally scrollable regions (wide tables, tab strips) on touch devices: momentum
+     scrolling plus snap-free freedom, and no accidental page-back gesture at the edges. */
+  .scroll-x-touch {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Full-height panes that are their OWN scroll container (hospital.html's <main>) must be sized
+     to the *visible* viewport. On mobile, 100vh is the viewport with browser chrome collapsed,
+     so the bottom ~60-100px of such a pane sits permanently under the URL bar — on the hospital
+     dashboard that hid the bottom of every long form. 100dvh tracks the real visible area.
+     Kept behind @supports with a 100vh base so nothing regresses on older browsers. */
+  .h-screen-dvh {
+    height: 100vh;
+  }
+  @supports (height: 100dvh) {
+    .h-screen-dvh {
+      height: 100dvh;
+    }
   }
 }
 

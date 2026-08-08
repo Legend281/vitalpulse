@@ -232,16 +232,26 @@
   </nav>
 
   <!-- Bottom Section -->
-  <div class="shrink-0 px-4 pt-4 pb-6 border-t border-slate-100">
+  <div class="shrink-0 px-4 pt-4 border-t border-slate-100 space-y-3 safe-bottom">
     <button id="mobileDrawerUrgent" class="cursor-pointer w-full bg-gradient-to-r from-red-600 to-rose-500 text-white font-bold py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-200/40 transition-all duration-200">
       <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">add_alert</span>
       Urgent Request
     </button>
+    <!-- Logout lives here because the header's logout button hides below sm to make room. -->
+    <div class="flex items-center gap-3 px-1">
+      <div class="min-w-0 flex-1">
+        <p id="drawerHospitalName" class="text-xs font-bold text-slate-700 truncate">Hospital</p>
+        <p id="drawerStaffName" class="text-[9px] text-slate-400 truncate">Staff: Admin</p>
+      </div>
+      <button class="logout-btn w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-red-600 transition-all cursor-pointer shrink-0" title="Logout" aria-label="Logout">
+        <span class="material-symbols-outlined text-base">logout</span>
+      </button>
+    </div>
   </div>
 </aside>
 
 <!-- Main Content -->
-<main class="flex-1 h-screen overflow-y-auto pb-4 md:pb-12 bg-slate-50">
+<main class="flex-1 h-screen-dvh overflow-y-auto pb-4 md:pb-12 bg-slate-50">
   <!-- Clean Professional Header -->
   <header class="h-16 md:h-18 bg-white flex items-center justify-between px-4 md:px-8 sticky top-0 z-30 border-b border-slate-200/80 shadow-xs">
     <div class="flex items-center gap-3 md:gap-4 min-w-0">
@@ -249,16 +259,28 @@
       <button id="mobileHamburger" class="md:hidden w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors shrink-0" aria-label="Open menu">
         <span class="material-symbols-outlined text-xl">menu</span>
       </button>
+      <!-- Below sm the breadcrumb (hospital name + role) is dropped and the title stacks over the
+           hospital name instead — the inline version needed ~270px the phone doesn't have. The
+           h1 is no longer shrink-0: it was refusing to give up width and pushing the row past
+           the viewport on every title longer than "Dashboard". -->
       <div class="flex items-center gap-2.5 min-w-0">
-        <h1 id="globalHeaderTitle" class="text-base md:text-lg font-black text-slate-900 tracking-tight shrink-0">Dashboard</h1>
-        <span class="text-slate-300 text-xs font-bold shrink-0">/</span>
-        <div class="flex items-center gap-2 min-w-0">
+        <div class="min-w-0">
+          <h1 id="globalHeaderTitle" class="text-base md:text-lg font-black text-slate-900 tracking-tight truncate leading-tight">Dashboard</h1>
+          <p id="hospitalHeaderNameMobile" class="sm:hidden text-[10px] font-semibold text-slate-400 truncate leading-tight">General Hospital</p>
+        </div>
+        <span class="text-slate-300 text-xs font-bold shrink-0 hidden sm:inline">/</span>
+        <div class="hidden sm:flex items-center gap-2 min-w-0">
           <span id="hospitalHeaderName" class="text-xs font-semibold text-slate-500 truncate">General Hospital</span>
-          <span id="hospitalHeaderRole" class="px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-[10px] font-bold uppercase tracking-wider border border-red-200/60 shrink-0">Hospital Admin</span>
+          <!-- The lg gate lives on this wrapper, not on #hospitalHeaderRole itself, because
+               hydrateSessionIdentity() toggles `hidden` on that element directly — putting the
+               responsive class there would let the JS un-hide it at every width. -->
+          <span class="hidden lg:flex shrink-0">
+            <span id="hospitalHeaderRole" class="px-2 py-0.5 rounded-md bg-red-50 text-red-700 text-[10px] font-bold uppercase tracking-wider border border-red-200/60">Hospital Admin</span>
+          </span>
         </div>
       </div>
     </div>
-    <div class="flex items-center gap-2.5 md:gap-3 shrink-0">
+    <div class="flex items-center gap-2 md:gap-3 shrink-0">
       <!-- Search (Desktop) -->
       <div class="relative hidden md:block">
         <div class="flex items-center bg-slate-50 hover:bg-slate-100 focus-within:bg-white focus-within:ring-2 focus-within:ring-red-200/60 border border-slate-200/80 rounded-xl px-3.5 py-1.5 w-64 lg:w-72 transition-all">
@@ -274,18 +296,21 @@
       </button>
 
       <!-- Staff Identity Badge Button (Clean Professional Pill) -->
-      <button id="btnStaffQuickSwitch" onclick="window.openStaffQuickSwitchModal()" class="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-xs transition-all text-xs font-bold cursor-pointer" title="Switch Active Staff Session">
+      <!-- The "Staff: …" label collapses to just the avatar + chevron below sm; the full name is
+           still one tap away in the quick-switch modal, and it's repeated in the drawer footer. -->
+      <button id="btnStaffQuickSwitch" onclick="window.openStaffQuickSwitchModal()" class="flex items-center gap-1.5 sm:gap-2 bg-white hover:bg-slate-50 text-slate-700 px-2 sm:px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-xs transition-all text-xs font-bold cursor-pointer max-w-[45vw] sm:max-w-none" title="Switch Active Staff Session">
         <span class="w-5 h-5 rounded-lg bg-red-100 text-red-700 font-black text-[10px] flex items-center justify-center shrink-0">A</span>
-        <span id="activeStaffBadge" class="font-bold text-slate-800">Staff: Admin</span>
-        <span class="material-symbols-outlined text-xs text-slate-400">arrow_drop_down</span>
+        <span id="activeStaffBadge" class="hidden sm:inline font-bold text-slate-800 truncate">Staff: Admin</span>
+        <span class="material-symbols-outlined text-xs text-slate-400 shrink-0">arrow_drop_down</span>
       </button>
 
-      <button id="btnHospitalNotifications" class="relative w-9 h-9 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 flex items-center justify-center transition-all cursor-pointer shadow-xs" title="Notifications">
+      <button id="btnHospitalNotifications" class="relative w-9 h-9 shrink-0 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 flex items-center justify-center transition-all cursor-pointer shadow-xs" title="Notifications">
         <span class="material-symbols-outlined text-lg" data-icon="notifications">notifications</span>
         <span id="hospitalNotifBadge" class="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full hidden items-center justify-center px-1 leading-none shadow-md"></span>
       </button>
 
-      <button class="logout-btn w-9 h-9 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 hover:text-red-600 flex items-center justify-center transition-all cursor-pointer shadow-xs" title="Logout">
+      <!-- Logout hides below sm to buy the title back ~46px; the drawer footer carries it there. -->
+      <button class="logout-btn hidden sm:flex w-9 h-9 shrink-0 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 hover:text-red-600 items-center justify-center transition-all cursor-pointer shadow-xs" title="Logout">
         <span class="material-symbols-outlined text-lg" data-icon="logout">logout</span>
       </button>
     </div>
@@ -2879,7 +2904,7 @@
 <!-- DIAGNOSTIC LAB TEST MODAL -->
 <div id="labTestModal" class="fixed inset-0 z-50 hidden items-center justify-center">
   <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" id="labTestBackdrop"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-slate-100">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-xl mx-4 overflow-hidden border border-slate-100 max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-5 text-white flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/20">
@@ -2983,7 +3008,7 @@
 <!-- LAB SAFETY CERTIFICATE MODAL -->
 <div id="labCertModal" class="fixed inset-0 z-50 hidden items-center justify-center">
   <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="labCertBackdrop"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden border border-slate-100 p-8">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden border border-slate-100 p-8 max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="text-center border-b border-slate-200 pb-5 mb-5">
       <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mx-auto mb-2">
         <span class="material-symbols-outlined text-2xl">verified</span>
@@ -3390,7 +3415,7 @@
 <!-- ADD STAFF ACCOUNT MODAL -->
 <div id="modalAddStaff" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeAddStaffModal()"></div>
-  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-red-600 to-rose-600 px-6 py-5">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -3432,7 +3457,7 @@
 <!-- STAFF QUICK SWITCH MODAL (SHARED TABLET MODE) -->
 <div id="modalStaffQuickSwitch" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeStaffQuickSwitchModal()"></div>
-  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+  <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-slate-800 to-slate-900 px-6 py-5">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -3480,7 +3505,7 @@
 <!-- RECEPTION PATIENT WARD REQUISITION MODAL -->
 <div id="patientRequisitionModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('patientRequisitionModal')"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-6 py-5 text-white">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -3549,7 +3574,7 @@
 <!-- RECEPTION DONOR ETA PHONE NOTE MODAL -->
 <div id="donorEtaModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('donorEtaModal')"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-slate-900 to-indigo-950 px-6 py-4 text-white">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
@@ -3656,7 +3681,7 @@
 <!-- BEDSIDE 2-CLINICIAN SAFETY VERIFICATION MODAL -->
 <div id="nurseBedsideVerifyModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseBedsideVerifyModal')"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-slate-900 via-rose-950 to-slate-900 px-6 py-5 text-white">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -3726,7 +3751,7 @@
 <!-- TRANSFUSION VITAL SIGNS MONITOR MODAL -->
 <div id="nurseVitalsModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseVitalsModal')"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-slate-900 to-sky-950 px-6 py-4 text-white">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2.5">
@@ -3785,7 +3810,7 @@
 <!-- STOP TRANSFUSION & REACTION REPORT MODAL -->
 <div id="nurseReactionModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseReactionModal')"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-red-900 to-rose-950 px-6 py-5 text-white">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -3832,7 +3857,7 @@
 <!-- VIRAL MARKER TTI DIAGNOSTICS & LAB CLEARANCE MODAL -->
 <div id="labTestModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('labTestModal')"></div>
-  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] overflow-y-auto slim-scroll">
     <div class="bg-gradient-to-r from-indigo-900 via-purple-950 to-slate-900 px-6 py-5 text-white">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
