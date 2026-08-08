@@ -452,6 +452,29 @@ describe('donation_requests', () => {
       donorId: 'donorA', bloodType: 'O-', status: 'pending',
     })));
 
+  // Scheduling gate (Security Lead report, 2026-08-08) — same isKycEligible() rule the
+  // accept-a-request paths (requests/{id}, public_requests/{id}) already enforced. donorA
+  // above has no donors/ doc at all and stays allowed, covering the grandfather clause.
+  it('verified donor can schedule a donation', async () =>
+    assertSucceeds(setDoc(doc(ctx('donorC'), 'donation_requests/D4'), {
+      donorId: 'donorC', bloodType: 'O-', status: 'pending',
+    })));
+
+  it('HOSTILE: donor still awaiting KYC review cannot schedule a donation', async () =>
+    assertFails(setDoc(doc(ctx('donorB'), 'donation_requests/D5'), {
+      donorId: 'donorB', bloodType: 'O-', status: 'pending',
+    })));
+
+  it('HOSTILE: donor with a not_submitted KYC cannot schedule a donation', async () =>
+    assertFails(setDoc(doc(ctx('donorE'), 'donation_requests/D6'), {
+      donorId: 'donorE', bloodType: 'O-', status: 'pending',
+    })));
+
+  it('HOSTILE: rejected donor cannot schedule a donation', async () =>
+    assertFails(setDoc(doc(ctx('donorF'), 'donation_requests/D7'), {
+      donorId: 'donorF', bloodType: 'O-', status: 'pending',
+    })));
+
   it('any hospital_staff can approve a pending donation request', async () =>
     assertSucceeds(updateDoc(doc(ctx('staffH1'), 'donation_requests/D1'), { status: 'approved' })));
 

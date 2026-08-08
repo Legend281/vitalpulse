@@ -427,6 +427,35 @@ flagged in that doc as the most dangerous state to be caught in).*
 
 ---
 
+### L — Unverified-Donor Lock Bypasses (Security Lead report, 2026-08-08)
+
+*Report: on a brand-new donor account sitting at `kycStatus: 'pending'` ("under review"), most
+of the donor portal was correctly locked, but the "Urgent Need Nearby" emergency banner was
+fully readable and the Schedule Donation button still worked.*
+
+**Root cause — one class of bug, two symptoms.** Stream D built the scheduling lock as a set of
+per-element DOM locks (`applyKycLocksToDOM()`) enumerating the entry points known at the time —
+the hero CTA and the quick-action tile. Every scheduling entry point added since was invisible
+to it, and the wizard's own opener (`window.openDonationModal`) checked only the 56-day deferral
+rule, never KYC. So the lock was an enumeration where it should have been a choke point. Four
+uncovered entry points found, all live: the mobile nav drawer's footer CTA, the "Donate here"
+cards in both donation-center lists (dashboard panel + Centers view), the Care Reminders and
+Certificates empty-state buttons, and `showFallbackError()`'s 20-second safety net, which opened
+`#donationModal` raw and therefore skipped the deferral gate too. Separately, `donation_requests`
+was the **only** donor-initiated write in `firestore.rules` with no `isKycEligible()` gate — the
+accept-a-request paths (`requests/{id}`, `public_requests/{id}`) had one — so the whole scheduling
+restriction lived in the client and was never actually enforced.
+
+| # | Task | Owner | Status | Notes |
+|---|---|---|---|---|
+| L1 | Move the KYC gate into `window.openDonationModal()` — the choke point every scheduling entry point funnels through | Dev | ✅ | Mirrors how `window.donorAcceptRequest` was already gated. `warnIfKycPending()` now takes the action name and shows under-review donors a "we'll notify you in 24–48 hours" notice instead of a "Verify Now" button back into a form they already completed. |
+| L2 | Lock the four uncovered entry points in the DOM too | Dev | ✅ | Mobile drawer CTA (`btnScheduleDonationMobile`, new id) and `[data-donate-center]` cards disabled + dimmed by `applyKycLocksToDOM()`; both centre lists re-apply locks after re-render, so an approval unlocks them without a reload. `showFallbackError()` now routes through `openDonationModal()` instead of revealing the modal directly. |
+| L3 | Blur + lock the "Urgent Need Nearby" banner | Dev | ✅ | Same treatment the requests feed already had. Previously only its "Respond Now" button was disabled, leaving the request's hospital, blood type, units and distance fully readable to an account that hasn't been identity-checked. |
+| L4 | **`firestore.rules`: gate `donation_requests` create on `isKycEligible()`** + 4 new rules tests | Dev | 🔍 **needs your review** | The actual authorization fix — L1–L3 are UI convenience per the zero-trust rule. Grandfather semantics unchanged (no `donors/{uid}` doc ⇒ still allowed). Tests: verified donor succeeds; pending / not_submitted / rejected all denied. **Rules changes require your explicit review before merge.** |
+| L5 | Regression pass | Dev | ⚠️ partial | lint 0 errors (192 pre-existing warnings, unchanged), `vitalpulse_app` build clean, 152/152 client unit tests passing. **Rules suite not executed: this machine has no Java, so `firebase emulators:exec` cannot start the Firestore emulator** — the 4 new tests in `firestore.rules.test.js` are written but unrun. Needs a run wherever the emulator works before L4 merges. |
+
+---
+
 ## PROGRESS SUMMARY
 
 | Stream | Tasks | ✅ Done | Remaining |
@@ -442,4 +471,5 @@ flagged in that doc as the most dangerous state to be caught in).*
 | I — KYC Upload Hardening + Map/Copy Fixes | 10 | 9 | 1 (I10 — deploy blocked on IAM permission, needs you) |
 | J — Custom Password-Reset Email Pipeline | 6 | 5 | 1 (J6 — needs your RESEND_API_KEY secret + the same blocked deploy) |
 | K — KYC Storage-Free Rebuild (KYC_fix.md) | 11 | 10 | 1 (K8 — pre-existing `role()`/`hasRole()`/`myHospitalId()` rules bug, needs your review, separate from this task) |
-| **TOTAL** | **114** | **108** | **6** |
+| L — Unverified-Donor Lock Bypasses | 5 | 3 | 2 (L4 rules change needs your review; L5 rules suite needs a machine with Java) |
+| **TOTAL** | **119** | **111** | **8** |

@@ -292,7 +292,16 @@ service cloud.firestore {
       allow list: if isSystemAdmin() || isHospitalRole()
                   || (isDonor() && resource.data.donorId == request.auth.uid);
 
-      allow create: if (isDonor() && request.resource.data.donorId == request.auth.uid && request.resource.data.status == 'pending')
+      // FIX (Security Lead report, 2026-08-08): the donor clause had no isKycEligible() gate,
+      // so a donor whose account was still 'pending' admin review — or one already rejected —
+      // could book a donation slot at a hospital. The rest of Stream D's "unverified donors
+      // can't act" gating (accepting a request: requests/{id} and public_requests/{id} below)
+      // was enforced here in rules; scheduling was enforced only by DOM locks in the client,
+      // which is not authorization. Same grandfather semantics as everywhere else: a donor
+      // with no donors/{uid} doc at all pre-dates KYC and stays allowed.
+      allow create: if (isDonor() && isKycEligible(request.auth.uid)
+                        && request.resource.data.donorId == request.auth.uid
+                        && request.resource.data.status == 'pending')
                     || ((isHospitalRole() || isSystemAdmin()) && request.resource.data.status == 'completed');
 
       // Hospital/admin review: approve / reject / complete / cancel / issue / lab outcome.
