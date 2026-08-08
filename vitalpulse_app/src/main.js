@@ -59,6 +59,33 @@ function requireHospitalScope() {
 }
 
 /**
+ * Resolves the hospital's city from Firestore when the cached session
+ * doesn't carry one (set on another device, or the session predates the
+ * city). The Settings screen already prefills from the hospital's doc —
+ * broadcasts must do the same instead of failing on a stale cache. The
+ * refreshed city is written back to the session so the next broadcast
+ * doesn't need the extra read. When the hospital's record genuinely has
+ * no city, the scope returns unchanged and createEmergencyRequest's
+ * fail-fast error fires with a clear instruction.
+ */
+async function resolveHospitalScopeCity(scope) {
+    if (!scope || scope.city) return scope;
+    try {
+        const h = await fetchHospitalById(scope.id);
+        const city = h?.city || null;
+        if (city) {
+            const current = getCurrentUser();
+            const refreshed = { ...current, hospitalCity: city };
+            localStorage.setItem('vitalpulse_user', JSON.stringify(refreshed));
+            return { ...scope, city };
+        }
+    } catch (e) {
+        console.warn('Could not resolve hospital city from Firestore:', e);
+    }
+    return scope;
+}
+
+/**
  * Renders the "we can't tell which hospital you belong to" state. Only reachable
  * for a staff account whose hospitalId/hospitalName never resolved (claims not
  * yet backfilled — see scripts/migrate-staff-and-claims.ts).
@@ -3033,7 +3060,7 @@ function initNewRequestModal() {
             // for) their hospital — previously it was stamped with the nurse's
             // own name/uid and a 'Cameroon' city, which made the request
             // invisible to the hospital and unmatchable to any donor.
-            const scope = requireHospitalScope();
+            const scope = await resolveHospitalScopeCity(requireHospitalScope());
             if (!scope) return;
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Submitting...';
@@ -3064,7 +3091,10 @@ function initNewRequestModal() {
                 loadHospitalRequests();
             } catch (err) {
                 console.error('Failed to create request:', err);
-                window.vpNotify('Failed to create request.');
+                const msg = err?.message?.toLowerCase().includes('city')
+                    ? 'Cannot create the request: ' + err.message
+                    : 'Failed to create request.';
+                window.vpNotify(msg);
             } finally {
                 btn.innerHTML = 'Submit Request';
                 btn.disabled = false;
@@ -3102,7 +3132,7 @@ function initUrgentRequestModal() {
             e.preventDefault();
             const currentUser = getCurrentUser();
             if (!currentUser) return;
-            const scope = requireHospitalScope();
+            const scope = await resolveHospitalScopeCity(requireHospitalScope());
             if (!scope) return;
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Broadcasting...';
@@ -3129,7 +3159,10 @@ function initUrgentRequestModal() {
                 showToast('Emergency broadcast sent!');
             } catch (err) {
                 console.error('Failed to broadcast:', err);
-                window.vpNotify('Failed to broadcast emergency.');
+                const msg = err?.message?.toLowerCase().includes('city')
+                    ? 'Cannot broadcast: ' + err.message
+                    : 'Failed to broadcast emergency.';
+                window.vpNotify(msg);
             } finally {
                 btn.innerHTML = 'Broadcast Emergency';
                 btn.disabled = false;
