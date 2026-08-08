@@ -2427,6 +2427,17 @@ export async function checkInDonor(requestId, sourceCollection = null) {
 
         const eligible = CHECK_IN_ELIGIBLE_STATUSES[resolvedCollection] || ['Donor En Route'];
         if (!eligible.includes(reqData.status)) {
+            // A finished journey must not be re-checked-in: this would let a donor
+            // (or a reused pass code) mint a second donation record and inventory
+            // batch for the same visit. Pass codes are per-booking, so the fix is
+            // a new booking, not a new check-in.
+            const consumed = ['Donation Complete', 'Lab Cleared', 'Issued'];
+            if (resolvedCollection === 'donation_requests' && consumed.includes(reqData.status)) {
+                throw new Error(
+                    `This pass code belongs to a completed donation (status "${reqData.status}"). ` +
+                    `The donor cannot be checked in again with it — to donate again they must book a NEW appointment, which issues a fresh code.`
+                );
+            }
             throw new Error(
                 `This donor's status is "${reqData.status}" — check-in requires ${eligible.map(s => `"${s}"`).join(' or ')}.`
             );

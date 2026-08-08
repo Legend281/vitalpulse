@@ -307,6 +307,28 @@ describe('Scoped Check-In Tokens & Token Expiration', () => {
     });
 });
 
+describe('checkInDonor (completed booking guard)', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('refuses to re-check-in a pass code whose journey already ended, and says to book a new appointment', async () => {
+        // A completed donation must never be checked in again: re-using the old
+        // code would mint a second donation record + inventory batch for one visit.
+        // The recovery is a NEW booking (fresh code), so the error must say so.
+        const { checkInDonor } = await import('./db.js');
+        runTransaction.mockImplementationOnce(async (_db, fn) => fn({
+            get: async (ref) => {
+                if (ref.path === 'donation_requests') {
+                    return { exists: () => true, data: () => ({ status: 'Donation Complete', donorId: 'd1', hospital: 'Buea Regional' }) };
+                }
+                return { exists: () => false, data: () => ({}) };
+            },
+            update: vi.fn(),
+        }));
+
+        await expect(checkInDonor('b1', 'donation_requests')).rejects.toThrow(/book a NEW appointment/);
+    });
+});
+
 describe('donorMarkArrived (check-in handshake, donor half)', () => {
     beforeEach(() => { vi.clearAllMocks(); });
 
