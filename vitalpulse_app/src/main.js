@@ -80,7 +80,7 @@ import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from 
 import { db } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -3906,6 +3906,7 @@ function initAdminNavigation() {
     if (logSearchInput) {
         logSearchInput.addEventListener('input', () => {
             adminLogsQuery = logSearchInput.value.trim();
+            adminLogsPage = 1;
             window.renderRequestLogsTab(document.querySelector('#logTabs button.text-primary')?.dataset.tab || 'all');
         });
     }
@@ -3945,6 +3946,7 @@ function initAdminNavigation() {
                 b.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all';
             });
             btn.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg bg-red-500 text-white shadow-sm transition-all';
+            adminLogsPage = 1;
             window.renderRequestLogsTab(btn.dataset.tab);
         });
     });
@@ -4535,7 +4537,10 @@ const isRequestStatusActive = (status) => REQUEST_ACTIVE_STATUSES.map(s => s.toL
 const isRequestStatusClosed = (status) => REQUEST_CLOSED_STATUSES.map(s => s.toLowerCase()).includes(requestStatusLc(status));
 
 let adminLogsCache = [];
+let adminLogsTab = '';
 let adminLogsQuery = '';
+let adminLogsPage = 1;
+let adminLogsPerPage = 10;
 let adminHospitalsTab = '';
 let adminHospitalsQuery = '';
 let adminHospitalsPage = 1;
@@ -4567,6 +4572,9 @@ window.adminPageNav = (key, delta) => {
     } else if (key === 'users') {
         adminUsersPage = Math.max(1, adminUsersPage + delta);
         window.renderUserManagementTab(document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all');
+    } else if (key === 'logs') {
+        adminLogsPage = Math.max(1, adminLogsPage + delta);
+        window.renderRequestLogsTab(document.querySelector('#logTabs button.text-primary')?.dataset.tab || 'all');
     }
 };
 
@@ -4587,6 +4595,8 @@ window.renderRequestLogsTab = async (tab) => {
         if (statActive) statActive.textContent = allRequests.filter(r => isRequestStatusActive(r.status)).length;
         if (statResolved) statResolved.textContent = allRequests.filter(r => isRequestStatusClosed(r.status)).length;
 
+        if (tab !== adminLogsTab) { adminLogsTab = tab; adminLogsPage = 1; }
+
         let filtered = [];
         if (tab === 'open') {
             filtered = allRequests.filter(r => isRequestStatusActive(r.status));
@@ -4606,12 +4616,17 @@ window.renderRequestLogsTab = async (tab) => {
         }
         adminLogsCache = filtered;
 
-        if (filtered.length === 0) {
+        const logsTotalPages = Math.max(1, Math.ceil(filtered.length / adminLogsPerPage));
+        adminLogsPage = Math.min(adminLogsPage, logsTotalPages);
+        const logPageItems = filtered.slice((adminLogsPage - 1) * adminLogsPerPage, adminLogsPage * adminLogsPerPage);
+
+        if (logPageItems.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500 font-medium tracking-wide">No ${tab} requests logged.</td></tr>`;
+            renderAdminPagination(document.getElementById('adminLogsPagination'), adminLogsPage, logsTotalPages, filtered.length, 'logs');
             return;
         }
 
-        tableBody.innerHTML = filtered.map(r => {
+        tableBody.innerHTML = logPageItems.map(r => {
              let statusUI = '';
              if (r.status === 'Open' || r.status === 'open') {
                  statusUI = '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Open (Searching)</span>';
@@ -4671,6 +4686,8 @@ window.renderRequestLogsTab = async (tab) => {
              </tr>
              `;
         }).join('');
+
+        renderAdminPagination(document.getElementById('adminLogsPagination'), adminLogsPage, logsTotalPages, filtered.length, 'logs');
     } catch (err) {
         console.error(err);
         tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-error py-4">Failed to load request logs.</td></tr>';
@@ -4926,19 +4943,30 @@ window.renderHospitalVerificationsTab = async (tab) => {
                      </button>
                  </div>`;
              } else if (h.isVerified) {
+                 const deleteBtn = `
+                     <button onclick="window.handleAdminDeleteHospital('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Delete Hospital">
+                         <span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+                     </button>`;
                  actions = h.isActive === false
-                     ? `<div class="text-right">
+                     ? `<div class="flex items-center justify-end gap-2">
                          <button onclick="window.handleAdminReactivateHospital('${h.id}')" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-sm text-[10px] font-bold">
                              <span class="material-symbols-outlined text-[12px]" data-icon="power_settings_new">power_settings_new</span> Reactivate
                          </button>
+                         ${deleteBtn}
                         </div>`
-                     : `<div class="text-right">
+                     : `<div class="flex items-center justify-end gap-2">
                          <button onclick="window.handleAdminDeactivateHospital('${h.id}')" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm text-[10px] font-bold">
                              <span class="material-symbols-outlined text-[12px]" data-icon="toggle_off">toggle_off</span> Deactivate
                          </button>
+                         ${deleteBtn}
                         </div>`;
              } else {
-                 actions = `<div class="text-right text-xs text-slate-400 font-medium">Processed</div>`;
+                 actions = `<div class="flex items-center justify-end gap-2">
+                     <span class="text-xs text-slate-400 font-medium">Processed</span>
+                     <button onclick="window.handleAdminDeleteHospital('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Delete Hospital">
+                         <span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+                     </button>
+                 </div>`;
              }
 
              return `
@@ -5195,6 +5223,33 @@ window.handleAdminReactivateHospital = async (id, name) => {
     }
 };
 
+window.handleAdminDeleteHospital = async (id, name) => {
+    if (!name) {
+        try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
+    }
+    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE hospital ${name || id}?\n\nThis will remove the hospital document from the database and cannot be undone.`)) {
+        try {
+            await deleteUserAccount(id, name);
+            if (window.vpNotify) {
+                window.vpNotify(`Hospital ${name || id} deleted successfully.`);
+            } else if (window.showToast) {
+                window.showToast(`Hospital ${name || id} deleted successfully.`, 'success');
+            }
+        } catch (err) {
+            console.error('Failed to delete hospital:', err);
+            if (window.vpNotify) {
+                window.vpNotify('Failed to delete hospital. Please try again.');
+            } else {
+                alert('Failed to delete hospital.');
+            }
+            return;
+        }
+        loadAdminDashboard();
+        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
+    }
+};
+
 function initHospitalDetailModal() {
     const modal = document.getElementById('hospitalDetailModal');
     const backdrop = document.getElementById('hospitalDetailBackdrop');
@@ -5388,12 +5443,17 @@ window.renderUserManagementTab = async (tab) => {
              const lastActive = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleDateString() : 'Unknown';
 
 let actions = '';
+             const deleteBtn = `<button onclick="window.handleAdminDeleteUser('${u.id}', '${esc(u.name)}')" class="cursor-pointer bg-red-50 text-red-600 px-2 py-1.5 rounded text-xs font-bold hover:bg-red-100 transition-colors shadow-sm" title="Delete User">
+                 <span class="material-symbols-outlined text-sm">delete</span>
+             </button>`;
+
               if(!isSuspended) {
                   actions = `<div class="flex items-center gap-2 justify-end">
                       <button onclick="window.viewDonorDetail('${u.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1.5 rounded text-xs font-bold hover:bg-slate-200 transition-colors shadow-sm" title="View Profile">
                           <span class="material-symbols-outlined text-sm">visibility</span>
                       </button>
                       <button onclick="window.handleAdminSuspendUser('${u.id}')" class="cursor-pointer bg-red-50 text-red-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">Suspend</button>
+                      ${deleteBtn}
                   </div>`;
               } else {
                   actions = `<div class="flex items-center gap-2 justify-end">
@@ -5401,6 +5461,7 @@ let actions = '';
                           <span class="material-symbols-outlined text-sm">visibility</span>
                       </button>
                       <button onclick="window.handleAdminReactivateUser('${u.id}')" class="cursor-pointer bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm">Reactivate</button>
+                      ${deleteBtn}
                   </div>`;
               }
 
@@ -5466,6 +5527,31 @@ window.handleAdminReactivateUser = async (id, name) => {
         } catch (err) {
             console.error('Failed to reactivate donor:', err);
             window.vpNotify('Failed to reactivate donor. Please try again.');
+            return;
+        }
+        loadAdminDashboard();
+        const activeTab = document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all';
+        if (window.renderUserManagementTab) window.renderUserManagementTab(activeTab);
+    }
+};
+
+window.handleAdminDeleteUser = async (id, name) => {
+    if (!name) {
+        try { const d = await fetchDonorById(id); name = d?.name || ''; } catch { /* keep default */ }
+    }
+    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE user ${name || id}?\n\nThis will remove their document directly from the database and cannot be undone.`)) {
+        try {
+            await deleteUserAccount(id, name);
+            if (window.showToast) {
+                window.showToast(`User ${name || id} deleted from database.`, 'success');
+            }
+        } catch (err) {
+            console.error('Failed to delete user:', err);
+            if (window.showToast) {
+                window.showToast('Failed to delete user. Please try again.', 'error');
+            } else {
+                alert('Failed to delete user.');
+            }
             return;
         }
         loadAdminDashboard();

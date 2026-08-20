@@ -1336,6 +1336,20 @@ export async function reactivateDonor(userId, userName) {
     });
 }
 
+export async function deleteUserAccount(userId, userName) {
+    if (!userId) return;
+    const userDocRef = doc(db, 'users', userId);
+    await deleteDoc(userDocRef);
+    try {
+        const donorDocRef = doc(db, 'donors', userId);
+        await deleteDoc(donorDocRef);
+    } catch { /* ignore if no donor doc */ }
+    await logActivity('User Deleted', `User ${userName || userId} was permanently deleted from the database by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('user.deleted', `User ${userName || userId} deleted by admin`, {
+        targetId: userId
+    });
+}
+
 export async function verifyHospital(hospitalId, hospitalName, verified = true) {
     const userDoc = doc(db, 'users', hospitalId);
     await updateDoc(userDoc, {

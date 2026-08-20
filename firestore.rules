@@ -174,7 +174,7 @@ service cloud.firestore {
       allow update: if isSystemAdmin()
                     && unchangedExcept(['isVerified', 'isSuspended', 'rejected', 'rejectedAt', 'isActive', 'verifiedAt', 'statusChangedAt']);
 
-      allow delete: if false; // account deletion path is a future Cloud Function (Policy 12)
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- Donor KYC records (Auth & Onboarding Stream B) ----------
@@ -234,6 +234,8 @@ service cloud.firestore {
         request.resource.data.kycReviewedBy == resource.data.kycReviewedBy &&
         request.resource.data.kycReviewedAt == resource.data.kycReviewedAt
       );
+
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------
