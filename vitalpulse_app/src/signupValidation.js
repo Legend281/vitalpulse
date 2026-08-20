@@ -18,11 +18,12 @@ export function passwordsMatch(password, confirmPassword) {
  * accounts have no equivalent required field here — hospital verification happens on a
  * later KYC-style step, not at signup).
  */
-export function isSignupFormValid({ role, fullName, email, city, termsChecked, phone, password, confirmPassword, bloodType }) {
+export function isSignupFormValid({ role, fullName, email, city, termsChecked, phone, password, confirmPassword, bloodType, hospitalType, hasLicenseFile }) {
   const phoneValid = Boolean(normalizeCameroonPhone(phone || ''));
   const passwordValid = isPasswordValid(password || '');
   const confirmValid = passwordsMatch(password, confirmPassword);
   const bloodTypeValid = role !== 'donor' || Boolean(bloodType);
+  const hospitalLicenseValid = role !== 'hospital' || (hospitalType === 'government' || Boolean(hasLicenseFile));
 
   return Boolean(
     (fullName || '').trim() &&
@@ -32,6 +33,7 @@ export function isSignupFormValid({ role, fullName, email, city, termsChecked, p
     phoneValid &&
     passwordValid &&
     confirmValid &&
-    bloodTypeValid
+    bloodTypeValid &&
+    hospitalLicenseValid
   );
 }

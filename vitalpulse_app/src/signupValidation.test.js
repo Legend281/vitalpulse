@@ -32,13 +32,14 @@ describe('isSignupFormValid', () => {
     expect(isSignupFormValid(validDonor)).toBe(true);
   });
 
-  it('is true for a valid hospital submission with no blood type set', () => {
-    expect(isSignupFormValid({ ...validDonor, role: 'hospital', bloodType: '' })).toBe(true);
+  it('is true for a valid government hospital submission without a license file', () => {
+    expect(isSignupFormValid({ ...validDonor, role: 'hospital', bloodType: '', hospitalType: 'government', hasLicenseFile: false })).toBe(true);
   });
 
-  it('requires blood type for donor but not for hospital', () => {
-    expect(isSignupFormValid({ ...validDonor, bloodType: '' })).toBe(false);
-    expect(isSignupFormValid({ ...validDonor, role: 'hospital', bloodType: '' })).toBe(true);
+  it('requires license file for private hospital but exempts government hospital', () => {
+    expect(isSignupFormValid({ ...validDonor, role: 'hospital', bloodType: '', hospitalType: 'private', hasLicenseFile: false })).toBe(false);
+    expect(isSignupFormValid({ ...validDonor, role: 'hospital', bloodType: '', hospitalType: 'private', hasLicenseFile: true })).toBe(true);
+    expect(isSignupFormValid({ ...validDonor, role: 'hospital', bloodType: '', hospitalType: 'government', hasLicenseFile: false })).toBe(true);
   });
 
   it.each([

@@ -202,6 +202,35 @@
       </div>
 
       <form id="signupForm" class="space-y-5" novalidate>
+        <!-- Hospital Category (Hospital Only: Private vs Government) -->
+        <div id="hospitalCategoryGroup" class="hidden space-y-2">
+          <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-wide">Hospital Category</label>
+          <div class="grid grid-cols-2 gap-3">
+            <label class="relative flex items-center justify-center gap-2 p-3 rounded-xl border border-outline-variant/40 cursor-pointer hover:border-tertiary/40 transition-all has-[:checked]:border-tertiary has-[:checked]:bg-tertiary/5">
+              <input type="radio" name="hospitalType" value="private" id="hospitalTypePrivate" checked onchange="toggleHospitalCategoryFields()" class="sr-only"/>
+              <span class="material-symbols-outlined text-sm text-tertiary">domain</span>
+              <span class="font-bold text-xs text-on-surface">Private Hospital</span>
+            </label>
+            <label class="relative flex items-center justify-center gap-2 p-3 rounded-xl border border-outline-variant/40 cursor-pointer hover:border-tertiary/40 transition-all has-[:checked]:border-tertiary has-[:checked]:bg-tertiary/5">
+              <input type="radio" name="hospitalType" value="government" id="hospitalTypeGov" onchange="toggleHospitalCategoryFields()" class="sr-only"/>
+              <span class="material-symbols-outlined text-sm text-emerald-600">account_balance</span>
+              <span class="font-bold text-xs text-on-surface">Government</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- License Upload (Hospital Only: Private Hospital requirement) -->
+        <div id="hospitalLicenseGroup" class="hidden">
+          <label class="block text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5" for="hospitalLicenseFile">
+            Medical / Operating License <span class="text-error font-extrabold">* (PDF Required)</span>
+          </label>
+          <div class="relative">
+            <input id="hospitalLicenseFile" type="file" accept="application/pdf,.pdf"
+                   class="w-full bg-surface-container-lowest border border-outline-variant/40 rounded-xl px-4 py-2.5 text-sm text-on-surface file:mr-4 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-tertiary/10 file:text-tertiary hover:file:bg-tertiary/20 cursor-pointer transition-all"/>
+          </div>
+          <p id="hospitalLicenseError" class="hidden mt-1.5 text-xs text-error font-semibold"></p>
+        </div>
+
         <div>
           <label id="fullNameLabel" class="block text-xs font-bold text-on-surface-variant uppercase tracking-wide mb-1.5" for="fullName">Full Name</label>
           <input id="fullName" type="text" required
@@ -353,9 +382,27 @@
 </footer>
 
 <script>
+function toggleHospitalCategoryFields() {
+    const isHospital = document.getElementById('roleHospital')?.checked;
+    const isPrivate = document.getElementById('hospitalTypePrivate')?.checked;
+    const licenseGroup = document.getElementById('hospitalLicenseGroup');
+    const licenseInput = document.getElementById('hospitalLicenseFile');
+
+    if (isHospital && isPrivate) {
+        licenseGroup?.classList.remove('hidden');
+        if (licenseInput) { licenseInput.disabled = false; licenseInput.required = true; }
+    } else {
+        licenseGroup?.classList.add('hidden');
+        if (licenseInput) { licenseInput.disabled = true; licenseInput.required = false; licenseInput.value = ''; }
+    }
+
+    if (typeof window.updateSignupSubmitEnabled === 'function') window.updateSignupSubmitEnabled();
+}
+
 function toggleRoleFields() {
     const isHospital = document.getElementById('roleHospital').checked;
     const bloodTypeGroup = document.getElementById('bloodTypeGroup');
+    const hospitalCategoryGroup = document.getElementById('hospitalCategoryGroup');
     const stepIndicator = document.getElementById('signupStepIndicator');
     const btnLabel = document.getElementById('btnSignupLabel');
     const consentText = document.getElementById('consentText');
@@ -381,6 +428,7 @@ function toggleRoleFields() {
 
     if (isHospital) {
         bloodTypeGroup.classList.add('hidden');
+        if (hospitalCategoryGroup) hospitalCategoryGroup.classList.remove('hidden');
         stepIndicator.classList.add('hidden');
         btnLabel.textContent = 'Create Account';
         fullNameLabel.textContent = 'Hospital Name';
@@ -392,6 +440,7 @@ function toggleRoleFields() {
     } else {
         if (fullNameInput) fullNameInput.placeholder = 'e.g. John Doe';
         bloodTypeGroup.classList.remove('hidden');
+        if (hospitalCategoryGroup) hospitalCategoryGroup.classList.add('hidden');
         stepIndicator.classList.remove('hidden');
         btnLabel.textContent = 'Continue to Verification';
         fullNameLabel.textContent = 'Full Name';
@@ -401,10 +450,20 @@ function toggleRoleFields() {
             '<a href="/privacy.html" target="_blank" rel="noopener" class="text-primary font-bold">Privacy Policy</a>.';
     }
 
-    // Re-check submit-button enable state (defined in src/main.js, which owns the rest of
-    // this form's live validation) — role switch changes which fields are required.
-    if (typeof window.updateSignupSubmitEnabled === 'function') window.updateSignupSubmitEnabled();
+    toggleHospitalCategoryFields();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const roleParam = params.get('role') || window.location.hash.replace('#', '');
+    if (roleParam === 'hospital') {
+        const hospitalRadio = document.getElementById('roleHospital');
+        if (hospitalRadio) {
+            hospitalRadio.checked = true;
+            toggleRoleFields();
+        }
+    }
+});
 </script>
 <script type="module" src="/src/main.js"></script>
 </body></html>

@@ -119,6 +119,7 @@ export async function registerUser(email, password, role, additionalData) {
             isCniVerified: Boolean(cniHash),
             city: additionalData.city || null,
             phone: additionalData.phone || null,
+            hospitalType: additionalData.hospitalType || (role === 'hospital' ? 'private' : null),
             licenseUrl: additionalData.licenseUrl || null,
             licenseFileName: additionalData.licenseFileName || null,
             isVerified: role === 'donor' ? true : (role === 'hospital' ? !requireHospitalApproval : false),

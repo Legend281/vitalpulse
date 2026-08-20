@@ -96,7 +96,7 @@ function safeUrl(url) {
     if (!url) return '';
     try {
         const parsed = new URL(url, window.location.origin);
-        return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '';
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'data:') ? parsed.href : '';
     } catch {
         return '';
     }
@@ -418,6 +418,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const submitBtnEl = signupForm.querySelector('button[type="submit"]');
         window.updateSignupSubmitEnabled = () => {
             const role = document.querySelector('input[name="role"]:checked')?.value;
+            const hospitalType = document.querySelector('input[name="hospitalType"]:checked')?.value || 'private';
+            const licenseFileInput = document.getElementById('hospitalLicenseFile');
+            const hasLicenseFile = Boolean(licenseFileInput && licenseFileInput.files && licenseFileInput.files.length > 0);
+
             const allValid = isSignupFormValid({
                 role,
                 fullName: document.getElementById('fullName')?.value,
@@ -428,6 +432,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 password: passwordInput?.value,
                 confirmPassword: confirmInput?.value,
                 bloodType: document.getElementById('bloodType')?.value,
+                hospitalType,
+                hasLicenseFile
             });
             if (submitBtnEl) submitBtnEl.disabled = !allValid;
         };
@@ -436,6 +442,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.getElementById('terms')?.addEventListener('change', () => window.updateSignupSubmitEnabled());
         document.getElementById('bloodType')?.addEventListener('change', () => window.updateSignupSubmitEnabled());
+        document.querySelectorAll('input[name="hospitalType"]').forEach((el) => {
+            el.addEventListener('change', () => window.updateSignupSubmitEnabled());
+        });
+        document.getElementById('hospitalLicenseFile')?.addEventListener('change', () => {
+            document.getElementById('hospitalLicenseError')?.classList.add('hidden');
+            window.updateSignupSubmitEnabled();
+        });
         phoneNationalInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
         passwordInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
         confirmInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
@@ -539,9 +552,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 // see "National ID / CNI" comment in donor-dashboard.js's KYC submit handler.
             } else if (role === 'hospital') {
                 extraData.isVerified = false;
-                // License document upload moved out of Sign Up — hospital verification now
-                // happens on a KYC-style step after account creation, same as donor's C3
-                // (donor.html#kyc), not built yet for hospitals. See tracker note.
+                const hospitalType = document.querySelector('input[name="hospitalType"]:checked')?.value || 'private';
+                extraData.hospitalType = hospitalType;
+                const licenseErrorEl = document.getElementById('hospitalLicenseError');
+                if (licenseErrorEl) licenseErrorEl.classList.add('hidden');
+
+                if (hospitalType === 'private') {
+                    const licenseFileInput = document.getElementById('hospitalLicenseFile');
+                    const file = licenseFileInput?.files?.[0];
+                    if (!file) {
+                        showFieldError(licenseErrorEl, 'Please upload your hospital operating license (PDF format).');
+                        invalidate(licenseFileInput);
+                    } else if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                        showFieldError(licenseErrorEl, 'Please select a valid PDF file for the license.');
+                        invalidate(licenseFileInput);
+                    } else {
+                        try {
+                            const dataUrl = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(file);
+                            });
+                            extraData.licenseUrl = dataUrl;
+                            extraData.licenseFileName = file.name;
+                        } catch (err) {
+                            console.error('Failed to read license file:', err);
+                            showFieldError(licenseErrorEl, 'Failed to process license file. Please select the file again.');
+                            invalidate(licenseFileInput);
+                        }
+                    }
+                } else {
+                    extraData.licenseUrl = null;
+                    extraData.licenseFileName = null;
+                }
             }
 
             if (firstInvalidEl) {
@@ -4984,9 +5028,18 @@ window.renderHospitalVerificationsTab = async (tab) => {
                 </td>
                 <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${esc(h.city) || 'Unspecified'}</span></td>
                 <td class="p-4">
-                    <button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 hover:bg-slate-200 transition-colors">
-                        <span class="material-symbols-outlined text-[12px]" data-icon="description">description</span> License
-                    </button>
+                     ${h.hospitalType === 'government'
+                         ? `<span class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-1 rounded-md text-[10px] font-bold">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="account_balance">account_balance</span> Govt (Exempt)
+                            </span>`
+                         : h.licenseUrl
+                         ? `<button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 hover:bg-slate-200 transition-colors">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="description">description</span> License
+                            </button>`
+                         : `<span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-1 rounded text-[10px] font-bold">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="warning">warning</span> Missing
+                            </span>`
+                     }
                 </td>
                 <td class="p-4">${statusBadge}</td>
                 <td class="p-4 text-right">${actions}</td>
@@ -5336,8 +5389,11 @@ window.viewHospitalDetail = async (hospitalId) => {
                         <p class="text-sm font-medium text-on-surface">${esc(hospital.phone) || 'N/A'}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Registration Date</p>
-                        <p class="text-sm font-medium text-on-surface">${createdDate}</p>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Category</p>
+                        <p class="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm ${hospital.hospitalType === 'government' ? 'text-emerald-600' : 'text-tertiary'}">${hospital.hospitalType === 'government' ? 'account_balance' : 'domain'}</span>
+                            ${hospital.hospitalType === 'government' ? 'Government Institution' : 'Private Facility'}
+                        </p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Hospital ID</p>
@@ -5350,14 +5406,19 @@ window.viewHospitalDetail = async (hospitalId) => {
                         <p class="text-sm font-bold text-on-surface">License Document</p>
                         <span class="material-symbols-outlined text-slate-400">description</span>
                     </div>
-                    ${hospital.licenseUrl 
+                    ${hospital.hospitalType === 'government'
+                        ? `<div class="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl text-emerald-800 text-xs font-semibold">
+                            <span class="material-symbols-outlined text-emerald-600 text-lg">verified</span>
+                            <span>Government Institution — Exempt from private operating license requirements.</span>
+                           </div>`
+                        : hospital.licenseUrl 
                         ? `<a href="${safeUrl(hospital.licenseUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-primary text-sm font-bold hover:underline">
                             <span class="material-symbols-outlined text-sm">${(hospital.licenseFileName || '').match(/\.(png|jpe?g|webp|gif)$/i) ? 'image' : 'description'}</span>
                             ${esc(hospital.licenseFileName || 'View Document')}
                             <span class="material-symbols-outlined text-sm">open_in_new</span>
                            </a>`
                         : `<div class="flex items-center gap-2 text-slate-500 text-sm">
-                            <span class="material-symbols-outlined text-sm">warning</span>
+                            <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
                             No license document uploaded
                            </div>`
                     }
