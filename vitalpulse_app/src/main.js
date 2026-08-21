@@ -96,9 +96,30 @@ function safeUrl(url) {
     if (!url) return '';
     try {
         const parsed = new URL(url, window.location.origin);
-        return (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'data:') ? parsed.href : '';
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'data:' || parsed.protocol === 'blob:') ? parsed.href : '';
     } catch {
         return '';
+    }
+}
+
+function dataUrlToBlobUrl(dataUrl) {
+    if (!dataUrl || typeof dataUrl !== 'string') return '';
+    if (!dataUrl.startsWith('data:')) return dataUrl;
+    try {
+        const parts = dataUrl.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        return URL.createObjectURL(blob);
+    } catch (e) {
+        console.error('Error converting data URL to Blob URL:', e);
+        return dataUrl;
     }
 }
 
@@ -5277,12 +5298,14 @@ window.handleAdminReactivateHospital = async (id, name) => {
 };
 
 window.handleAdminDeleteHospital = async (id, name) => {
-    if (!name) {
-        try { const h = await fetchHospitalById(id); name = h?.name || ''; } catch { /* keep default */ }
-    }
-    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE hospital ${name || id}?\n\nThis will remove the hospital document from the database and cannot be undone.`)) {
+    let email = '';
+    try {
+        const h = await fetchHospitalById(id);
+        if (h) { name = name || h.name || ''; email = h.email || ''; }
+    } catch { /* keep default */ }
+    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE hospital ${name || id}?\n\nThis will remove the hospital account from Firebase Auth and the database.`)) {
         try {
-            await deleteUserAccount(id, name);
+            await deleteUserAccount(id, name, email);
             if (window.vpNotify) {
                 window.vpNotify(`Hospital ${name || id} deleted successfully.`);
             } else if (window.showToast) {
@@ -5365,7 +5388,8 @@ window.viewHospitalDetail = async (hospitalId) => {
             : '<span class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">Pending</span>';
         
         const createdDate = hospital.createdAt ? new Date(hospital.createdAt).toLocaleDateString() : 'N/A';
-        
+        const licenseBlobUrl = hospital.licenseUrl ? dataUrlToBlobUrl(hospital.licenseUrl) : '';
+
         contentEl.innerHTML = `
             <div class="space-y-6">
                 <div class="flex items-start gap-4">
@@ -5411,12 +5435,26 @@ window.viewHospitalDetail = async (hospitalId) => {
                             <span class="material-symbols-outlined text-emerald-600 text-lg">verified</span>
                             <span>Government Institution — Exempt from private operating license requirements.</span>
                            </div>`
-                        : hospital.licenseUrl 
-                        ? `<a href="${safeUrl(hospital.licenseUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-primary text-sm font-bold hover:underline">
-                            <span class="material-symbols-outlined text-sm">${(hospital.licenseFileName || '').match(/\.(png|jpe?g|webp|gif)$/i) ? 'image' : 'description'}</span>
-                            ${esc(hospital.licenseFileName || 'View Document')}
-                            <span class="material-symbols-outlined text-sm">open_in_new</span>
-                           </a>`
+                        : licenseBlobUrl 
+                        ? `<div class="space-y-3">
+                            <div class="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                <div class="flex items-center gap-2 min-w-0 pr-2">
+                                    <span class="material-symbols-outlined text-red-600 text-lg shrink-0">picture_as_pdf</span>
+                                    <span class="text-xs font-bold text-slate-800 truncate">${esc(hospital.licenseFileName || 'Hospital License.pdf')}</span>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <a href="${safeUrl(licenseBlobUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-bold text-tertiary bg-tertiary/10 hover:bg-tertiary/20 px-3 py-1.5 rounded-lg transition-colors">
+                                        <span class="material-symbols-outlined text-sm">open_in_new</span> Open
+                                    </a>
+                                    <a href="${safeUrl(licenseBlobUrl)}" download="${esc(hospital.licenseFileName || 'hospital_license.pdf')}" class="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                                        <span class="material-symbols-outlined text-sm">download</span> Download
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="w-full h-80 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shadow-inner">
+                                <iframe src="${safeUrl(licenseBlobUrl)}" class="w-full h-full border-0" title="License Document Preview"></iframe>
+                            </div>
+                           </div>`
                         : `<div class="flex items-center gap-2 text-slate-500 text-sm">
                             <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
                             No license document uploaded
@@ -5597,12 +5635,14 @@ window.handleAdminReactivateUser = async (id, name) => {
 };
 
 window.handleAdminDeleteUser = async (id, name) => {
-    if (!name) {
-        try { const d = await fetchDonorById(id); name = d?.name || ''; } catch { /* keep default */ }
-    }
-    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE user ${name || id}?\n\nThis will remove their document directly from the database and cannot be undone.`)) {
+    let email = '';
+    try {
+        const d = await fetchDonorById(id);
+        if (d) { name = name || d.name || ''; email = d.email || ''; }
+    } catch { /* keep default */ }
+    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE user ${name || id}?\n\nThis will remove their account from Firebase Auth and the database.`)) {
         try {
-            await deleteUserAccount(id, name);
+            await deleteUserAccount(id, name, email);
             if (window.showToast) {
                 window.showToast(`User ${name || id} deleted from database.`, 'success');
             }

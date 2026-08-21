@@ -1317,6 +1317,7 @@ const suspendFn = httpsCallable(getFunctions(), 'suspendUser');
 const reactivateFn = httpsCallable(getFunctions(), 'reactivateUser');
 const deactivateHospitalFn = httpsCallable(getFunctions(), 'deactivateHospital');
 const reactivateHospitalFn = httpsCallable(getFunctions(), 'reactivateHospital');
+const deleteUserAccountFn = httpsCallable(getFunctions(), 'deleteUserAccountFn');
 
 export async function suspendDonor(userId, userName) {
     await suspendFn({ targetUid: userId, suspend: true, reason: `suspended by ${getCurrentUser()?.name || 'Admin'}` });
@@ -1336,17 +1337,30 @@ export async function reactivateDonor(userId, userName) {
     });
 }
 
-export async function deleteUserAccount(userId, userName) {
-    if (!userId) return;
-    const userDocRef = doc(db, 'users', userId);
-    await deleteDoc(userDocRef);
+export async function deleteUserAccount(userId, userName, userEmail) {
+    if (!userId && !userEmail) return;
+
     try {
-        const donorDocRef = doc(db, 'donors', userId);
-        await deleteDoc(donorDocRef);
-    } catch { /* ignore if no donor doc */ }
-    await logActivity('User Deleted', `User ${userName || userId} was permanently deleted from the database by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
-    logAuditTrail('user.deleted', `User ${userName || userId} deleted by admin`, {
-        targetId: userId
+        await deleteUserAccountFn({ targetUid: userId, email: userEmail });
+    } catch (err) {
+        console.warn('deleteUserAccountFn Cloud Function call failed or not deployed, executing fallback deleteDoc:', err);
+    }
+
+    if (userId) {
+        try {
+            const userDocRef = doc(db, 'users', userId);
+            await deleteDoc(userDocRef);
+        } catch { /* ignore */ }
+        try {
+            const donorDocRef = doc(db, 'donors', userId);
+            await deleteDoc(donorDocRef);
+        } catch { /* ignore */ }
+    }
+
+    await logActivity('User Deleted', `User ${userName || userId || userEmail} was permanently deleted from the database by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
+    logAuditTrail('user.deleted', `User ${userName || userId || userEmail} deleted by admin`, {
+        targetId: userId,
+        email: userEmail
     });
 }
 
@@ -2210,7 +2224,7 @@ export async function fetchSystemSettings() {
         autoMatchDonors: true,
         lowStockThreshold: 5,
         emergencyBroadcastEnabled: true,
-        registrationApprovalRequired: false
+        registrationApprovalRequired: true
     };
 }
 

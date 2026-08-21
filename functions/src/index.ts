@@ -15,4 +15,5 @@ export { checkPasswordBreach } from './checkPasswordBreach';
 export { resolveSignInIdentifier } from './resolveSignInIdentifier';
 export { requestPasswordReset, checkPasswordResetToken, confirmPasswordReset } from './passwordReset';
 export { createStaffAccount, verifyStaffPin, authenticateStaffDirectLogin } from './staffManagement';
+export { deleteUserAccountFn } from './deleteUserAccount';
 
