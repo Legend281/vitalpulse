@@ -202,6 +202,59 @@ function initOfflineBanner() {
     window.addEventListener('offline', updateBannerState);
     updateBannerState();
 }
+let _globalUserSessionUnsubscribe = null;
+
+function initGlobalUserSessionGuard() {
+    const path = window.location.pathname;
+    const isDashboard = path.includes('donor.html') || path.includes('hospital.html') || path.includes('admin.html');
+    if (!isDashboard) return;
+
+    waitForAuthUser().then(user => {
+        if (!user || !user.uid) return;
+
+        if (_globalUserSessionUnsubscribe) {
+            _globalUserSessionUnsubscribe();
+            _globalUserSessionUnsubscribe = null;
+        }
+
+        const userDocRef = doc(db, 'users', user.uid);
+        _globalUserSessionUnsubscribe = onSnapshot(userDocRef, (snapshot) => {
+            if (!snapshot.exists() || snapshot.data()?.isSuspended === true || snapshot.data()?.isActive === false) {
+                console.warn(`[Session Guard] Account ${user.uid} deleted or deactivated on server. Evicting session across all browsers.`);
+                
+                if (_globalUserSessionUnsubscribe) {
+                    _globalUserSessionUnsubscribe();
+                    _globalUserSessionUnsubscribe = null;
+                }
+
+                const evictMsg = 'Your account has been deleted or deactivated by an administrator.';
+                if (window.vpNotify) {
+                    window.vpNotify(evictMsg);
+                } else if (window.showToast) {
+                    window.showToast(evictMsg, 'error');
+                } else {
+                    alert(evictMsg);
+                }
+
+                logoutUser().finally(() => {
+                    window.location.href = '/login.html';
+                });
+            }
+        }, (err) => {
+            console.warn('[Session Guard] User document error (deleted or permission revoked):', err);
+            if (err.code === 'permission-denied' || err.code === 'not-found') {
+                if (_globalUserSessionUnsubscribe) {
+                    _globalUserSessionUnsubscribe();
+                    _globalUserSessionUnsubscribe = null;
+                }
+                logoutUser().finally(() => {
+                    window.location.href = '/login.html';
+                });
+            }
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initOfflineBanner);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -217,6 +270,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isDashboard && !currentUser) {
         window.location.href = '/login.html';
         return;
+    }
+
+    if (isDashboard && currentUser) {
+        initGlobalUserSessionGuard();
     }
 
     // Admin console is admin-only. Fast path using the cached profile (the admin branch
