@@ -3789,7 +3789,7 @@ function initAdminNavigation() {
             if(globalTitle) globalTitle.textContent = 'Hospital Verifications';
             if(globalSubtitle) globalSubtitle.textContent = 'Institutional Management';
             btnVerifications.className = activeClass;
-            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+            window.renderHospitalVerificationsTab('pending');
         } else if(target === 'users') {
             viewUsers.classList.remove('hidden');
             viewUsers.classList.add('block');
@@ -3954,7 +3954,7 @@ function initAdminNavigation() {
         hospitalSearchInput.addEventListener('input', () => {
             adminHospitalsQuery = hospitalSearchInput.value.trim();
             adminHospitalsPage = 1;
-            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending');
         });
     }
 
@@ -4633,7 +4633,7 @@ function renderAdminPagination(container, page, totalPages, total, key) {
 window.adminPageNav = (key, delta) => {
     if (key === 'hospitals') {
         adminHospitalsPage = Math.max(1, adminHospitalsPage + delta);
-        window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+        window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending');
     } else if (key === 'users') {
         adminUsersPage = Math.max(1, adminUsersPage + delta);
         window.renderUserManagementTab(document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all');
@@ -4942,10 +4942,19 @@ function initAdminActivityLogModal() {
     if (clearBtnInline) clearBtnInline.addEventListener('click', clearAll);
 }
 
-window.renderHospitalVerificationsTab = async (tab) => {
+window.renderHospitalVerificationsTab = async (tab = 'pending') => {
     const tableBody = document.getElementById('adminHospitalsTableBody');
     if (!tableBody) return;
-    
+
+    const activeTabName = tab || 'pending';
+    const hospitalTabBtns = document.querySelectorAll('#hospitalTabs button');
+    hospitalTabBtns.forEach(b => {
+        const isActive = b.dataset.tab === activeTabName;
+        b.className = `cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
+            isActive ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+        }`;
+    });
+
     tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">Loading directory...</td></tr>';
     
     try {
@@ -5091,7 +5100,7 @@ window.handleAdminApprove = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5253,7 +5262,7 @@ window.handleAdminReject = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5274,7 +5283,7 @@ window.handleAdminDeactivateHospital = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5292,7 +5301,7 @@ window.handleAdminReactivateHospital = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5321,7 +5330,7 @@ window.handleAdminDeleteHospital = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
