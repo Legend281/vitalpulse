@@ -72,7 +72,27 @@ export async function registerUser(email, password, role, additionalData) {
         // ("Missing or insufficient permissions" broke every donor registration
         // with a national ID). If the hash is a duplicate, the function rolls
         // the just-created account back server-side.
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        let userCredential;
+        try {
+            userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        } catch (authErr) {
+            if (authErr.code === 'auth/email-already-in-use') {
+                try {
+                    const signInCred = await signInWithEmailAndPassword(auth, email, password);
+                    const checkDoc = await getDoc(doc(db, 'users', signInCred.user.uid));
+                    if (!checkDoc.exists()) {
+                        userCredential = signInCred;
+                    } else {
+                        await signOut(auth);
+                        throw authErr;
+                    }
+                } catch {
+                    throw authErr;
+                }
+            } else {
+                throw authErr;
+            }
+        }
         const user = userCredential.user;
 
         await updateProfile(user, { displayName: additionalData.name });
@@ -372,15 +392,13 @@ export async function loginUser(email, password) {
         let role = 'donor';
         let userData = {};
 
-        try {
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-            if (userDoc.exists()) {
-                userData = userDoc.data();
-                role = userData.role || role;
-            }
-        } catch (firestoreError) {
-            console.warn("Firestore read failed (rules may be locked), defaulting to donor role:", firestoreError);
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        if (!userDoc.exists()) {
+            await signOut(auth);
+            throw new Error('Account not found or has been deleted by an administrator.');
         }
+        userData = userDoc.data();
+        role = userData.role || role;
 
         // Custom claims (role/roles/hospitalId/kycStatus/suspended) are the REAL
         // authority — the Firestore `role` field is cosmetic routing only. Force a
@@ -560,15 +578,13 @@ export function waitForAuthUser() {
 export async function fetchVerifiedUser(firebaseUser) {
     let role = 'donor';
     let userData = {};
-    try {
-        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-        if (userDoc.exists()) {
-            userData = userDoc.data();
-            role = userData.role || role;
-        }
-    } catch (e) {
-        console.warn('Failed to verify user role from Firestore:', e);
+    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+    if (!userDoc.exists()) {
+        await signOut(auth);
+        throw new Error('Account not found or has been deleted by an administrator.');
     }
+    userData = userDoc.data();
+    role = userData.role || role;
     return {
         uid: firebaseUser.uid,
         email: firebaseUser.email,

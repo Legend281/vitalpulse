@@ -1371,6 +1371,15 @@ export async function verifyHospital(hospitalId, hospitalName, verified = true) 
         rejected: verified ? false : undefined,
         verifiedAt: new Date().toISOString()
     });
+    if (verified) {
+        await addHospitalNotification(
+            hospitalId,
+            'Account Verified',
+            'Congratulations! Your hospital registration has been approved by the administrator. You now have full access to the network.',
+            'success',
+            'dashboard'
+        ).catch(e => console.warn('Failed to add verification notification:', e));
+    }
     await logActivity(
         verified ? 'Hospital Approved' : 'Hospital Verification Revoked',
         `Hospital ${hospitalName || hospitalId} was ${verified ? 'approved by an administrator' : 'removed from the verified network by an administrator'}`,
@@ -1390,6 +1399,13 @@ export async function rejectHospital(hospitalId, hospitalName) {
         rejected: true,
         rejectedAt: new Date().toISOString()
     });
+    await addHospitalNotification(
+        hospitalId,
+        'Registration Status Update',
+        'Your hospital registration request was rejected by an administrator.',
+        'error',
+        'dashboard'
+    ).catch(e => console.warn('Failed to add rejection notification:', e));
     await logActivity('Hospital Rejected', `Hospital ${hospitalName || hospitalId} was rejected by an administrator`, 'error', getCurrentUser()?.name || 'Admin');
     logAuditTrail('hospital.rejected', `Hospital ${hospitalName || hospitalId} rejected by admin`, {
         targetId: hospitalId,
@@ -1415,6 +1431,13 @@ export async function deactivateHospital(hospitalId, hospitalName) {
 
 export async function reactivateHospital(hospitalId, hospitalName) {
     await reactivateHospitalFn({ hospitalId, active: true, reason: `reactivated by ${getCurrentUser()?.name || 'Admin'}` });
+    await addHospitalNotification(
+        hospitalId,
+        'Account Reactivated',
+        'Your hospital account access has been restored by an administrator.',
+        'success',
+        'dashboard'
+    ).catch(e => console.warn('Failed to add reactivation notification:', e));
     await logActivity('Hospital Reactivated', `Hospital ${hospitalName || hospitalId} was reactivated by an administrator`, 'success', getCurrentUser()?.name || 'Admin');
     logAuditTrail('hospital.reactivated', `Hospital ${hospitalName || hospitalId} reactivated by admin`, {
         targetId: hospitalId,

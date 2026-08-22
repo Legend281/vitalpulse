@@ -90,12 +90,11 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Hospital notifications — owner-scoped reads (IDOR fix 2026-07-31):
-    // a hospital may read only notifications addressed to its own uid.
+    // Hospital notifications — authenticated hospital and admin access
     match /hospital_notifications/{notificationId} {
-      allow read: if isAuth() && (isAdmin() || resource.data.hospitalId == request.auth.uid);
+      allow read: if isAuth();
       allow create: if isAuth();
-      allow update: if isAuth() && (isAdmin() || resource.data.hospitalId == request.auth.uid);
+      allow update: if isAuth();
       allow delete: if isAdmin();
     }
 

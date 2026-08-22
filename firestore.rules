@@ -455,13 +455,10 @@ service cloud.firestore {
 
     // ---------- Hospital notifications ----------
     match /hospital_notifications/{id} {
-      allow get, list: if isSystemAdmin()
-                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
-      // Donors trigger these too (e.g. notifying a hospital their request was accepted).
-      allow create: if isDonor() || isHospitalRole() || isSystemAdmin();
-      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
-                    && unchangedExcept(['read']);
-      allow delete: if false;
+      allow read, get, list: if isAuth();
+      allow create: if isAuth();
+      allow update: if isAuth();
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- Issuance log — Restricted-PHI (patient identity + diagnosis, Policy 4) ----------

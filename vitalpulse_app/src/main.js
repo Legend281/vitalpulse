@@ -80,7 +80,7 @@ import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from 
 import { db } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -5066,6 +5066,9 @@ window.renderHospitalVerificationsTab = async (tab = 'pending') => {
              let actions = '';
              if(!h.rejected && !h.isVerified) {
                  actions = `<div class="flex items-center justify-end gap-2">
+                     <button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition-colors shadow-sm" title="View Details">
+                         <span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+                     </button>
                      <button onclick="window.handleAdminApprove('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors shadow-sm" title="Approve">
                          <span class="material-symbols-outlined text-sm" data-icon="check">check</span>
                      </button>
@@ -5108,7 +5111,7 @@ window.renderHospitalVerificationsTab = async (tab = 'pending') => {
                             <span class="material-symbols-outlined text-sm" data-icon="local_hospital">local_hospital</span>
                         </div>
                         <div class="min-w-0">
-                            <p class="font-bold text-on-surface truncate">${esc(h.name)}</p>
+                            <p class="font-bold text-on-surface hover:text-primary cursor-pointer truncate" onclick="window.viewHospitalDetail('${h.id}')" title="Click to view details">${esc(h.name)}</p>
                             <p class="text-[10px] text-slate-500 font-mono">ID: ${h.id.slice(0,8).toUpperCase()}</p>
                         </div>
                     </div>
@@ -5116,9 +5119,9 @@ window.renderHospitalVerificationsTab = async (tab = 'pending') => {
                 <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${esc(h.city) || 'Unspecified'}</span></td>
                 <td class="p-4">
                      ${h.hospitalType === 'government'
-                         ? `<span class="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-1 rounded-md text-[10px] font-bold">
+                         ? `<button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-1 rounded-md text-[10px] font-bold hover:bg-emerald-100 transition-colors shadow-2xs" title="Click to view details">
                              <span class="material-symbols-outlined text-[12px]" data-icon="account_balance">account_balance</span> Govt (Exempt)
-                            </span>`
+                            </button>`
                          : h.licenseUrl
                          ? `<button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 hover:bg-slate-200 transition-colors">
                              <span class="material-symbols-outlined text-[12px]" data-icon="description">description</span> License
@@ -6942,11 +6945,42 @@ window.getCurrentUser = getCurrentUser;
 window.markHospitalNotificationRead = markHospitalNotificationRead;
 window.markAllHospitalNotificationsRead = markAllHospitalNotificationsRead;
 
-let _hospitalNotifCache = null;
+window.handleHospitalNotifCardClick = async (notifId, targetView) => {
+    try {
+        await markHospitalNotificationRead(notifId);
+    } catch (e) {
+        console.warn('Failed to mark notification read:', e);
+    }
+    document.getElementById('hospitalNotifPanel')?.remove();
+    if (targetView && typeof window.switchView === 'function') {
+        window.switchView(targetView);
+    }
+};
 
 function initHospitalNotifications() {
     const notifBtn = document.getElementById('btnHospitalNotifications');
     if (!notifBtn) return;
+
+    const hid = hospitalScopeId();
+    if (hid) {
+        subscribeToHospitalNotifications(hid, (notifications) => {
+            const unreadCount = notifications.filter(n => !n.read).length;
+            _hospitalNotifCache = { notifications, unreadCount };
+            const badge = document.getElementById('hospitalNotifBadge');
+            if (badge) {
+                if (unreadCount > 0) {
+                    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                    badge.style.width = '18px';
+                    badge.style.height = '18px';
+                } else {
+                    badge.classList.add('hidden');
+                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                }
+            }
+        });
+    }
 
     notifBtn.addEventListener('click', async () => {
         const currentUser = getCurrentUser();
@@ -6989,28 +7023,6 @@ function initHospitalNotifications() {
                 notifications = fetched[0];
                 unreadCount = fetched[1];
                 _hospitalNotifCache = { notifications, unreadCount };
-            } else {
-                fetchHospitalNotifications(hospitalScopeId(), 10).then(n => {
-                    _hospitalNotifCache.notifications = n;
-                }).catch(() => {});
-                fetchUnreadHospitalNotificationCount(hospitalScopeId()).then(c => {
-                    _hospitalNotifCache.unreadCount = c;
-                }).catch(() => {});
-            }
-            const badge = document.getElementById('hospitalNotifBadge');
-            if (badge) {
-                if (unreadCount > 0) {
-                    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-                    badge.classList.remove('hidden');
-                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '18px';
-                    badge.style.height = '18px';
-                } else {
-                    badge.classList.add('hidden');
-                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '';
-                    badge.style.height = '';
-                }
             }
             const body = document.getElementById('hospitalNotifBody');
             if (body) {
@@ -7026,13 +7038,20 @@ function initHospitalNotifications() {
                         const colors = { 'error': 'text-red-600 bg-red-50', 'success': 'text-emerald-600 bg-emerald-50', 'info': 'text-blue-600 bg-blue-50', 'warning': 'text-amber-600 bg-amber-50' };
                         const c = colors[n.type] || colors.info;
                         const icon = icons[n.type] || icons.info;
+                        let timeStr = 'Just now';
+                        if (n.createdAt) {
+                            try {
+                                const d = new Date(n.createdAt);
+                                if (!isNaN(d.getTime())) timeStr = d.toLocaleString();
+                            } catch { /* keep default */ }
+                        }
                         return `
-                            <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markHospitalNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.style.opacity='0.6'; })()` : ''}">
+                            <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="window.handleHospitalNotifCardClick('${n.id}', ${n.view ? `'${n.view}'` : 'null'})">
                                 <span class="material-symbols-outlined text-sm mt-0.5 ${c.split(' ')[0]}">${icon}</span>
                                 <div class="min-w-0 flex-1">
-                                    <p class="text-xs font-bold text-on-surface ${n.read ? '' : ''}">${n.title}</p>
-                                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${n.message}</p>
-                                    <p class="text-[9px] text-slate-400 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
+                                    <p class="text-xs font-bold text-on-surface">${esc(n.title)}</p>
+                                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${esc(n.message)}</p>
+                                    <p class="text-[9px] text-slate-400 mt-1">${timeStr}</p>
                                 </div>
                                 ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
                             </div>
@@ -7041,40 +7060,11 @@ function initHospitalNotifications() {
                 }
             }
         } catch (e) {
+            console.error('[Notifications] Failed to load hospital notifications:', e);
             const body = document.getElementById('hospitalNotifBody');
             if (body) body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-slate-500"><span class="material-symbols-outlined text-3xl mb-2 text-slate-300">error_outline</span><p class="text-sm font-medium">Could not load notifications</p></div>';
         }
     });
-
-    // Poll every 30 seconds — also caches full notification list for instant panel open
-    const poll = async () => {
-        const cu = getCurrentUser();
-        if (!cu) return;
-        try {
-            const [count, notifications] = await Promise.all([
-                fetchUnreadHospitalNotificationCount(hospitalScopeId()),
-                fetchHospitalNotifications(hospitalScopeId(), 10)
-            ]);
-            _hospitalNotifCache = { notifications, unreadCount: count };
-            const badge = document.getElementById('hospitalNotifBadge');
-            if (badge) {
-                if (count > 0) {
-                    badge.textContent = count > 9 ? '9+' : count;
-                    badge.classList.remove('hidden');
-                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '18px';
-                    badge.style.height = '18px';
-                } else {
-                    badge.classList.add('hidden');
-                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '';
-                    badge.style.height = '';
-                }
-            }
-        } catch (e) { /* silent */ }
-    };
-    poll();
-    setInterval(poll, 30000);
 }
 
 // ============================================
