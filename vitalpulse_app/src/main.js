@@ -109,7 +109,7 @@ import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from 
 import { db } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -125,9 +125,30 @@ function safeUrl(url) {
     if (!url) return '';
     try {
         const parsed = new URL(url, window.location.origin);
-        return (parsed.protocol === 'http:' || parsed.protocol === 'https:') ? parsed.href : '';
+        return (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'data:' || parsed.protocol === 'blob:') ? parsed.href : '';
     } catch {
         return '';
+    }
+}
+
+function dataUrlToBlobUrl(dataUrl) {
+    if (!dataUrl || typeof dataUrl !== 'string') return '';
+    if (!dataUrl.startsWith('data:')) return dataUrl;
+    try {
+        const parts = dataUrl.split(',');
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mime = mimeMatch ? mimeMatch[1] : 'application/pdf';
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        return URL.createObjectURL(blob);
+    } catch (e) {
+        console.error('Error converting data URL to Blob URL:', e);
+        return dataUrl;
     }
 }
 
@@ -230,6 +251,59 @@ function initOfflineBanner() {
     window.addEventListener('offline', updateBannerState);
     updateBannerState();
 }
+let _globalUserSessionUnsubscribe = null;
+
+function initGlobalUserSessionGuard() {
+    const path = window.location.pathname;
+    const isDashboard = path.includes('donor.html') || path.includes('hospital.html') || path.includes('admin.html');
+    if (!isDashboard) return;
+
+    waitForAuthUser().then(user => {
+        if (!user || !user.uid) return;
+
+        if (_globalUserSessionUnsubscribe) {
+            _globalUserSessionUnsubscribe();
+            _globalUserSessionUnsubscribe = null;
+        }
+
+        const userDocRef = doc(db, 'users', user.uid);
+        _globalUserSessionUnsubscribe = onSnapshot(userDocRef, (snapshot) => {
+            if (!snapshot.exists() || snapshot.data()?.isSuspended === true || snapshot.data()?.isActive === false) {
+                console.warn(`[Session Guard] Account ${user.uid} deleted or deactivated on server. Evicting session across all browsers.`);
+                
+                if (_globalUserSessionUnsubscribe) {
+                    _globalUserSessionUnsubscribe();
+                    _globalUserSessionUnsubscribe = null;
+                }
+
+                const evictMsg = 'Your account has been deleted or deactivated by an administrator.';
+                if (window.vpNotify) {
+                    window.vpNotify(evictMsg);
+                } else if (window.showToast) {
+                    window.showToast(evictMsg, 'error');
+                } else {
+                    alert(evictMsg);
+                }
+
+                logoutUser().finally(() => {
+                    window.location.href = '/login.html';
+                });
+            }
+        }, (err) => {
+            console.warn('[Session Guard] User document error (deleted or permission revoked):', err);
+            if (err.code === 'permission-denied' || err.code === 'not-found') {
+                if (_globalUserSessionUnsubscribe) {
+                    _globalUserSessionUnsubscribe();
+                    _globalUserSessionUnsubscribe = null;
+                }
+                logoutUser().finally(() => {
+                    window.location.href = '/login.html';
+                });
+            }
+        });
+    });
+}
+
 document.addEventListener('DOMContentLoaded', initOfflineBanner);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -245,6 +319,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (isDashboard && !currentUser) {
         window.location.href = '/login.html';
         return;
+    }
+
+    if (isDashboard && currentUser) {
+        initGlobalUserSessionGuard();
     }
 
     // Admin console is admin-only. Fast path using the cached profile (the admin branch
@@ -467,6 +545,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const submitBtnEl = signupForm.querySelector('button[type="submit"]');
         window.updateSignupSubmitEnabled = () => {
             const role = document.querySelector('input[name="role"]:checked')?.value;
+            const hospitalType = document.querySelector('input[name="hospitalType"]:checked')?.value || 'private';
+            const licenseFileInput = document.getElementById('hospitalLicenseFile');
+            const hasLicenseFile = Boolean(licenseFileInput && licenseFileInput.files && licenseFileInput.files.length > 0);
+
             const allValid = isSignupFormValid({
                 role,
                 fullName: document.getElementById('fullName')?.value,
@@ -477,6 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 password: passwordInput?.value,
                 confirmPassword: confirmInput?.value,
                 bloodType: document.getElementById('bloodType')?.value,
+                hospitalType,
+                hasLicenseFile
             });
             if (submitBtnEl) submitBtnEl.disabled = !allValid;
         };
@@ -485,6 +569,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.getElementById('terms')?.addEventListener('change', () => window.updateSignupSubmitEnabled());
         document.getElementById('bloodType')?.addEventListener('change', () => window.updateSignupSubmitEnabled());
+        document.querySelectorAll('input[name="hospitalType"]').forEach((el) => {
+            el.addEventListener('change', () => window.updateSignupSubmitEnabled());
+        });
+        document.getElementById('hospitalLicenseFile')?.addEventListener('change', () => {
+            document.getElementById('hospitalLicenseError')?.classList.add('hidden');
+            window.updateSignupSubmitEnabled();
+        });
         phoneNationalInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
         passwordInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
         confirmInput?.addEventListener('input', () => window.updateSignupSubmitEnabled());
@@ -588,9 +679,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 // see "National ID / CNI" comment in donor-dashboard.js's KYC submit handler.
             } else if (role === 'hospital') {
                 extraData.isVerified = false;
-                // License document upload moved out of Sign Up — hospital verification now
-                // happens on a KYC-style step after account creation, same as donor's C3
-                // (donor.html#kyc), not built yet for hospitals. See tracker note.
+                const hospitalType = document.querySelector('input[name="hospitalType"]:checked')?.value || 'private';
+                extraData.hospitalType = hospitalType;
+                const licenseErrorEl = document.getElementById('hospitalLicenseError');
+                if (licenseErrorEl) licenseErrorEl.classList.add('hidden');
+
+                if (hospitalType === 'private') {
+                    const licenseFileInput = document.getElementById('hospitalLicenseFile');
+                    const file = licenseFileInput?.files?.[0];
+                    if (!file) {
+                        showFieldError(licenseErrorEl, 'Please upload your hospital operating license (PDF format).');
+                        invalidate(licenseFileInput);
+                    } else if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                        showFieldError(licenseErrorEl, 'Please select a valid PDF file for the license.');
+                        invalidate(licenseFileInput);
+                    } else {
+                        try {
+                            const dataUrl = await new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = () => resolve(reader.result);
+                                reader.onerror = reject;
+                                reader.readAsDataURL(file);
+                            });
+                            extraData.licenseUrl = dataUrl;
+                            extraData.licenseFileName = file.name;
+                        } catch (err) {
+                            console.error('Failed to read license file:', err);
+                            showFieldError(licenseErrorEl, 'Failed to process license file. Please select the file again.');
+                            invalidate(licenseFileInput);
+                        }
+                    }
+                } else {
+                    extraData.licenseUrl = null;
+                    extraData.licenseFileName = null;
+                }
             }
 
             if (firstInvalidEl) {
@@ -3839,7 +3961,7 @@ function initAdminNavigation() {
             if(globalTitle) globalTitle.textContent = 'Hospital Verifications';
             if(globalSubtitle) globalSubtitle.textContent = 'Institutional Management';
             btnVerifications.className = activeClass;
-            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+            window.renderHospitalVerificationsTab('pending');
         } else if(target === 'users') {
             viewUsers.classList.remove('hidden');
             viewUsers.classList.add('block');
@@ -4004,7 +4126,7 @@ function initAdminNavigation() {
         hospitalSearchInput.addEventListener('input', () => {
             adminHospitalsQuery = hospitalSearchInput.value.trim();
             adminHospitalsPage = 1;
-            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+            window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending');
         });
     }
 
@@ -4021,6 +4143,7 @@ function initAdminNavigation() {
     if (logSearchInput) {
         logSearchInput.addEventListener('input', () => {
             adminLogsQuery = logSearchInput.value.trim();
+            adminLogsPage = 1;
             window.renderRequestLogsTab(document.querySelector('#logTabs button.text-primary')?.dataset.tab || 'all');
         });
     }
@@ -4060,6 +4183,7 @@ function initAdminNavigation() {
                 b.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-all';
             });
             btn.className = 'cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg bg-red-500 text-white shadow-sm transition-all';
+            adminLogsPage = 1;
             window.renderRequestLogsTab(btn.dataset.tab);
         });
     });
@@ -4650,7 +4774,10 @@ const isRequestStatusActive = (status) => REQUEST_ACTIVE_STATUSES.map(s => s.toL
 const isRequestStatusClosed = (status) => REQUEST_CLOSED_STATUSES.map(s => s.toLowerCase()).includes(requestStatusLc(status));
 
 let adminLogsCache = [];
+let adminLogsTab = '';
 let adminLogsQuery = '';
+let adminLogsPage = 1;
+let adminLogsPerPage = 10;
 let adminHospitalsTab = '';
 let adminHospitalsQuery = '';
 let adminHospitalsPage = 1;
@@ -4678,10 +4805,13 @@ function renderAdminPagination(container, page, totalPages, total, key) {
 window.adminPageNav = (key, delta) => {
     if (key === 'hospitals') {
         adminHospitalsPage = Math.max(1, adminHospitalsPage + delta);
-        window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending');
+        window.renderHospitalVerificationsTab(document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending');
     } else if (key === 'users') {
         adminUsersPage = Math.max(1, adminUsersPage + delta);
         window.renderUserManagementTab(document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all');
+    } else if (key === 'logs') {
+        adminLogsPage = Math.max(1, adminLogsPage + delta);
+        window.renderRequestLogsTab(document.querySelector('#logTabs button.text-primary')?.dataset.tab || 'all');
     }
 };
 
@@ -4702,6 +4832,8 @@ window.renderRequestLogsTab = async (tab) => {
         if (statActive) statActive.textContent = allRequests.filter(r => isRequestStatusActive(r.status)).length;
         if (statResolved) statResolved.textContent = allRequests.filter(r => isRequestStatusClosed(r.status)).length;
 
+        if (tab !== adminLogsTab) { adminLogsTab = tab; adminLogsPage = 1; }
+
         let filtered = [];
         if (tab === 'open') {
             filtered = allRequests.filter(r => isRequestStatusActive(r.status));
@@ -4721,12 +4853,17 @@ window.renderRequestLogsTab = async (tab) => {
         }
         adminLogsCache = filtered;
 
-        if (filtered.length === 0) {
+        const logsTotalPages = Math.max(1, Math.ceil(filtered.length / adminLogsPerPage));
+        adminLogsPage = Math.min(adminLogsPage, logsTotalPages);
+        const logPageItems = filtered.slice((adminLogsPage - 1) * adminLogsPerPage, adminLogsPage * adminLogsPerPage);
+
+        if (logPageItems.length === 0) {
             tableBody.innerHTML = `<tr><td colspan="7" class="px-6 py-8 text-center text-slate-500 font-medium tracking-wide">No ${tab} requests logged.</td></tr>`;
+            renderAdminPagination(document.getElementById('adminLogsPagination'), adminLogsPage, logsTotalPages, filtered.length, 'logs');
             return;
         }
 
-        tableBody.innerHTML = filtered.map(r => {
+        tableBody.innerHTML = logPageItems.map(r => {
              let statusUI = '';
              if (r.status === 'Open' || r.status === 'open') {
                  statusUI = '<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-md text-[10px] font-bold tracking-widest uppercase">Open (Searching)</span>';
@@ -4786,6 +4923,8 @@ window.renderRequestLogsTab = async (tab) => {
              </tr>
              `;
         }).join('');
+
+        renderAdminPagination(document.getElementById('adminLogsPagination'), adminLogsPage, logsTotalPages, filtered.length, 'logs');
     } catch (err) {
         console.error(err);
         tableBody.innerHTML = '<tr><td colspan="7" class="text-center text-error py-4">Failed to load request logs.</td></tr>';
@@ -4975,10 +5114,19 @@ function initAdminActivityLogModal() {
     if (clearBtnInline) clearBtnInline.addEventListener('click', clearAll);
 }
 
-window.renderHospitalVerificationsTab = async (tab) => {
+window.renderHospitalVerificationsTab = async (tab = 'pending') => {
     const tableBody = document.getElementById('adminHospitalsTableBody');
     if (!tableBody) return;
-    
+
+    const activeTabName = tab || 'pending';
+    const hospitalTabBtns = document.querySelectorAll('#hospitalTabs button');
+    hospitalTabBtns.forEach(b => {
+        const isActive = b.dataset.tab === activeTabName;
+        b.className = `cursor-pointer px-3.5 py-1.5 text-[10px] font-bold rounded-lg transition-all ${
+            isActive ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+        }`;
+    });
+
     tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">Loading directory...</td></tr>';
     
     try {
@@ -5033,6 +5181,9 @@ window.renderHospitalVerificationsTab = async (tab) => {
              let actions = '';
              if(!h.rejected && !h.isVerified) {
                  actions = `<div class="flex items-center justify-end gap-2">
+                     <button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center justify-center transition-colors shadow-sm" title="View Details">
+                         <span class="material-symbols-outlined text-sm" data-icon="visibility">visibility</span>
+                     </button>
                      <button onclick="window.handleAdminApprove('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center transition-colors shadow-sm" title="Approve">
                          <span class="material-symbols-outlined text-sm" data-icon="check">check</span>
                      </button>
@@ -5041,19 +5192,30 @@ window.renderHospitalVerificationsTab = async (tab) => {
                      </button>
                  </div>`;
              } else if (h.isVerified) {
+                 const deleteBtn = `
+                     <button onclick="window.handleAdminDeleteHospital('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Delete Hospital">
+                         <span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+                     </button>`;
                  actions = h.isActive === false
-                     ? `<div class="text-right">
+                     ? `<div class="flex items-center justify-end gap-2">
                          <button onclick="window.handleAdminReactivateHospital('${h.id}')" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors shadow-sm text-[10px] font-bold">
                              <span class="material-symbols-outlined text-[12px]" data-icon="power_settings_new">power_settings_new</span> Reactivate
                          </button>
+                         ${deleteBtn}
                         </div>`
-                     : `<div class="text-right">
+                     : `<div class="flex items-center justify-end gap-2">
                          <button onclick="window.handleAdminDeactivateHospital('${h.id}')" class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors shadow-sm text-[10px] font-bold">
                              <span class="material-symbols-outlined text-[12px]" data-icon="toggle_off">toggle_off</span> Deactivate
                          </button>
+                         ${deleteBtn}
                         </div>`;
              } else {
-                 actions = `<div class="text-right text-xs text-slate-400 font-medium">Processed</div>`;
+                 actions = `<div class="flex items-center justify-end gap-2">
+                     <span class="text-xs text-slate-400 font-medium">Processed</span>
+                     <button onclick="window.handleAdminDeleteHospital('${h.id}')" class="cursor-pointer w-8 h-8 rounded bg-red-50 text-red-600 hover:bg-red-100 flex items-center justify-center transition-colors shadow-sm" title="Delete Hospital">
+                         <span class="material-symbols-outlined text-sm" data-icon="delete">delete</span>
+                     </button>
+                 </div>`;
              }
 
              return `
@@ -5064,16 +5226,25 @@ window.renderHospitalVerificationsTab = async (tab) => {
                             <span class="material-symbols-outlined text-sm" data-icon="local_hospital">local_hospital</span>
                         </div>
                         <div class="min-w-0">
-                            <p class="font-bold text-on-surface truncate">${esc(h.name)}</p>
+                            <p class="font-bold text-on-surface hover:text-primary cursor-pointer truncate" onclick="window.viewHospitalDetail('${h.id}')" title="Click to view details">${esc(h.name)}</p>
                             <p class="text-[10px] text-slate-500 font-mono">ID: ${h.id.slice(0,8).toUpperCase()}</p>
                         </div>
                     </div>
                 </td>
                 <td class="p-4"><span class="text-xs font-semibold whitespace-nowrap">${esc(h.city) || 'Unspecified'}</span></td>
                 <td class="p-4">
-                    <button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 hover:bg-slate-200 transition-colors">
-                        <span class="material-symbols-outlined text-[12px]" data-icon="description">description</span> License
-                    </button>
+                     ${h.hospitalType === 'government'
+                         ? `<button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 px-2 py-1 rounded-md text-[10px] font-bold hover:bg-emerald-100 transition-colors shadow-2xs" title="Click to view details">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="account_balance">account_balance</span> Govt (Exempt)
+                            </button>`
+                         : h.licenseUrl
+                         ? `<button onclick="window.viewHospitalDetail('${h.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 hover:bg-slate-200 transition-colors">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="description">description</span> License
+                            </button>`
+                         : `<span class="inline-flex items-center gap-1 bg-amber-50 text-amber-700 px-2 py-1 rounded text-[10px] font-bold">
+                             <span class="material-symbols-outlined text-[12px]" data-icon="warning">warning</span> Missing
+                            </span>`
+                     }
                 </td>
                 <td class="p-4">${statusBadge}</td>
                 <td class="p-4 text-right">${actions}</td>
@@ -5104,7 +5275,7 @@ window.handleAdminApprove = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5266,7 +5437,7 @@ window.handleAdminReject = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5287,7 +5458,7 @@ window.handleAdminDeactivateHospital = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5305,7 +5476,36 @@ window.handleAdminReactivateHospital = async (id, name) => {
             return;
         }
         loadAdminDashboard();
-        const activeTab = document.querySelector('#hospitalTabs button.text-primary')?.dataset.tab || 'pending';
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
+        if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
+    }
+};
+
+window.handleAdminDeleteHospital = async (id, name) => {
+    let email = '';
+    try {
+        const h = await fetchHospitalById(id);
+        if (h) { name = name || h.name || ''; email = h.email || ''; }
+    } catch { /* keep default */ }
+    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE hospital ${name || id}?\n\nThis will remove the hospital account from Firebase Auth and the database.`)) {
+        try {
+            await deleteUserAccount(id, name, email);
+            if (window.vpNotify) {
+                window.vpNotify(`Hospital ${name || id} deleted successfully.`);
+            } else if (window.showToast) {
+                window.showToast(`Hospital ${name || id} deleted successfully.`, 'success');
+            }
+        } catch (err) {
+            console.error('Failed to delete hospital:', err);
+            if (window.vpNotify) {
+                window.vpNotify('Failed to delete hospital. Please try again.');
+            } else {
+                alert('Failed to delete hospital.');
+            }
+            return;
+        }
+        loadAdminDashboard();
+        const activeTab = document.querySelector('#hospitalTabs button.bg-amber-500')?.dataset.tab || 'pending';
         if (window.renderHospitalVerificationsTab) window.renderHospitalVerificationsTab(activeTab);
     }
 };
@@ -5372,7 +5572,8 @@ window.viewHospitalDetail = async (hospitalId) => {
             : '<span class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold">Pending</span>';
         
         const createdDate = hospital.createdAt ? new Date(hospital.createdAt).toLocaleDateString() : 'N/A';
-        
+        const licenseBlobUrl = hospital.licenseUrl ? dataUrlToBlobUrl(hospital.licenseUrl) : '';
+
         contentEl.innerHTML = `
             <div class="space-y-6">
                 <div class="flex items-start gap-4">
@@ -5396,8 +5597,11 @@ window.viewHospitalDetail = async (hospitalId) => {
                         <p class="text-sm font-medium text-on-surface">${esc(hospital.phone) || 'N/A'}</p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
-                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Registration Date</p>
-                        <p class="text-sm font-medium text-on-surface">${createdDate}</p>
+                        <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Category</p>
+                        <p class="text-sm font-bold text-on-surface flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm ${hospital.hospitalType === 'government' ? 'text-emerald-600' : 'text-tertiary'}">${hospital.hospitalType === 'government' ? 'account_balance' : 'domain'}</span>
+                            ${hospital.hospitalType === 'government' ? 'Government Institution' : 'Private Facility'}
+                        </p>
                     </div>
                     <div class="bg-surface-container-low p-4 rounded-lg">
                         <p class="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-1">Hospital ID</p>
@@ -5410,14 +5614,33 @@ window.viewHospitalDetail = async (hospitalId) => {
                         <p class="text-sm font-bold text-on-surface">License Document</p>
                         <span class="material-symbols-outlined text-slate-400">description</span>
                     </div>
-                    ${hospital.licenseUrl 
-                        ? `<a href="${safeUrl(hospital.licenseUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 text-primary text-sm font-bold hover:underline">
-                            <span class="material-symbols-outlined text-sm">${(hospital.licenseFileName || '').match(/\.(png|jpe?g|webp|gif)$/i) ? 'image' : 'description'}</span>
-                            ${esc(hospital.licenseFileName || 'View Document')}
-                            <span class="material-symbols-outlined text-sm">open_in_new</span>
-                           </a>`
+                    ${hospital.hospitalType === 'government'
+                        ? `<div class="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl text-emerald-800 text-xs font-semibold">
+                            <span class="material-symbols-outlined text-emerald-600 text-lg">verified</span>
+                            <span>Government Institution — Exempt from private operating license requirements.</span>
+                           </div>`
+                        : licenseBlobUrl 
+                        ? `<div class="space-y-3">
+                            <div class="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                                <div class="flex items-center gap-2 min-w-0 pr-2">
+                                    <span class="material-symbols-outlined text-red-600 text-lg shrink-0">picture_as_pdf</span>
+                                    <span class="text-xs font-bold text-slate-800 truncate">${esc(hospital.licenseFileName || 'Hospital License.pdf')}</span>
+                                </div>
+                                <div class="flex items-center gap-2 shrink-0">
+                                    <a href="${safeUrl(licenseBlobUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1 text-xs font-bold text-tertiary bg-tertiary/10 hover:bg-tertiary/20 px-3 py-1.5 rounded-lg transition-colors">
+                                        <span class="material-symbols-outlined text-sm">open_in_new</span> Open
+                                    </a>
+                                    <a href="${safeUrl(licenseBlobUrl)}" download="${esc(hospital.licenseFileName || 'hospital_license.pdf')}" class="inline-flex items-center gap-1 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
+                                        <span class="material-symbols-outlined text-sm">download</span> Download
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="w-full h-80 rounded-xl border border-slate-200 overflow-hidden bg-slate-100 shadow-inner">
+                                <iframe src="${safeUrl(licenseBlobUrl)}" class="w-full h-full border-0" title="License Document Preview"></iframe>
+                            </div>
+                           </div>`
                         : `<div class="flex items-center gap-2 text-slate-500 text-sm">
-                            <span class="material-symbols-outlined text-sm">warning</span>
+                            <span class="material-symbols-outlined text-sm text-amber-500">warning</span>
                             No license document uploaded
                            </div>`
                     }
@@ -5503,12 +5726,17 @@ window.renderUserManagementTab = async (tab) => {
              const lastActive = u.lastActiveAt ? new Date(u.lastActiveAt).toLocaleDateString() : 'Unknown';
 
 let actions = '';
+             const deleteBtn = `<button onclick="window.handleAdminDeleteUser('${u.id}', '${esc(u.name)}')" class="cursor-pointer bg-red-50 text-red-600 px-2 py-1.5 rounded text-xs font-bold hover:bg-red-100 transition-colors shadow-sm" title="Delete User">
+                 <span class="material-symbols-outlined text-sm">delete</span>
+             </button>`;
+
               if(!isSuspended) {
                   actions = `<div class="flex items-center gap-2 justify-end">
                       <button onclick="window.viewDonorDetail('${u.id}')" class="cursor-pointer bg-slate-100 text-slate-600 px-2 py-1.5 rounded text-xs font-bold hover:bg-slate-200 transition-colors shadow-sm" title="View Profile">
                           <span class="material-symbols-outlined text-sm">visibility</span>
                       </button>
                       <button onclick="window.handleAdminSuspendUser('${u.id}')" class="cursor-pointer bg-red-50 text-red-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-red-100 transition-colors shadow-sm">Suspend</button>
+                      ${deleteBtn}
                   </div>`;
               } else {
                   actions = `<div class="flex items-center gap-2 justify-end">
@@ -5516,6 +5744,7 @@ let actions = '';
                           <span class="material-symbols-outlined text-sm">visibility</span>
                       </button>
                       <button onclick="window.handleAdminReactivateUser('${u.id}')" class="cursor-pointer bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-emerald-100 transition-colors shadow-sm">Reactivate</button>
+                      ${deleteBtn}
                   </div>`;
               }
 
@@ -5581,6 +5810,33 @@ window.handleAdminReactivateUser = async (id, name) => {
         } catch (err) {
             console.error('Failed to reactivate donor:', err);
             window.vpNotify('Failed to reactivate donor. Please try again.');
+            return;
+        }
+        loadAdminDashboard();
+        const activeTab = document.querySelector('#userTabs button.text-primary')?.dataset.tab || 'all';
+        if (window.renderUserManagementTab) window.renderUserManagementTab(activeTab);
+    }
+};
+
+window.handleAdminDeleteUser = async (id, name) => {
+    let email = '';
+    try {
+        const d = await fetchDonorById(id);
+        if (d) { name = name || d.name || ''; email = d.email || ''; }
+    } catch { /* keep default */ }
+    if (await window.vpConfirm(`DANGER: Are you sure you want to PERMANENTLY DELETE user ${name || id}?\n\nThis will remove their account from Firebase Auth and the database.`)) {
+        try {
+            await deleteUserAccount(id, name, email);
+            if (window.showToast) {
+                window.showToast(`User ${name || id} deleted from database.`, 'success');
+            }
+        } catch (err) {
+            console.error('Failed to delete user:', err);
+            if (window.showToast) {
+                window.showToast('Failed to delete user. Please try again.', 'error');
+            } else {
+                alert('Failed to delete user.');
+            }
             return;
         }
         loadAdminDashboard();
@@ -6895,11 +7151,42 @@ window.getCurrentUser = getCurrentUser;
 window.markHospitalNotificationRead = markHospitalNotificationRead;
 window.markAllHospitalNotificationsRead = markAllHospitalNotificationsRead;
 
-let _hospitalNotifCache = null;
+window.handleHospitalNotifCardClick = async (notifId, targetView) => {
+    try {
+        await markHospitalNotificationRead(notifId);
+    } catch (e) {
+        console.warn('Failed to mark notification read:', e);
+    }
+    document.getElementById('hospitalNotifPanel')?.remove();
+    if (targetView && typeof window.switchView === 'function') {
+        window.switchView(targetView);
+    }
+};
 
 function initHospitalNotifications() {
     const notifBtn = document.getElementById('btnHospitalNotifications');
     if (!notifBtn) return;
+
+    const hid = hospitalScopeId();
+    if (hid) {
+        subscribeToHospitalNotifications(hid, (notifications) => {
+            const unreadCount = notifications.filter(n => !n.read).length;
+            _hospitalNotifCache = { notifications, unreadCount };
+            const badge = document.getElementById('hospitalNotifBadge');
+            if (badge) {
+                if (unreadCount > 0) {
+                    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+                    badge.classList.remove('hidden');
+                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                    badge.style.width = '18px';
+                    badge.style.height = '18px';
+                } else {
+                    badge.classList.add('hidden');
+                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
+                }
+            }
+        });
+    }
 
     notifBtn.addEventListener('click', async () => {
         const currentUser = getCurrentUser();
@@ -6942,28 +7229,6 @@ function initHospitalNotifications() {
                 notifications = fetched[0];
                 unreadCount = fetched[1];
                 _hospitalNotifCache = { notifications, unreadCount };
-            } else {
-                fetchHospitalNotifications(hospitalScopeId(), 10).then(n => {
-                    _hospitalNotifCache.notifications = n;
-                }).catch(() => {});
-                fetchUnreadHospitalNotificationCount(hospitalScopeId()).then(c => {
-                    _hospitalNotifCache.unreadCount = c;
-                }).catch(() => {});
-            }
-            const badge = document.getElementById('hospitalNotifBadge');
-            if (badge) {
-                if (unreadCount > 0) {
-                    badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-                    badge.classList.remove('hidden');
-                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '18px';
-                    badge.style.height = '18px';
-                } else {
-                    badge.classList.add('hidden');
-                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '';
-                    badge.style.height = '';
-                }
             }
             const body = document.getElementById('hospitalNotifBody');
             if (body) {
@@ -6979,13 +7244,20 @@ function initHospitalNotifications() {
                         const colors = { 'error': 'text-red-600 bg-red-50', 'success': 'text-emerald-600 bg-emerald-50', 'info': 'text-blue-600 bg-blue-50', 'warning': 'text-amber-600 bg-amber-50' };
                         const c = colors[n.type] || colors.info;
                         const icon = icons[n.type] || icons.info;
+                        let timeStr = 'Just now';
+                        if (n.createdAt) {
+                            try {
+                                const d = new Date(n.createdAt);
+                                if (!isNaN(d.getTime())) timeStr = d.toLocaleString();
+                            } catch { /* keep default */ }
+                        }
                         return `
-                            <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markHospitalNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.style.opacity='0.6'; })()` : ''}">
+                            <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-slate-50 transition-colors cursor-pointer" onclick="window.handleHospitalNotifCardClick('${n.id}', ${n.view ? `'${n.view}'` : 'null'})">
                                 <span class="material-symbols-outlined text-sm mt-0.5 ${c.split(' ')[0]}">${icon}</span>
                                 <div class="min-w-0 flex-1">
-                                    <p class="text-xs font-bold text-on-surface ${n.read ? '' : ''}">${n.title}</p>
-                                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${n.message}</p>
-                                    <p class="text-[9px] text-slate-400 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
+                                    <p class="text-xs font-bold text-on-surface">${esc(n.title)}</p>
+                                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${esc(n.message)}</p>
+                                    <p class="text-[9px] text-slate-400 mt-1">${timeStr}</p>
                                 </div>
                                 ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
                             </div>
@@ -6994,40 +7266,11 @@ function initHospitalNotifications() {
                 }
             }
         } catch (e) {
+            console.error('[Notifications] Failed to load hospital notifications:', e);
             const body = document.getElementById('hospitalNotifBody');
             if (body) body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-slate-500"><span class="material-symbols-outlined text-3xl mb-2 text-slate-300">error_outline</span><p class="text-sm font-medium">Could not load notifications</p></div>';
         }
     });
-
-    // Poll every 30 seconds — also caches full notification list for instant panel open
-    const poll = async () => {
-        const cu = getCurrentUser();
-        if (!cu) return;
-        try {
-            const [count, notifications] = await Promise.all([
-                fetchUnreadHospitalNotificationCount(hospitalScopeId()),
-                fetchHospitalNotifications(hospitalScopeId(), 10)
-            ]);
-            _hospitalNotifCache = { notifications, unreadCount: count };
-            const badge = document.getElementById('hospitalNotifBadge');
-            if (badge) {
-                if (count > 0) {
-                    badge.textContent = count > 9 ? '9+' : count;
-                    badge.classList.remove('hidden');
-                    badge.classList.add('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '18px';
-                    badge.style.height = '18px';
-                } else {
-                    badge.classList.add('hidden');
-                    badge.classList.remove('flex', 'items-center', 'justify-center', 'text-[8px]', 'font-bold', 'text-white');
-                    badge.style.width = '';
-                    badge.style.height = '';
-                }
-            }
-        } catch (e) { /* silent */ }
-    };
-    poll();
-    setInterval(poll, 30000);
 }
 
 // ============================================

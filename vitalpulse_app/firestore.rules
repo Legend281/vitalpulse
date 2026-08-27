@@ -346,6 +346,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------- Hospital notifications (real-time alerts) ----------
+    match /hospital_notifications/{notificationId} {
+      allow get, list: if isSystemAdmin() || isHospitalRole();
+      allow create: if isSystemAdmin() || isHospitalRole() || isDonor();
+      allow update, delete: if isSystemAdmin() || isHospitalRole();
+    }
+
     // ---------- Blood inventory (aggregate per hospital+bloodType; with per-batch lifecycle) ----------
     match /inventory/{docId} {
       allow get, list: if isSystemAdmin() || isNbtpViewer()
