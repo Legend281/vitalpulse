@@ -182,6 +182,226 @@
   .tap-highlight-transparent {
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* ── Glassmorphism Cards ── */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 1.75rem;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    transition: transform 280ms var(--ease-out-strong),
+                box-shadow 280ms var(--ease-out-strong);
+  }
+  .dark .glass-card {
+    background: rgba(28, 28, 32, 0.50);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .glass-card:hover {
+      transform: translateY(-4px);
+      box-shadow:
+        0 16px 48px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    }
+    .dark .glass-card:hover {
+      box-shadow:
+        0 16px 48px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  /* ── Gradient Mesh Background ── */
+  .dashboard-canvas {
+    position: relative;
+    background:
+      radial-gradient(ellipse at 10% 15%, rgba(175, 16, 26, 0.045), transparent 55%),
+      radial-gradient(ellipse at 90% 50%, rgba(30, 142, 62, 0.030), transparent 45%),
+      radial-gradient(ellipse at 45% 85%, rgba(0, 95, 123, 0.025), transparent 50%),
+      var(--color-surface);
+  }
+  .dark .dashboard-canvas {
+    background:
+      radial-gradient(ellipse at 10% 15%, rgba(175, 16, 26, 0.08), transparent 55%),
+      radial-gradient(ellipse at 90% 50%, rgba(30, 142, 62, 0.05), transparent 45%),
+      radial-gradient(ellipse at 45% 85%, rgba(0, 95, 123, 0.04), transparent 50%),
+      var(--color-surface);
+  }
+
+  /* Floating organic blob decorations */
+  .blob-decor {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    opacity: 0.5;
+    animation: blobDrift 22s ease-in-out infinite alternate;
+  }
+  .dark .blob-decor { opacity: 0.3; }
+  .blob-decor--primary {
+    background: rgba(175, 16, 26, 0.12);
+    width: 380px; height: 380px;
+  }
+  .blob-decor--emerald {
+    background: rgba(30, 142, 62, 0.08);
+    width: 300px; height: 300px;
+    animation-delay: -8s;
+  }
+  .blob-decor--teal {
+    background: rgba(0, 95, 123, 0.06);
+    width: 260px; height: 260px;
+    animation-delay: -14s;
+  }
+
+  /* ── Bento Grid ── */
+  .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1.25rem;
+  }
+  @media (max-width: 1023px) {
+    .bento-grid {
+      grid-template-columns: repeat(6, 1fr);
+      gap: 1rem;
+    }
+    .bento-grid > [style*="grid-column: span 7"],
+    .bento-grid > [style*="grid-column: span 5"] {
+      grid-column: span 6 !important;
+      grid-row: span 1 !important;
+    }
+    .bento-grid > [style*="grid-column: span 3"] {
+      grid-column: span 3 !important;
+    }
+    .bento-grid > [style*="grid-column: span 2"] {
+      grid-column: span 3 !important;
+    }
+  }
+  @media (max-width: 639px) {
+    .bento-grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.875rem;
+    }
+    .bento-grid > [style*="grid-column: span 7"],
+    .bento-grid > [style*="grid-column: span 5"] {
+      grid-column: span 2 !important;
+      grid-row: span 1 !important;
+    }
+    /* Cell B (Schedule) & Cell C (Certificates) sit side-by-side as a sleek 2-card action dock on mobile */
+    .bento-grid > [style*="grid-column: span 3"],
+    .bento-grid > [style*="grid-column: span 2"] {
+      grid-column: span 1 !important;
+    }
+  }
+
+  /* ── Floating Companion Modal / Journey Widget ── */
+  .floating-journey-widget {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 45;
+    transition: transform 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease;
+  }
+  @media (max-width: 640px) {
+    .floating-journey-widget {
+      bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+      right: 0.875rem;
+      left: 0.875rem;
+      display: flex;
+      justify-content: flex-end;
+    }
+  }
+
+  /* ── Smooth Mobile Horizontal Touch Scroll ── */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Stats Marquee Ribbon ── */
+  .marquee-ribbon {
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 1.25rem;
+    position: relative;
+  }
+  .dark .marquee-ribbon {
+    background: rgba(28, 28, 32, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .marquee-ribbon::before,
+  .marquee-ribbon::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 3rem;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .marquee-ribbon::before {
+    left: 0;
+    background: linear-gradient(to right, rgba(249,249,249,0.9), transparent);
+  }
+  .marquee-ribbon::after {
+    right: 0;
+    background: linear-gradient(to left, rgba(249,249,249,0.9), transparent);
+  }
+  .dark .marquee-ribbon::before {
+    background: linear-gradient(to right, rgba(18,18,18,0.9), transparent);
+  }
+  .dark .marquee-ribbon::after {
+    background: linear-gradient(to left, rgba(18,18,18,0.9), transparent);
+  }
+  .marquee-track {
+    display: flex;
+    width: max-content;
+    animation: marqueeScroll 30s linear infinite;
+  }
+  .marquee-ribbon:hover .marquee-track {
+    animation-play-state: paused;
+  }
+
+  /* ── Glow Ring Utilities ── */
+  .glow-ring-primary {
+    box-shadow: 0 0 20px rgba(175, 16, 26, 0.15), 0 0 60px rgba(175, 16, 26, 0.06);
+  }
+  .glow-ring-emerald {
+    box-shadow: 0 0 20px rgba(30, 142, 62, 0.15), 0 0 60px rgba(30, 142, 62, 0.06);
+  }
+  .glow-ring-amber {
+    box-shadow: 0 0 20px rgba(181, 105, 10, 0.15), 0 0 60px rgba(181, 105, 10, 0.06);
+  }
+  .dark .glow-ring-primary {
+    box-shadow: 0 0 24px rgba(255, 137, 131, 0.20), 0 0 64px rgba(255, 137, 131, 0.08);
+  }
+  .dark .glow-ring-emerald {
+    box-shadow: 0 0 24px rgba(141, 217, 154, 0.20), 0 0 64px rgba(141, 217, 154, 0.08);
+  }
+  .dark .glow-ring-amber {
+    box-shadow: 0 0 24px rgba(255, 191, 117, 0.20), 0 0 64px rgba(255, 191, 117, 0.08);
+  }
+
+  /* ── Hover Tilt ── */
+  @media (hover: hover) and (pointer: fine) {
+    .hover-tilt {
+      transition: transform 300ms var(--ease-out-strong);
+    }
+    .hover-tilt:hover {
+      transform: perspective(800px) rotateY(-1.5deg) rotateX(1deg) translateY(-3px);
+    }
+  }
 }
 
 @layer utilities {
@@ -334,20 +554,6 @@
   50% { opacity: 1; }
 }
 
-/* Brand heartbeat — a slow, subtle glow on the blood-drop logo icon that
-   mirrors a resting heart without being distracting. Two quick beats then
-   a pause, cycling every 2.4s. */
-@keyframes brand-heartbeat {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(175, 16, 26, 0.2); }
-  10% { box-shadow: 0 0 0 6px rgba(175, 16, 26, 0.18); }
-  20% { box-shadow: 0 0 0 0 rgba(175, 16, 26, 0); }
-  30% { box-shadow: 0 0 0 4px rgba(175, 16, 26, 0.15); }
-  40%, 100% { box-shadow: 0 0 0 0 rgba(175, 16, 26, 0); }
-}
-.brand-heartbeat {
-  animation: brand-heartbeat 2.4s ease-in-out infinite;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .stagger-in {
     animation: none;
@@ -359,11 +565,246 @@
     stroke-dashoffset: 0;
     opacity: 0.8;
   }
-  .brand-heartbeat {
-    animation: none;
-    box-shadow: none;
-  }
   .hover-lift:hover {
     transform: none;
   }
+  .hover-tilt:hover {
+    transform: none;
+  }
+  .blob-decor {
+    animation: none;
+  }
+  .marquee-track {
+    animation: none;
+  }
+  .glass-card:hover {
+    transform: none;
+  }
 }
+
+@keyframes marqueeScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes blobDrift {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-15px, 15px) scale(0.97); }
+  100% { transform: translate(10px, -10px) scale(1.02); }
+}
+
+/* ── Radar Pulse Ring (Cell A Live Ops Map) ── */
+.radar-pulse-ring {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.25);
+  border: 1.5px solid rgba(220, 38, 38, 0.8);
+  animation: radarRipple 2.8s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+@keyframes radarRipple {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2.8); opacity: 0; }
+}
+
+/* ── Biological Gauge Progress Ring ── */
+.gauge-ring-circle {
+  transition: stroke-dashoffset 850ms cubic-bezier(0.16, 1, 0.3, 1), stroke 400ms ease;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+
+/* ── Metallic Material Textures ── */
+.metallic-gold-card {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, rgba(245, 158, 11, 0.05) 50%, rgba(217, 119, 6, 0.1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow: 0 8px 32px rgba(217, 119, 6, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+.dark .metallic-gold-card {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(30, 30, 35, 0.7) 60%, rgba(217, 119, 6, 0.06) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(251, 191, 36, 0.15);
+}
+
+.metallic-crimson-card {
+  background: linear-gradient(135deg, #b91c1c 0%, #dc2626 50%, #991b1b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 12px 36px rgba(220, 38, 38, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* ── Tactile Micro-Dock Action Button ── */
+.micro-dock-btn {
+  transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.micro-dock-btn:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+.micro-dock-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Urgent Request Left-Edge Pulse Glow ── */
+.urgent-pulse-border {
+  position: relative;
+}
+.urgent-pulse-border::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 9999px;
+  background: #dc2626;
+  box-shadow: 0 0 12px #dc2626;
+}
+
+/* ── Standby Toggle Micro-Pulse ── */
+@keyframes togglePulseGreen {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+  60% { box-shadow: 0 0 0 16px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+@keyframes togglePulseAmber {
+  0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+  60% { box-shadow: 0 0 0 16px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+.pulse-available {
+  animation: togglePulseGreen 0.75s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+.pulse-busy {
+  animation: togglePulseAmber 0.75s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* ── Compatibility Flyout ── */
+.flyout-popover {
+  animation: flyoutIn 240ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes flyoutIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   3D / 4D REALISTIC MEDALS & HOLOGRAPHIC SHADER ENGINE
+   ══════════════════════════════════════════════════════════════ */
+.medal-3d-card-wrap {
+  perspective: 1200px;
+  transform-style: preserve-3d;
+}
+
+.medal-3d-card {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.25s ease;
+  will-change: transform;
+}
+
+.medal-3d-card:hover {
+  box-shadow: 0 25px 35px -10px rgba(0, 0, 0, 0.35), 0 0 25px rgba(245, 158, 11, 0.15);
+}
+
+.medal-3d-graphic-wrap {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.medal-3d-img {
+  transform: translateZ(35px) scale(1);
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+  filter: drop-shadow(0 15px 18px rgba(0, 0, 0, 0.45));
+}
+
+.medal-3d-card:hover .medal-3d-img {
+  transform: translateZ(60px) scale(1.08);
+}
+
+/* Dynamic Specular Sheen (follows cursor/touch) */
+.medal-specular-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at var(--sheen-x, 50%) var(--sheen-y, 50%),
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 215, 0, 0.15) 30%,
+    transparent 65%
+  );
+  opacity: var(--sheen-opacity, 0);
+  mix-blend-mode: overlay;
+  transition: opacity 0.25s ease;
+  z-index: 15;
+}
+
+/* 4D Iridescent Holographic Rainbow Caustics */
+.medal-4d-hologram {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    var(--holo-angle, 135deg),
+    rgba(255, 0, 128, 0.2) 0%,
+    rgba(0, 229, 255, 0.25) 25%,
+    rgba(255, 235, 59, 0.2) 50%,
+    rgba(0, 230, 118, 0.25) 75%,
+    rgba(213, 0, 249, 0.2) 100%
+  );
+  mix-blend-mode: color-dodge;
+  opacity: var(--holo-opacity, 0);
+  transition: opacity 0.3s ease;
+  z-index: 16;
+}
+
+/* 3D Interactive Orbit Inspection Stage */
+.medal-3d-orbit-stage {
+  perspective: 1400px;
+  transform-style: preserve-3d;
+  user-select: none;
+  touch-action: none;
+}
+
+.medal-3d-orbit-target {
+  transform-style: preserve-3d;
+  will-change: transform;
+  cursor: grab;
+}
+
+.medal-3d-orbit-target:active {
+  cursor: grabbing;
+}
+
+.medal-orbit-shadow {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%) rotateX(85deg);
+  width: 140px;
+  height: 50px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.6) 0%, transparent 70%);
+  filter: blur(8px);
+  pointer-events: none;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+/* Floating Gold Dust Micro-Sparks */
+@keyframes sparkFloat {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  50% { opacity: 0.8; }
+  100% { transform: translateY(-30px) scale(1.2); opacity: 0; }
+}
+.gold-spark {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fbbf24;
+  box-shadow: 0 0 8px #f59e0b;
+  animation: sparkFloat 2.4s infinite ease-out;
+  pointer-events: none;
+}

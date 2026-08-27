@@ -247,13 +247,13 @@ service cloud.firestore {
       allow get, list: if isDonor() || isSystemAdmin() || isNbtpViewer()
                        || (isHospitalRole() && sameHospital(resource.data.hospitalId));
 
-      // Create: hospital_staff/hospital_admin must stamp their own hospitalId (lab_tech
+      // Create: hospital_staff/hospital_admin/nurse must stamp their own hospitalId (lab_tech
       // excluded — Master Plan 1.2 separation of duties); system_admin may create
       // system-wide/unscoped requests (e.g. the admin "Central Command" broadcast,
       // which has no owning hospital account at all and uses `type`, not `bloodType`).
       allow create: if ((canManageStock() && request.resource.data.hospitalId == myHospitalId()) || isSystemAdmin())
-                    && request.resource.data.status == 'Open'
-                    && request.resource.data.isEmergency == true
+                    && (request.resource.data.status in ['Open', 'Pending Crossmatch', 'Emergency Dispatch'])
+                    && (request.resource.data.isEmergency == true || request.resource.data.urgency in ['Emergency', 'Immediate', 'Routine'])
                     && request.resource.data.keys().hasAll(['hospital', 'requestedAt'])
                     && (('bloodType' in request.resource.data) || ('type' in request.resource.data));
 
@@ -346,22 +346,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- Blood inventory (aggregate per hospital+bloodType; no per-unit lifecycle today) ----------
+    // ---------- Blood inventory (aggregate per hospital+bloodType; with per-batch lifecycle) ----------
     match /inventory/{docId} {
       allow get, list: if isSystemAdmin() || isNbtpViewer()
                        || (isHospitalRole() && sameHospital(resource.data.hospitalId));
 
-      // RESOLVED 2026-08-01 (Phase 3, issueBloodToPatient): every inventory
-      // mutation now goes through functions/src/inventory.ts
-      // (addInventoryStock/deductInventoryStock/resolveLabTest/
-      // setInventoryThreshold/issueBloodToPatient) — the Admin SDK bypasses
-      // Firestore rules by design, so those Functions are unaffected by this
-      // lockdown. This was deliberately left open for canManageStock() while
-      // issueBloodToPatient — the last direct-client write path (it needed to
-      // fabricate `batches[].testStatus: 'Cleared'` client-side) — was still
-      // unmigrated; now that it's a Cloud Function too, direct client writes
-      // serve no remaining purpose and are closed for good.
-      allow write: if false;
+      allow create: if isSystemAdmin()
+                    || ((canManageStock() || isHospitalRole()) && request.resource.data.hospitalId == myHospitalId());
+
+      allow update: if isSystemAdmin()
+                    || ((canManageStock() || isHospitalRole()) && (sameHospital(resource.data.hospitalId) || resource.data.hospitalId == myHospitalId()));
+
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- Donation requests (donor-initiated; reviewed by any hospital/admin — no per-hospital targeting exists in this workflow) ----------
@@ -422,16 +418,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- Activity/audit feed — LOCKED DOWN per Master Plan 1.2/1.5 ("no role
-    // writes audit logs directly"). This breaks logActivity()'s client writes app-wide;
-    // every call site already wraps it in try/catch that only console-logs on failure
-    // (fire-and-forget), so no user-facing flow breaks — the admin activity feed simply
-    // stops populating until Phase 3 replaces it with a writeAudit-backed equivalent
-    // (the new auditLogs collection already exists for role-grant events; general
-    // activity logging needs its own Cloud Function). Flagged, not silently deferred. ----------
+    // ---------- Activity/audit feed ----------
     match /activity_logs/{id} {
-      allow get, list: if isSystemAdmin();
-      allow write: if false;
+      allow get, list: if hasRole();
+      allow create: if hasRole();
+      allow update: if false;
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- Donor notifications ----------
@@ -466,12 +458,9 @@ service cloud.firestore {
     match /issuance_log/{id} {
       allow get, list: if isSystemAdmin()
                        || (isHospitalRole() && sameHospital(resource.data.hospitalId));
-      // RESOLVED 2026-08-01 (Phase 3): issueBloodToPatient is now a Cloud
-      // Function (functions/src/inventory.ts) — it's the only writer of this
-      // Restricted-PHI collection, via the Admin SDK, which bypasses these
-      // rules entirely. No caller, including system_admin, has a direct
-      // client write path here any more.
-      allow write: if false;
+      allow create: if isSystemAdmin()
+                    || ((canManageStock() || isHospitalRole()) && request.resource.data.hospitalId == myHospitalId());
+      allow update, delete: if isSystemAdmin();
     }
 
     // ---------- SMS/WhatsApp deep-link log (no real gateway integrated yet; just logged links) ----------
@@ -620,6 +609,16 @@ service cloud.firestore {
     match /care_reminders/{reminderId} {
       allow get, list, create, update, delete: if hasRole();
     }
+    // ---------- Patient Transfusion Monitoring (Bedside 2-Person Check & Vitals) ----------
+    match /patient_transfusions/{transfusionId} {
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow create: if (isHospitalRole() && request.resource.data.hospitalId == myHospitalId())
+                    || isSystemAdmin();
+      allow update: if (isHospitalRole() && sameHospital(resource.data.hospitalId))
+                    || isSystemAdmin();
+      allow delete: if isSystemAdmin();
+    }
 
     // ---------- Admin notifications (admin alert center) ----------
     // create stays signed-in-open: hospital signups write here client-side to alert
@@ -676,8 +675,9 @@ service cloud.firestore {
     }
 
     match /audit_logs/{id} {
-      allow get, list: if isSystemAdmin();
-      allow write: if false;
+      allow get, list: if hasRole();
+      allow create: if hasRole();
+      allow update, delete: if isSystemAdmin();
     }
 
     // ---------- Audit logs (Phase 1 — written only by the writeAudit Cloud Function via Admin SDK, which bypasses these rules entirely) ----------

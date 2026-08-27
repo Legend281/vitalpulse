@@ -1,7 +1,7 @@
 import { doc, getDoc, updateDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { logActivity } from '../../db.js';
-import { getCurrentUser } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalId } from '../../auth.js';
 
 /**
  * logTransfusionVitals - Logs vital sign checks (baseline, 15min, post) during active transfusion
@@ -55,10 +55,20 @@ export async function logTransfusionVitals(transfusionId, stage = 'fifteenMin', 
 export async function fetchActiveTransfusions(hospitalName) {
   if (!hospitalName) return [];
   try {
-    const q = query(
-      collection(db, 'patient_transfusions'),
-      where('hospitalName', '==', hospitalName)
-    );
+    const currentUser = getCurrentUser();
+    const effectiveHospitalId = getEffectiveHospitalId(currentUser);
+    let q;
+    if (effectiveHospitalId) {
+      q = query(
+        collection(db, 'patient_transfusions'),
+        where('hospitalId', '==', effectiveHospitalId)
+      );
+    } else {
+      q = query(
+        collection(db, 'patient_transfusions'),
+        where('hospitalName', '==', hospitalName)
+      );
+    }
     const snapshot = await getDocs(q);
     const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
     return list.sort((a, b) => new Date(b.startedAt || 0) - new Date(a.startedAt || 0));

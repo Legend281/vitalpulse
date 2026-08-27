@@ -25,6 +25,7 @@ import {
     sparkSetInventoryThreshold,
     sparkIssueBloodToPatient,
 } from './sparkBridge';
+import { dispatchAdminAlert } from './adminNotificationService';
 
 // Input sanitization — strips HTML tags and trims whitespace for string fields
 // stored in Firestore. Prevents stored XSS from user-supplied text.
@@ -687,6 +688,38 @@ export async function markAllNotificationsRead(donorId) {
     const snapshot = await getDocs(q);
     const updates = snapshot.docs.map(d => updateDoc(doc(db, 'donor_notifications', d.id), { read: true }));
     await Promise.all(updates);
+}
+
+export async function deleteDonorNotification(notifId) {
+    if (!notifId) return;
+    const notifDoc = doc(db, 'donor_notifications', notifId);
+    await deleteDoc(notifDoc);
+}
+
+export async function clearAllDonorNotifications(donorId) {
+    if (!donorId) return;
+    const q = query(
+        collection(db, 'donor_notifications'),
+        where('donorId', '==', donorId)
+    );
+    const snapshot = await getDocs(q);
+    const deletes = snapshot.docs.map(d => deleteDoc(doc(db, 'donor_notifications', d.id)));
+    await Promise.all(deletes);
+}
+
+export function subscribeToDonorNotifications(donorId, callback) {
+    if (!donorId) return () => {};
+    const q = query(
+        collection(db, 'donor_notifications'),
+        where('donorId', '==', donorId)
+    );
+    return onSnapshot(q, (snapshot) => {
+        const notifications = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        notifications.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        callback(notifications);
+    }, (err) => {
+        console.warn('Donor notification listener warning:', err);
+    });
 }
 
 // ============================================
@@ -3021,6 +3054,80 @@ export async function saveDonorEngagement(donorId, engagement) {
     });
 }
 
+export async function redeemPulseReward(donorId, rewardKey, costPoints, metadata = {}) {
+    const userRef = doc(db, 'users', donorId);
+    const voucherCode = 'VP-VOUCHER-' + Math.floor(100000 + Math.random() * 900000);
+    const nowIso = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(); // 180-day validity
+
+    const result = await runTransaction(db, async (transaction) => {
+        const userSnap = await transaction.get(userRef);
+        if (!userSnap.exists()) throw new Error('Donor profile not found');
+        const userData = userSnap.data();
+        
+        // If points field isn't set, compute from engagement or fallback to metadata
+        const currentPts = typeof userData.points === 'number' ? userData.points : (metadata.currentPoints || 0);
+
+        if (currentPts < costPoints) {
+            throw new Error(`Insufficient Pulse Points. You have ${currentPts} points, but this reward requires ${costPoints} points.`);
+        }
+
+        const remainingPts = currentPts - costPoints;
+        transaction.update(userRef, {
+            points: remainingPts,
+            updatedAt: nowIso
+        });
+
+        const voucherRef = doc(collection(db, 'vouchers'));
+        transaction.set(voucherRef, {
+            voucherCode,
+            donorId,
+            donorName: userData.name || metadata.donorName || 'Verified Donor',
+            donorPhone: userData.phone || null,
+            donorBloodType: userData.bloodType || 'O+',
+            rewardKey,
+            rewardTitle: metadata.rewardTitle || rewardKey,
+            costPoints,
+            status: 'active',
+            issuedAt: nowIso,
+            expiresAt,
+            hospitalUsedAt: null,
+            verifiedByHospital: null
+        });
+
+        return { voucherCode, remainingPts, expiresAt };
+    });
+
+    await logActivity(
+        'Reward Voucher Redeemed',
+        `Donor redeemed ${metadata.rewardTitle || rewardKey} for ${costPoints} points. Voucher: ${voucherCode}`,
+        'success'
+    ).catch(() => {});
+
+    await logAuditTrail(
+        'REWARD_REDEEMED',
+        `Donor ${donorId} redeemed reward ${rewardKey} (${costPoints} pts). Voucher: ${voucherCode}`,
+        { donorId, rewardKey, costPoints, voucherCode }
+    ).catch(() => {});
+
+    return result;
+}
+
+export async function fetchDonorVouchers(donorId) {
+    try {
+        const q = query(
+            collection(db, 'vouchers'),
+            where('donorId', '==', donorId)
+        );
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => new Date(b.issuedAt || 0) - new Date(a.issuedAt || 0));
+    } catch (e) {
+        console.warn('Could not fetch vouchers:', e);
+        return [];
+    }
+}
+
+
 // ============================================
 // SMS / WHATSAPP NOTIFICATIONS
 // ============================================
@@ -3472,13 +3579,18 @@ export async function submitPublicRequest(requestData) {
         ? `🚨 PUBLIC EMERGENCY (Track A — Broadcasting): ${requestData.category} at ${requestData.hospitalName} (${requestData.city}) — ${requestData.bloodType} ${requestData.componentType} ×${requestData.units}. Phone trust: ${trust.trustLevel}.`
         : `📋 Public Request (Track B — Awaiting Review): ${requestData.category} at ${requestData.hospitalName} (${requestData.city}) — ${requestData.bloodType}. Verify before broadcasting.`;
 
-    await createAdminNotification(
-        track === 'A' ? 'Public Emergency Alert' : 'Public Request Awaiting Review',
-        adminMsg,
-        track === 'A' ? 'warning' : 'info',
-        null,
-        'public-triage'
-    );
+    // Dispatch rich alert to Admin (WhatsApp + Email + In-App)
+    dispatchAdminAlert({
+        type: 'PUBLIC_REQUEST',
+        title: track === 'A' ? '🚨 URGENT: Public Emergency Blood Request' : '📋 Public Request Awaiting Triage Review',
+        name: `${requestData.hospitalName} (${requestData.submitterName || 'Public Submitter'})`,
+        bloodType: `${requestData.bloodType} (${requestData.units || 1} Units ${requestData.componentType || 'Whole Blood'})`,
+        city: requestData.city,
+        phone: phone,
+        urgency: requestData.urgency || (track === 'A' ? 'Critical' : 'Routine'),
+        details: `Category: ${requestData.category}. Ward: ${requestData.ward || 'Emergency'}. Verification: ${verificationLevel}. Review in Public Triage Queue.`,
+        dashboardView: 'public-triage'
+    }).catch(err => console.warn('Failed to dispatch admin alert for public request:', err));
 
     await logActivity(
         'Public Request Submitted',

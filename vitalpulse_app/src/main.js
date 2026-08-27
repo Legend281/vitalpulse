@@ -1,5 +1,7 @@
 import './style.css'
 import { registerUser, loginUser, getCurrentUser, logoutUser, sendPasswordReset, sendEmailVerificationLink, isEmailVerified, waitForAuthUser, resolveSignInEmail, setLoginPersistence, verifyResetCode, confirmReset, getEffectiveHospitalName, getEffectiveHospitalId, getEffectiveHospitalCity, fetchOwnContactPhone } from './auth';
+import { initWorkstationInactivityTimer } from './inactivityLock.js';
+import { sendTestAdminAlert } from './adminNotificationService.js';
 
 /**
  * The hospital NAME every hospital-scoped Firestore query keys on.
@@ -197,14 +199,34 @@ function initOfflineBanner() {
     if (document.getElementById('offline-banner')) return;
     const banner = document.createElement('div');
     banner.id = 'offline-banner';
-    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99998;background:#b45309;color:#fff;text-align:center;font:600 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;padding:9px 16px;transform:translateY(-100%);transition:transform 0.3s ease;box-shadow:0 2px 8px rgba(0,0,0,0.15);';
-    banner.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;"><span class="material-symbols-outlined" style="font-size:15px;">cloud_off</span>You’re offline — changes are saved on this device and will sync automatically once you’re back online</span>';
+    banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99998;background:#b45309;color:#fff;text-align:center;font:600 12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;padding:8px 16px;display:none;align-items:center;justify-content:center;gap:8px;box-shadow:0 2px 8px rgba(0,0,0,0.15);';
+    banner.innerHTML = `
+        <span style="display:inline-flex;align-items:center;gap:6px;">
+            <span class="material-symbols-outlined" style="font-size:16px;">cloud_off</span>
+            You’re offline — changes are saved on this device and will sync automatically once you’re back online
+        </span>
+        <button type="button" id="dismissOfflineBannerBtn" style="background:transparent;border:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;margin-left:8px;opacity:0.8;border-radius:4px;" title="Dismiss">&times;</button>
+    `;
     document.body.appendChild(banner);
 
+    let dismissed = false;
+    document.getElementById('dismissOfflineBannerBtn')?.addEventListener('click', () => {
+        dismissed = true;
+        banner.style.display = 'none';
+    });
+
     const updateBannerState = () => {
-        banner.style.transform = navigator.onLine ? 'translateY(-100%)' : 'translateY(0)';
+        if (!navigator.onLine && !dismissed) {
+            banner.style.display = 'flex';
+        } else {
+            banner.style.display = 'none';
+        }
     };
-    window.addEventListener('online', updateBannerState);
+
+    window.addEventListener('online', () => {
+        dismissed = false;
+        updateBannerState();
+    });
     window.addEventListener('offline', updateBannerState);
     updateBannerState();
 }
@@ -826,51 +848,86 @@ document.addEventListener('DOMContentLoaded', () => {
         // Data hydration logic
         try {
             if (path.includes('donor.html')) {
-                // Email verification check (async: reloads user from Firebase first)
+                // Email verification flow: auto popup on entry + compact modal + hero status pill
                 window.sendEmailVerificationLink = sendEmailVerificationLink;
+                window.openEmailVerificationModal = () => {
+                    const m = document.getElementById('emailVerificationModal');
+                    if (m) m.classList.remove('hidden');
+                };
+                window.closeEmailVerificationModal = () => {
+                    const m = document.getElementById('emailVerificationModal');
+                    if (m) m.classList.add('hidden');
+                    sessionStorage.setItem('vp_verify_modal_dismissed', '1');
+                };
+                window.handleModalResendVerification = async () => {
+                    const btn = document.getElementById('btnModalResendEmail');
+                    if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
+                    try {
+                        await sendEmailVerificationLink();
+                        showToast('Verification email sent! Check your inbox.');
+                    } catch (e) {
+                        showToast(e.message || 'Failed to send verification email.', 'error');
+                    } finally {
+                        if (btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
+                    }
+                };
+                window.handleModalCheckVerification = async () => {
+                    try {
+                        const verified = await isEmailVerified();
+                        if (verified) {
+                            showToast('Your email is verified! Welcome.');
+                            window.closeEmailVerificationModal();
+                            const pill = document.getElementById('donorEmailAlertPill');
+                            if (pill) pill.classList.add('hidden');
+                        } else {
+                            showToast('Email not verified yet. Please click the link in your inbox.', 'warning');
+                        }
+                    } catch (e) {
+                        showToast('Could not check verification status.', 'error');
+                    }
+                };
+
+                // Close on Escape key
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') {
+                        const m = document.getElementById('emailVerificationModal');
+                        if (m && !m.classList.contains('hidden')) {
+                            window.closeEmailVerificationModal();
+                        }
+                    }
+                });
+
                 (async () => {
                     try {
                         const verified = await isEmailVerified();
-                        if (verified) return;
-                        const alertsHost = document.getElementById('dashboardAlerts');
-                        if (!alertsHost || document.getElementById('emailVerifyBanner')) return;
-                        async function handleVerifyResend() {
-                            try {
-                                const nowVerified = await isEmailVerified();
-                                if (nowVerified) {
-                                    const b = document.getElementById('emailVerifyBanner');
-                                    if (b) b.remove();
-                                    showToast('Email verified!');
-                                    return;
-                                }
-                                await sendEmailVerificationLink();
-                                showToast('Verification email sent — check your inbox.');
-                            } catch (e) {
-                                showToast('Failed to send verification email.', 'error');
+                        const pill = document.getElementById('donorEmailAlertPill');
+                        const emailEl = document.getElementById('modalUserEmail');
+                        const user = getCurrentUser();
+                        if (emailEl && user?.email) emailEl.textContent = user.email;
+
+                        if (!verified) {
+                            if (pill) {
+                                pill.classList.remove('hidden');
+                                pill.classList.add('inline-flex');
                             }
+                            // Auto popup modal on entry if not verified and not dismissed in this session
+                            if (!sessionStorage.getItem('vp_verify_modal_dismissed')) {
+                                setTimeout(() => {
+                                    window.openEmailVerificationModal();
+                                }, 650);
+                            }
+                        } else {
+                            if (pill) pill.classList.add('hidden');
                         }
-                        window.handleVerifyResend = handleVerifyResend;
-                        // Professional, token-based, dismissible top banner (dark-mode safe).
-                        const banner = document.createElement('div');
-                        banner.id = 'emailVerifyBanner';
-                        banner.className = 'flex items-start gap-3 bg-amber-100 border border-amber-300/60 rounded-2xl px-4 py-3.5 shadow-sm';
-                        banner.innerHTML = `
-                          <span class="w-9 h-9 rounded-xl bg-amber-200/70 text-amber-800 flex items-center justify-center shrink-0"><span class="material-symbols-outlined">mark_email_unread</span></span>
-                          <div class="flex-1 min-w-0">
-                            <p class="text-sm font-bold text-amber-900">Verify your email address</p>
-                            <p class="text-xs text-amber-800/80 mt-0.5">Please check your inbox to confirm your registration and unlock full access.</p>
-                          </div>
-                          <div class="flex items-center gap-2 shrink-0">
-                            <button onclick="handleVerifyResend()" class="press-scale text-xs font-bold text-on-primary bg-primary hover:opacity-90 px-3.5 py-2 rounded-xl transition-opacity cursor-pointer">Verify</button>
-                            <button onclick="document.getElementById('emailVerifyBanner')?.remove()" aria-label="Dismiss" class="press-scale w-8 h-8 rounded-lg text-on-surface-variant hover:bg-surface-container-low flex items-center justify-center cursor-pointer"><span class="material-symbols-outlined text-lg">close</span></button>
-                          </div>`;
-                        alertsHost.appendChild(banner);
                     } catch (e) {
                         console.warn('Email verification check failed:', e);
                     }
                 })();
                 initDonorNavigation();
-                loadDonorDashboard();
+                const initialDonorHash = window.location.hash.replace('#', '');
+                if (!initialDonorHash || initialDonorHash === 'dashboard') {
+                    loadDonorDashboard();
+                }
                 initDonorDonationFlow();
                 window.switchDonorView = switchDonorView;
                 window.loadDonorDonations = loadDonorDonations;
@@ -6023,6 +6080,14 @@ async function loadSettingsDashboard() {
         const emergencyBroadcast = document.getElementById('settingEmergencyBroadcast');
         const registrationApproval = document.getElementById('settingRegistrationApproval');
         const lowStockThreshold = document.getElementById('settingLowStockThreshold');
+
+        const adminNotificationPhone = document.getElementById('settingAdminNotificationPhone');
+        const adminNotificationEmail = document.getElementById('settingAdminNotificationEmail');
+        const whatsAppWebhook = document.getElementById('settingWhatsAppWebhook');
+        const emailWebhook = document.getElementById('settingEmailWebhook');
+        const notifyHospitalReg = document.getElementById('settingAdminNotifyHospitalReg');
+        const notifyPublicRequest = document.getElementById('settingAdminNotifyPublicRequest');
+        const notifyDonorReg = document.getElementById('settingAdminNotifyDonorReg');
         
         if (criticalSms) criticalSms.checked = settings.criticalSupplySms !== false;
         if (hospitalDigest) hospitalDigest.checked = settings.hospitalDigest === true;
@@ -6031,6 +6096,53 @@ async function loadSettingsDashboard() {
         if (emergencyBroadcast) emergencyBroadcast.checked = settings.emergencyBroadcastEnabled !== false;
         if (registrationApproval) registrationApproval.checked = settings.registrationApprovalRequired === true;
         if (lowStockThreshold) lowStockThreshold.value = settings.lowStockThreshold || 5;
+
+        if (adminNotificationPhone) adminNotificationPhone.value = settings.adminNotificationPhone || '+237 674 92 20 15';
+        if (adminNotificationEmail) adminNotificationEmail.value = settings.adminNotificationEmail || (currentUser?.email || 'info@vitalpulse237.com');
+        if (whatsAppWebhook) whatsAppWebhook.value = settings.adminWhatsAppWebhook || '';
+        if (emailWebhook) emailWebhook.value = settings.adminEmailWebhook || '';
+        if (notifyHospitalReg) notifyHospitalReg.checked = settings.adminNotifyHospitalReg !== false;
+        if (notifyPublicRequest) notifyPublicRequest.checked = settings.adminNotifyPublicRequest !== false;
+        if (notifyDonorReg) notifyDonorReg.checked = settings.adminNotifyDonorReg !== false;
+
+        const testWaBtn = document.getElementById('btnTestWhatsAppAlert');
+        if (testWaBtn) {
+            testWaBtn.onclick = async () => {
+                testWaBtn.disabled = true;
+                const originalHtml = testWaBtn.innerHTML;
+                testWaBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span> Sending...';
+                try {
+                    const res = await sendTestAdminAlert();
+                    showToast('WhatsApp alert generated! Opening preview...');
+                    if (res?.whatsappUrl) {
+                        window.open(res.whatsappUrl, '_blank');
+                    }
+                } catch (err) {
+                    showToast('Failed to trigger test WhatsApp alert: ' + (err.message || err), 'error');
+                } finally {
+                    testWaBtn.disabled = false;
+                    testWaBtn.innerHTML = originalHtml;
+                }
+            };
+        }
+
+        const testEmailBtn = document.getElementById('btnTestEmailAlert');
+        if (testEmailBtn) {
+            testEmailBtn.onclick = async () => {
+                testEmailBtn.disabled = true;
+                const originalHtml = testEmailBtn.innerHTML;
+                testEmailBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span> Sending...';
+                try {
+                    await sendTestAdminAlert();
+                    showToast('Test Email alert recorded and dispatched to admin feed!');
+                } catch (err) {
+                    showToast('Failed to trigger test Email alert: ' + (err.message || err), 'error');
+                } finally {
+                    testEmailBtn.disabled = false;
+                    testEmailBtn.innerHTML = originalHtml;
+                }
+            };
+        }
     } catch (e) {
         console.error('Failed to load settings:', e);
     }
@@ -6059,7 +6171,14 @@ async function loadSettingsDashboard() {
                 autoMatchDonors: document.getElementById('settingAutoMatch')?.checked || false,
                 emergencyBroadcastEnabled: document.getElementById('settingEmergencyBroadcast')?.checked || false,
                 registrationApprovalRequired: document.getElementById('settingRegistrationApproval')?.checked || false,
-                lowStockThreshold: parseInt(document.getElementById('settingLowStockThreshold')?.value || '5', 10)
+                lowStockThreshold: parseInt(document.getElementById('settingLowStockThreshold')?.value || '5', 10),
+                adminNotificationPhone: document.getElementById('settingAdminNotificationPhone')?.value?.trim() || '',
+                adminNotificationEmail: document.getElementById('settingAdminNotificationEmail')?.value?.trim() || '',
+                adminWhatsAppWebhook: document.getElementById('settingWhatsAppWebhook')?.value?.trim() || '',
+                adminEmailWebhook: document.getElementById('settingEmailWebhook')?.value?.trim() || '',
+                adminNotifyHospitalReg: document.getElementById('settingAdminNotifyHospitalReg')?.checked !== false,
+                adminNotifyPublicRequest: document.getElementById('settingAdminNotifyPublicRequest')?.checked !== false,
+                adminNotifyDonorReg: document.getElementById('settingAdminNotifyDonorReg')?.checked !== false
             };
             
             try {
@@ -6182,25 +6301,43 @@ function renderNotificationList() {
     if (!list) return;
     
     if (notifications.length === 0) {
-        list.innerHTML = '<p class="text-center text-slate-500 py-8 text-sm">No notifications</p>';
+        list.innerHTML = '<p class="text-center text-slate-500 py-8 text-sm font-medium">No new admin notifications</p>';
         return;
     }
     
     list.innerHTML = notifications.map(n => {
         const timeAgo = getTimeAgo(n.createdAt);
-        const icon = n.type === 'warning' ? 'warning' : n.type === 'success' ? 'check_circle' : 'info';
-        const iconClass = n.type === 'warning' ? 'text-amber-500' : n.type === 'success' ? 'text-emerald-500' : 'text-blue-500';
+        const isCritical = n.type === 'warning' || n.eventType === 'PUBLIC_REQUEST' || (n.metadata?.urgency === 'critical');
+        const icon = isCritical ? 'emergency' : (n.eventType === 'HOSPITAL_REGISTRATION' ? 'local_hospital' : (n.eventType === 'DONOR_REGISTRATION' ? 'person' : 'notifications'));
+        const iconClass = isCritical ? 'text-rose-600 bg-rose-50' : (n.eventType === 'HOSPITAL_REGISTRATION' ? 'text-amber-600 bg-amber-50' : 'text-indigo-600 bg-indigo-50');
+        const targetView = n.view || (n.eventType === 'HOSPITAL_REGISTRATION' ? 'verifications' : (n.eventType === 'PUBLIC_REQUEST' ? 'public-triage' : (n.eventType === 'DONOR_REGISTRATION' ? 'users' : 'overview')));
+        const whatsappUrl = n.metadata?.whatsappUrl;
         
         return `
-        <div class="p-3 rounded-lg hover:bg-surface-container-low cursor-pointer transition-colors ${n.read ? 'opacity-60' : ''}" onclick="window.markNotificationRead(${n.id})">
-            <div class="flex items-start gap-3">
-                <span class="material-symbols-outlined ${iconClass} text-lg">${icon}</span>
-                <div class="flex-1 min-w-0">
-                    <p class="font-bold text-sm text-on-surface">${esc(n.title)}</p>
-                    <p class="text-xs text-slate-500 truncate">${esc(n.message)}</p>
-                    <p class="text-[10px] text-slate-400 mt-1">${timeAgo}</p>
+        <div class="p-3 rounded-xl border border-slate-100 hover:border-slate-200 bg-white hover:bg-slate-50/70 transition-all space-y-2 mb-1.5 ${n.read ? 'opacity-65' : 'shadow-xs'}">
+            <div class="flex items-start gap-2.5">
+                <div class="w-8 h-8 rounded-lg ${iconClass} flex items-center justify-center shrink-0 shadow-xs">
+                    <span class="material-symbols-outlined text-base">${icon}</span>
                 </div>
-                ${!n.read ? '<span class="w-2 h-2 bg-primary rounded-full"></span>' : ''}
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1">
+                        <p class="font-bold text-xs text-slate-800 truncate">${esc(n.title)}</p>
+                        <span class="text-[9px] text-slate-400 font-medium shrink-0">${timeAgo}</span>
+                    </div>
+                    <p class="text-[11px] text-slate-600 leading-snug mt-0.5">${esc(n.message)}</p>
+                </div>
+                ${!n.read ? '<span class="w-2 h-2 bg-rose-500 rounded-full shrink-0 mt-1"></span>' : ''}
+            </div>
+            
+            <div class="flex items-center justify-end gap-1.5 pt-1.5 border-t border-slate-100/80">
+                ${whatsappUrl ? `
+                <a href="${whatsappUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation(); window.markNotificationRead('${n.id}');" class="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg transition-colors cursor-pointer border border-emerald-200/50" title="Open in WhatsApp">
+                    <span class="material-symbols-outlined text-xs">chat</span> WhatsApp
+                </a>
+                ` : ''}
+                <button type="button" onclick="event.stopPropagation(); window.resolveAdminNotification('${n.id}', '${targetView}');" class="inline-flex items-center gap-1 text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs">
+                    <span class="material-symbols-outlined text-xs">open_in_new</span> Review Case
+                </button>
             </div>
         </div>
         `;
@@ -6226,6 +6363,14 @@ window.markNotificationRead = (id) => {
         renderNotificationList();
         updateNotificationBadge();
         markAdminNotificationRead(id);
+    }
+};
+
+window.resolveAdminNotification = (id, targetView) => {
+    window.markNotificationRead(id);
+    document.getElementById('notificationDropdown')?.classList.add('hidden');
+    if (targetView && window.adminSwitchView) {
+        window.adminSwitchView(targetView);
     }
 };
 
@@ -8518,6 +8663,22 @@ function initStaffModalHandlers() {
             window.closeStaffQuickSwitchModal();
         });
     }
+
+    initWorkstationInactivityTimer({
+        timeoutMinutes: 15,
+        onLock: ({ staffName }) => {
+            if (typeof window.enforceCurrentViewPermission === 'function') {
+                window.enforceCurrentViewPermission();
+            } else {
+                hydrateSessionIdentity();
+                updateHospitalNavVisibility();
+                loadHospitalDashboard();
+            }
+            if (typeof window.openStaffQuickSwitchModal === 'function') {
+                window.openStaffQuickSwitchModal();
+            }
+        }
+    });
 }
 
 // Call initStaffModalHandlers once on DOMContentLoaded
@@ -8526,6 +8687,7 @@ if (typeof window !== 'undefined') {
         initStaffModalHandlers();
     });
 }
+
 
 
 

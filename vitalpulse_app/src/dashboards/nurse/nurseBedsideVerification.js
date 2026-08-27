@@ -1,7 +1,7 @@
 import { doc, updateDoc, collection, addDoc } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { issueBloodToPatient, logActivity } from '../../db.js';
-import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName, getEffectiveHospitalId } from '../../auth.js';
 
 /**
  * verifyAndIssueBloodBag - Handles 2-Clinician Bedside Wristband & Blood Bag Verification
@@ -30,6 +30,7 @@ export async function verifyAndIssueBloodBag(verifyData) {
 
   const currentUser = getCurrentUser();
   const hospitalName = getEffectiveHospitalName(currentUser);
+  const hospitalId = getEffectiveHospitalId(currentUser) || currentUser?.uid || '';
   const now = new Date().toISOString();
 
   // 1. Perform stock deduction / issuance via DB helper
@@ -45,6 +46,7 @@ export async function verifyAndIssueBloodBag(verifyData) {
 
   // 2. Log active transfusion monitoring record
   const transfusionRef = await addDoc(collection(db, 'patient_transfusions'), {
+    hospitalId,
     hospitalName,
     requestId: requestId || null,
     patientName: patientName.trim(),

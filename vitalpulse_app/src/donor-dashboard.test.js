@@ -11,12 +11,59 @@ vi.mock('firebase/functions', () => ({
 vi.mock('./firebase', () => ({ db: {} }));
 vi.mock('./auth', () => ({ getCurrentUser: vi.fn(), sendPasswordReset: vi.fn(), hashNationalId: vi.fn() }));
 
-import { validateKycFile, resolveLastDonationDate } from './donor-dashboard.js';
+import { validateKycFile, resolveLastDonationDate, getEligibilityInfo, BLOOD_COMPATIBILITY_DATA } from './donor-dashboard.js';
 
 function makeFile({ type = 'image/jpeg', size = 1024, name = 'id.jpg' } = {}) {
   const file = new File([new Uint8Array(size)], name, { type });
   return file;
 }
+
+describe('getEligibilityInfo (56-Day WHO Interval Calculation)', () => {
+  it('returns eligible when no prior donation exists', () => {
+    const res = getEligibilityInfo(null);
+    expect(res.eligible).toBe(true);
+    expect(res.daysUntil).toBe(0);
+    expect(res.label).toBe('Eligible');
+  });
+
+  it('returns eligible when donation was more than 56 days ago', () => {
+    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const res = getEligibilityInfo(sixtyDaysAgo);
+    expect(res.eligible).toBe(true);
+    expect(res.daysUntil).toBe(0);
+    expect(res.label).toBe('Eligible');
+  });
+
+  it('returns ineligible with accurate countdown when donation was 20 days ago', () => {
+    const twentyDaysAgo = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    const res = getEligibilityInfo(twentyDaysAgo);
+    expect(res.eligible).toBe(false);
+    expect(res.daysUntil).toBe(36);
+    expect(res.label).toBe('36 days');
+  });
+});
+
+describe('BLOOD_COMPATIBILITY_DATA (Transfusion Matrix for Cameroon)', () => {
+  it('has all 8 clinical blood types defined', () => {
+    const types = ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'];
+    types.forEach(bt => {
+      expect(BLOOD_COMPATIBILITY_DATA[bt]).toBeDefined();
+      expect(BLOOD_COMPATIBILITY_DATA[bt].give.length).toBeGreaterThan(0);
+      expect(BLOOD_COMPATIBILITY_DATA[bt].receive.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('verifies O- is the universal red cell donor (can give to all 8 groups)', () => {
+    expect(BLOOD_COMPATIBILITY_DATA['O-'].give).toEqual(['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+']);
+  });
+
+  it('verifies AB+ is the universal receiver (can receive from all 8 groups)', () => {
+    expect(BLOOD_COMPATIBILITY_DATA['AB+'].receive).toEqual(
+      expect.arrayContaining(['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'])
+    );
+    expect(BLOOD_COMPATIBILITY_DATA['AB+'].receive.length).toBe(8);
+  });
+});
 
 describe('resolveLastDonationDate (56-Day WHO Deferral Tracking)', () => {
   it('returns null when no donation date exists on user or engagement', () => {

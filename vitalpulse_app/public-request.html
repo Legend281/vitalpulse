@@ -1,406 +1,884 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="light" lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Emergency Blood Request — VitalPulse Cameroon</title>
-    <meta name="description" content="Request emergency blood for a hospitalized patient in Cameroon. No account needed. VitalPulse connects verified donors near you instantly." />
-    <link rel="stylesheet" href="./src/main.css" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>Emergency Blood Request | VitalPulse Cameroon</title>
+    <meta name="description" content="Request immediate blood units for a hospitalized patient in Cameroon. No login or account needed. Broadcasts emergency alerts to nearby verified voluntary donors." />
+    
+    <!-- Social Preview -->
+    <meta property="og:type" content="website"/>
+    <meta property="og:site_name" content="VitalPulse"/>
+    <meta property="og:title" content="Emergency Blood Request — VitalPulse Cameroon"/>
+    <meta property="og:description" content="Request emergency blood for hospitalized patients across Cameroon with real-time donor dispatch."/>
+    <meta property="og:image" content="/vitalpulse-logo.png"/>
+    <meta property="og:url" content="/public-request.html"/>
+
+    <link rel="icon" type="image/png" href="/favicon.png"/>
+    <link rel="apple-touch-icon" href="/favicon.png"/>
     <link rel="preconnect" href="https://fonts.googleapis.com"/>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+    <link rel="stylesheet" href="/src/style.css" />
+    
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .font-outfit { font-family: 'Outfit', sans-serif; }
+        #global-loader {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            background-color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.4s ease;
+        }
+        .loader-spinner {
+            width: 42px;
+            height: 42px;
+            border: 3.5px solid rgba(220, 38, 38, 0.15);
+            border-top-color: #dc2626;
+            border-radius: 50%;
+            animation: spin 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
         .pulse-ring { animation: pulseRing 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulseRing {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
-            50% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); }
+            0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.45); }
+            50% { box-shadow: 0 0 0 14px rgba(220, 38, 38, 0); }
         }
-        .slide-up { animation: slideUp 0.5s ease-out; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        .slide-up { animation: slideUp 0.45s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Active selector styles */
+        .category-pill.active {
+            border-color: #dc2626 !important;
+            background-color: #fef2f2 !important;
+            color: #991b1b !important;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.12);
+        }
+        .urgency-card.active {
+            border-color: currentColor !important;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+            transform: translateY(-1px);
+        }
+        .blood-card.active {
+            background-color: #dc2626 !important;
+            color: #ffffff !important;
+            border-color: #dc2626 !important;
+            box-shadow: 0 6px 20px rgba(220, 38, 38, 0.35);
+            transform: scale(1.03);
+        }
+        .blood-card.active span.blood-drop {
+            color: #ffffff !important;
+        }
     </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-50 via-red-50/30 to-slate-100">
+<body class="min-h-screen bg-slate-50 font-sans antialiased text-slate-700 selection:bg-primary selection:text-white flex flex-col justify-between">
+    <div id="global-loader"><div class="loader-spinner"></div></div>
 
-    <!-- Header -->
-    <header class="sticky top-0 z-50 backdrop-blur-xl bg-white/80 border-b border-slate-200/80 shadow-sm">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-            <a href="./index.html" class="flex items-center gap-2.5 group">
-                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center shadow-lg shadow-red-500/20 group-hover:scale-105 transition-transform">
-                    <span class="material-symbols-outlined text-white text-lg" style="font-variation-settings:'FILL' 1">water_drop</span>
-                </div>
-                <span class="font-outfit text-xl font-black tracking-tight"><span class="text-red-600">Vital</span><span class="text-slate-900">Pulse</span></span>
+    <div>
+    <!-- ===== TOP EMERGENCY ANNOUNCEMENT BANNER ===== -->
+    <div class="bg-gradient-to-r from-red-700 via-primary to-rose-700 text-white text-[11px] sm:text-xs py-1.5 px-4 font-semibold text-center flex items-center justify-center gap-2 relative z-50">
+      <span class="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+        <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span> Donor Coordination
+      </span>
+      <span>VitalPulse Community &amp; Coordinator Desk: <strong>+237 652 73 09 80</strong> / WhatsApp: <strong>+237 674 92 20 15</strong></span>
+    </div>
+
+    <!-- ===== STICKY HEADER ===== -->
+    <header class="sticky top-0 z-40 backdrop-blur-xl bg-white/90 border-b border-slate-200/80 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between">
+            <a href="/" class="flex items-center group overflow-visible">
+                <img src="/vitalpulse-logo.png" alt="VitalPulse" class="h-16 sm:h-20 md:h-24 w-auto max-w-[240px] sm:max-w-[300px] md:max-w-[340px] object-contain group-hover:scale-105 transition-transform -my-3 sm:-my-4"/>
             </a>
-            <a href="./index.html" class="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors">
-                <span class="material-symbols-outlined text-sm">arrow_back</span> Back to VitalPulse
-            </a>
+            
+            <div class="flex items-center gap-3">
+                <a href="tel:+237652730980" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200/80 px-3 py-1.5 rounded-xl transition-colors">
+                    <span class="material-symbols-outlined text-sm">call</span>
+                    +237 652 73 09 80
+                </a>
+                <a href="/" class="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 transition-colors px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200">
+                    <span class="material-symbols-outlined text-sm">arrow_back</span> Back to Home
+                </a>
+            </div>
         </div>
     </header>
 
-    <!-- Main Content -->
-    <main class="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+    <!-- ===== MAIN EMERGENCY WORKSPACE ===== -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
 
-        <!-- Hero Section -->
-        <div id="heroSection" class="text-center mb-10 slide-up">
-            <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center mx-auto mb-5 shadow-xl shadow-red-500/30 pulse-ring">
-                <span class="material-symbols-outlined text-white text-4xl" style="font-variation-settings:'FILL' 1">emergency</span>
-            </div>
-            <h1 class="font-outfit text-3xl sm:text-4xl font-black text-slate-900 mb-3 tracking-tight">Emergency Blood Request</h1>
-            <p class="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed">
-                Request blood for a hospitalized patient — <strong class="text-slate-800">no account needed</strong>.
-                Your request will be broadcast to verified donors near you.
-            </p>
-        </div>
-
-        <!-- Request Form -->
-        <div id="formContainer" class="slide-up">
-            <form id="publicRequestForm" class="bg-white rounded-3xl shadow-xl shadow-slate-900/5 border border-slate-200/80 overflow-hidden">
-
-                <!-- Form Header -->
-                <div class="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4">
-                    <p class="text-white font-bold text-sm flex items-center gap-2">
-                        <span class="material-symbols-outlined text-lg">clinical_notes</span>
-                        Blood Request Details
+        <!-- Initial Intake View (2-Column Grid) -->
+        <div id="intakeView" class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+            
+            <!-- LEFT COLUMN: Emergency Form (7/8 Cols) -->
+            <div class="lg:col-span-7 xl:col-span-8 slide-up">
+                
+                <!-- Page Hero Title -->
+                <div class="mb-6 sm:mb-8">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 text-red-700 text-[11px] font-black uppercase tracking-wider mb-2.5">
+                        <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">bolt</span>
+                        No Account or Login Required
+                    </div>
+                    <h1 class="font-headline text-2xl sm:text-4xl font-black text-slate-900 tracking-tight mb-2">
+                        Rapid Emergency Blood Requisition
+                    </h1>
+                    <p class="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-2xl">
+                        Submit an urgent blood dispatch request for a patient in Cameroon. The system will broadcast emergency notifications to eligible nearby voluntary donors within seconds.
                     </p>
                 </div>
 
-                <div class="p-6 space-y-5">
-
-                    <!-- Clinical Category -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Clinical Category *</label>
-                        <select id="prCategory" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none">
-                            <option value="">Select category...</option>
-                            <option value="Maternal Hemorrhage">🩸 Maternal Hemorrhage / Childbirth Bleeding</option>
-                            <option value="Trauma">🚑 Accident / Trauma</option>
-                            <option value="Surgery">🏥 Surgery / Planned Procedure</option>
-                            <option value="General">📋 General / Other</option>
-                        </select>
-                    </div>
-
-                    <!-- Hospital Name + Ward + City -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Hospital Name *</label>
-                            <input id="prHospital" type="text" required placeholder="e.g. St. Luke Hospital" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none" />
+                <!-- Form Card -->
+                <form id="publicRequestForm" class="bg-white rounded-3xl border border-slate-200/90 shadow-xl shadow-slate-900/5 overflow-hidden">
+                    
+                    <!-- STEP 1: Clinical Category & Urgency -->
+                    <div class="p-6 sm:p-8 border-b border-slate-100">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="w-7 h-7 rounded-xl bg-red-100 text-red-700 font-headline font-black text-xs flex items-center justify-center">1</span>
+                            <h2 class="font-headline font-bold text-base sm:text-lg text-slate-900">Clinical Case &amp; Urgency Level</h2>
                         </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Ward / Department <span class="text-slate-400 font-normal">(optional)</span></label>
-                            <input id="prWard" type="text" placeholder="e.g. Maternity Ward, ICU" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none" />
-                        </div>
-                    </div>
 
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">City / Town *</label>
-                        <select id="prCity" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none">
-                            <option value="">Select city...</option>
-                            <option>Yaoundé</option><option>Douala</option><option>Bamenda</option><option>Bafoussam</option>
-                            <option>Garoua</option><option>Maroua</option><option>Ngaoundéré</option><option>Bertoua</option>
-                            <option>Ebolowa</option><option>Kumba</option><option>Limbe</option><option>Buea</option>
-                            <option>Kribi</option><option>Nkongsamba</option><option>Dschang</option><option>Foumban</option>
-                            <option>Tiko</option><option>Edéa</option><option>Sangmélima</option><option>Mbouda</option>
-                            <option>Batouri</option><option>Meiganga</option><option>Kousséri</option><option>Mokolo</option>
-                            <option>Tibati</option><option>Yokadouma</option>
-                        </select>
-                    </div>
+                        <!-- Clinical Category Cards -->
+                        <div class="mb-5">
+                            <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">Clinical Category *</label>
+                            <input type="hidden" id="prCategory" required value="" />
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="categoryGrid">
+                                <button type="button" data-value="Maternal Hemorrhage" class="category-pill text-left p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex items-start gap-3 cursor-pointer">
+                                    <span class="text-xl shrink-0 mt-0.5">🩸</span>
+                                    <div>
+                                        <p class="text-xs font-bold text-slate-900">Maternal Hemorrhage</p>
+                                        <p class="text-[11px] text-slate-500">Childbirth &amp; postpartum bleeding</p>
+                                    </div>
+                                </button>
+                                
+                                <button type="button" data-value="Trauma" class="category-pill text-left p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex items-start gap-3 cursor-pointer">
+                                    <span class="text-xl shrink-0 mt-0.5">🚑</span>
+                                    <div>
+                                        <p class="text-xs font-bold text-slate-900">Accident &amp; Trauma</p>
+                                        <p class="text-[11px] text-slate-500">Road accident, fractures &amp; burns</p>
+                                    </div>
+                                </button>
 
-                    <!-- Device Location -->
-                    <div class="flex items-center justify-between gap-3 bg-slate-50 rounded-xl p-3 border border-slate-200">
-                        <div class="flex items-center gap-2 min-w-0">
-                            <span class="material-symbols-outlined text-slate-400 text-lg shrink-0">my_location</span>
-                            <div class="min-w-0">
-                                <p class="text-xs font-bold text-slate-700">Confirm your location</p>
-                                <p id="prLocationStatus" class="text-[10px] text-slate-400">Not shared yet — helps confirm you're really at the hospital</p>
+                                <button type="button" data-value="Surgery" class="category-pill text-left p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex items-start gap-3 cursor-pointer">
+                                    <span class="text-xl shrink-0 mt-0.5">🏥</span>
+                                    <div>
+                                        <p class="text-xs font-bold text-slate-900">Surgery &amp; Procedure</p>
+                                        <p class="text-[11px] text-slate-500">Emergency or planned surgery</p>
+                                    </div>
+                                </button>
+
+                                <button type="button" data-value="General" class="category-pill text-left p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex items-start gap-3 cursor-pointer">
+                                    <span class="text-xl shrink-0 mt-0.5">📋</span>
+                                    <div>
+                                        <p class="text-xs font-bold text-slate-900">General &amp; Pediatric</p>
+                                        <p class="text-[11px] text-slate-500">Severe anemia, sickle cell, oncology</p>
+                                    </div>
+                                </button>
                             </div>
                         </div>
-                        <button type="button" id="prShareLocationBtn" class="shrink-0 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-lg transition-colors cursor-pointer">Share Location</button>
-                    </div>
 
-                    <!-- Blood Type + Component + Units -->
-                    <div class="grid grid-cols-3 gap-3">
+                        <!-- Urgency Tier -->
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Blood Type *</label>
-                            <select id="prBloodType" required class="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-bold text-slate-800 transition-all outline-none">
-                                <option value="">Type</option>
-                                <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
-                                <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Component *</label>
-                            <select id="prComponent" required class="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none">
-                                <option value="Whole Blood">Whole Blood</option>
-                                <option value="PRBC">PRBC</option>
-                                <option value="FFP">FFP</option>
-                                <option value="Platelets">Platelets</option>
-                                <option value="Cryoprecipitate">Cryo</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Units *</label>
-                            <input id="prUnits" type="number" min="1" max="10" value="1" required class="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-bold text-center text-slate-800 transition-all outline-none" />
-                        </div>
-                    </div>
+                            <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">Urgency Level *</label>
+                            <input type="hidden" id="prUrgency" required value="Critical" />
+                            
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5" id="urgencyGrid">
+                                <button type="button" data-value="Critical" class="urgency-card active text-left p-3 rounded-2xl border-2 border-red-500 bg-red-50 text-red-900 transition-all cursor-pointer">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-xs font-black uppercase text-red-700 flex items-center gap-1">
+                                            <span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span> Critical
+                                        </span>
+                                        <span class="text-[10px] font-mono font-bold text-red-600">&lt; 1 Hour</span>
+                                    </div>
+                                    <p class="text-[11px] text-red-700">Immediate life-threatening risk</p>
+                                </button>
 
-                    <!-- Urgency Level -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Urgency Level *</label>
-                        <select id="prUrgency" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none">
-                            <option value="Critical">🔴 Critical (Life-Threatening)</option>
-                            <option value="Urgent">🟠 Urgent (Within Hours)</option>
-                            <option value="Standard">🟢 Standard (Scheduled)</option>
-                        </select>
-                    </div>
+                                <button type="button" data-value="Urgent" class="urgency-card text-left p-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-xs font-black uppercase text-amber-700">Urgent</span>
+                                        <span class="text-[10px] font-mono font-bold text-amber-600">2 — 6 Hours</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500">Needed within hours</p>
+                                </button>
 
-                    <hr class="border-slate-100" />
-
-                    <!-- Submitter Info -->
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Your Name *</label>
-                            <input id="prSubmitterName" type="text" required placeholder="Your full name" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none" />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Your Phone *</label>
-                            <div class="flex gap-2">
-                                <span class="px-3 py-3 rounded-xl bg-slate-100 border border-slate-200 text-sm font-bold text-slate-600 shrink-0">+237</span>
-                                <input id="prPhone" type="tel" required placeholder="6XX XXX XXX" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none" />
+                                <button type="button" data-value="Standard" class="urgency-card text-left p-3 rounded-2xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all cursor-pointer">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-xs font-black uppercase text-emerald-700">Standard</span>
+                                        <span class="text-[10px] font-mono font-bold text-emerald-600">12 — 24 Hours</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500">Scheduled procedure</p>
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- STEP 2: Hospital Facility & Region -->
+                    <div class="p-6 sm:p-8 border-b border-slate-100 bg-slate-50/40">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="w-7 h-7 rounded-xl bg-blue-100 text-blue-700 font-headline font-black text-xs flex items-center justify-center">2</span>
+                            <h2 class="font-headline font-bold text-base sm:text-lg text-slate-900">Hospital Facility &amp; Location</h2>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Hospital Name *</label>
+                                    <input id="prHospital" type="text" required placeholder="e.g. Hôpital Général de Douala" list="hospitalSuggestions" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 text-sm font-semibold text-slate-900 outline-none transition-all" />
+                                    <datalist id="hospitalSuggestions">
+                                        <option value="Hôpital Central de Yaoundé (HCY)"></option>
+                                        <option value="Hôpital Général de Douala (HGD)"></option>
+                                        <option value="Hôpital Laquintinie de Douala"></option>
+                                        <option value="Centre Hospitalier Universitaire de Yaoundé (CHU)"></option>
+                                        <option value="Hôpital Gynéco-Obstétrique et Pédiatrique de Yaoundé (HGOPY)"></option>
+                                        <option value="Hôpital Général de Yaoundé (HGY)"></option>
+                                        <option value="Bamenda Regional Hospital"></option>
+                                        <option value="Bafoussam Regional Hospital"></option>
+                                        <option value="Limbe Regional Hospital"></option>
+                                        <option value="Buea Regional Hospital"></option>
+                                        <option value="Garoua Regional Hospital"></option>
+                                        <option value="Maroua Regional Hospital"></option>
+                                        <option value="Ngaoundéré Regional Hospital"></option>
+                                        <option value="Bertoua Regional Hospital"></option>
+                                        <option value="Ebolowa Regional Hospital"></option>
+                                    </datalist>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Ward / Department <span class="text-slate-400 font-normal">(optional)</span></label>
+                                    <input id="prWard" type="text" placeholder="e.g. Maternity Ward, ICU, Room 204" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 outline-none transition-all" />
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">City / Town *</label>
+                                    <select id="prCity" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white focus:border-red-500 focus:ring-2 focus:ring-red-100 text-sm font-semibold text-slate-900 outline-none transition-all">
+                                        <option value="">Select city...</option>
+                                        <option value="Yaoundé">Yaoundé (Centre)</option>
+                                        <option value="Douala">Douala (Littoral)</option>
+                                        <option value="Bamenda">Bamenda (North-West)</option>
+                                        <option value="Bafoussam">Bafoussam (West)</option>
+                                        <option value="Garoua">Garoua (North)</option>
+                                        <option value="Maroua">Maroua (Far-North)</option>
+                                        <option value="Ngaoundéré">Ngaoundéré (Adamaoua)</option>
+                                        <option value="Bertoua">Bertoua (East)</option>
+                                        <option value="Ebolowa">Ebolowa (South)</option>
+                                        <option value="Buea">Buea (South-West)</option>
+                                        <option value="Limbe">Limbe (South-West)</option>
+                                        <option value="Kumba">Kumba (South-West)</option>
+                                        <option value="Nkongsamba">Nkongsamba (Littoral)</option>
+                                        <option value="Dschang">Dschang (West)</option>
+                                        <option value="Foumban">Foumban (West)</option>
+                                        <option value="Kribi">Kribi (South)</option>
+                                        <option value="Edéa">Edéa (Littoral)</option>
+                                        <option value="Sangmélima">Sangmélima (South)</option>
+                                        <option value="Mbouda">Mbouda (West)</option>
+                                        <option value="Kousséri">Kousséri (Far-North)</option>
+                                    </select>
+                                </div>
+
+                                <!-- GPS Verification Widget -->
+                                <div class="bg-white rounded-2xl p-3 border border-slate-200/80 flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <span class="material-symbols-outlined text-slate-400 text-lg shrink-0">near_me</span>
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-bold text-slate-800">Hospital GPS Lock</p>
+                                            <p id="prLocationStatus" class="text-[10px] text-slate-400 truncate">Helps dispatch donors closer to facility</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" id="prShareLocationBtn" class="shrink-0 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-2 rounded-xl transition-colors cursor-pointer">
+                                        Verify GPS
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 3: Blood Group & Quantity -->
+                    <div class="p-6 sm:p-8 border-b border-slate-100">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="w-7 h-7 rounded-xl bg-rose-100 text-rose-700 font-headline font-black text-xs flex items-center justify-center">3</span>
+                            <h2 class="font-headline font-bold text-base sm:text-lg text-slate-900">Required Blood Group &amp; Units</h2>
+                        </div>
+
+                        <!-- Visual 4x2 Blood Touch Grid -->
+                        <div class="mb-5">
+                            <label class="block text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">Select Blood Type *</label>
+                            <input type="hidden" id="prBloodType" required value="" />
+                            
+                            <div class="grid grid-cols-4 sm:grid-cols-8 gap-2" id="bloodGrid">
+                                <button type="button" data-blood="O-" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    O-
+                                </button>
+                                <button type="button" data-blood="O+" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    O+
+                                </button>
+                                <button type="button" data-blood="A-" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    A-
+                                </button>
+                                <button type="button" data-blood="A+" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    A+
+                                </button>
+                                <button type="button" data-blood="B-" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    B-
+                                </button>
+                                <button type="button" data-blood="B+" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    B+
+                                </button>
+                                <button type="button" data-blood="AB-" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    AB-
+                                </button>
+                                <button type="button" data-blood="AB+" class="blood-card p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-900 font-headline font-black text-sm flex flex-col items-center justify-center gap-1 transition-all cursor-pointer">
+                                    <span class="blood-drop material-symbols-outlined text-base text-red-600" style="font-variation-settings:'FILL'1">water_drop</span>
+                                    AB+
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Component & Unit Stepper -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Blood Component *</label>
+                                <select id="prComponent" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-500 text-sm font-semibold text-slate-900 outline-none transition-all">
+                                    <option value="Whole Blood">Whole Blood (Standard)</option>
+                                    <option value="PRBC">Packed Red Blood Cells (PRBC)</option>
+                                    <option value="FFP">Fresh Frozen Plasma (FFP)</option>
+                                    <option value="Platelets">Platelet Concentrate</option>
+                                    <option value="Cryoprecipitate">Cryoprecipitate</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Quantity (Pockets / Units) *</label>
+                                <div class="flex items-center border border-slate-200 rounded-xl bg-slate-50 overflow-hidden">
+                                    <button type="button" id="unitMinusBtn" class="w-12 py-3 bg-white hover:bg-slate-100 text-slate-800 font-black text-base border-r border-slate-200 transition-colors">-</button>
+                                    <input id="prUnits" type="number" min="1" max="10" value="1" required class="w-full py-3 text-center bg-transparent font-headline font-black text-base text-slate-900 outline-none" />
+                                    <button type="button" id="unitPlusBtn" class="w-12 py-3 bg-white hover:bg-slate-100 text-slate-800 font-black text-base border-l border-slate-200 transition-colors">+</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 4: Submitter Contact & Verification -->
+                    <div class="p-6 sm:p-8 space-y-4">
+                        <div class="flex items-center gap-3 mb-2">
+                            <span class="w-7 h-7 rounded-xl bg-emerald-100 text-emerald-700 font-headline font-black text-xs flex items-center justify-center">4</span>
+                            <h2 class="font-headline font-bold text-base sm:text-lg text-slate-900">Submitter Contact &amp; Verification</h2>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Your Full Name *</label>
+                                <input id="prSubmitterName" type="text" required placeholder="e.g. Marie Eboko" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-500 text-sm font-semibold text-slate-900 outline-none transition-all" />
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Your Phone Number (SMS &amp; Call) *</label>
+                                <div class="flex gap-2">
+                                    <span class="px-3.5 py-3 rounded-xl bg-slate-100 border border-slate-200 text-xs font-black text-slate-700 flex items-center shrink-0">
+                                        🇨🇲 +237
+                                    </span>
+                                    <input id="prPhone" type="tel" required placeholder="6XX XXX XXX" maxlength="9" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-500 text-sm font-bold text-slate-900 outline-none transition-all" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Relationship to Patient *</label>
+                                <select id="prRelationship" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-500 text-sm font-medium text-slate-800 outline-none transition-all">
+                                    <option value="">Select relationship...</option>
+                                    <option value="Parent">Parent</option>
+                                    <option value="Spouse">Spouse / Partner</option>
+                                    <option value="Sibling">Sibling (Brother / Sister)</option>
+                                    <option value="Child">Child (Son / Daughter)</option>
+                                    <option value="Friend">Friend / Colleague</option>
+                                    <option value="Self">Self (I am the patient)</option>
+                                    <option value="Attendant">Healthcare Attendant / Nurse</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Patient Name <span class="text-slate-400 font-normal">(Internal Medical Use Only)</span></label>
+                                <input id="prPatientName" type="text" placeholder="Patient full name" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-500 text-sm font-medium text-slate-800 outline-none transition-all" />
+                            </div>
+                        </div>
+
+                        <!-- Document Upload Area -->
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Relationship to Patient *</label>
-                            <select id="prRelationship" required class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none">
-                                <option value="">Select...</option>
-                                <option>Parent</option><option>Spouse</option><option>Sibling</option><option>Child</option>
-                                <option>Friend</option><option>Self (I am the patient)</option><option>Other</option>
-                            </select>
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Requisition Slip / Doctor Order <span class="text-slate-400 font-normal">(optional but verifies request faster)</span></label>
+                            <div class="border-2 border-dashed border-slate-200 hover:border-red-300 rounded-2xl p-4 text-center bg-slate-50/50 hover:bg-red-50/20 transition-all cursor-pointer" onclick="document.getElementById('prDocument').click()">
+                                <span class="material-symbols-outlined text-2xl text-slate-400 mb-1">upload_file</span>
+                                <p class="text-xs text-slate-700 font-bold">Tap to upload admission sheet, lab slip or photo</p>
+                                <p class="text-[10px] text-slate-400 mt-0.5">Supports JPG, PNG, PDF</p>
+                                <input id="prDocument" type="file" accept="image/*,.pdf" class="hidden" />
+                            </div>
+                            <div id="prDocFilePreview" class="hidden items-center justify-between p-2.5 mt-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-bold">
+                                <span id="prDocFileName" class="truncate">📄 File selected</span>
+                                <button type="button" id="prDocRemoveBtn" class="text-red-600 hover:text-red-800 text-xs font-bold ml-2">Remove</button>
+                            </div>
                         </div>
+
+                        <!-- Pickup Notes -->
                         <div>
-                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Patient Name <span class="text-slate-400 font-normal">(internal only)</span></label>
-                            <input id="prPatientName" type="text" placeholder="Patient's name (not shown to donors)" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none" />
+                            <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Arrival &amp; Pickup Desk Notes <span class="text-slate-400 font-normal">(optional)</span></label>
+                            <input id="prPickup" type="text" placeholder="e.g. Meet at Main Blood Bank Desk, Ground Floor or call when at Gate" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-500 text-sm font-medium text-slate-800 outline-none transition-all" />
                         </div>
-                    </div>
 
-                    <!-- Document Upload -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Admission Slip / Lab Request <span class="text-slate-400 font-normal">(optional)</span></label>
-                        <div class="relative border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:border-red-300 transition-colors cursor-pointer" onclick="document.getElementById('prDocument').click()">
-                            <span class="material-symbols-outlined text-2xl text-slate-400 mb-1">cloud_upload</span>
-                            <p class="text-xs text-slate-500 font-medium">Click to upload a photo or PDF</p>
-                            <p class="text-[10px] text-slate-400 mt-1">Attaching a document helps verify your request faster</p>
-                            <input id="prDocument" type="file" accept="image/*,.pdf" class="hidden" />
+                        <!-- Privacy Shield Callout -->
+                        <div class="flex items-start gap-3 bg-blue-50/80 rounded-2xl p-3.5 border border-blue-100 text-blue-900">
+                            <span class="material-symbols-outlined text-blue-600 text-lg mt-0.5 shrink-0" style="font-variation-settings:'FILL'1">verified_user</span>
+                            <p class="text-xs leading-relaxed">
+                                <strong>Strict Privacy Protection:</strong> Donors only see the blood group, hospital facility, and urgency level. The patient's full name is <strong>never broadcast publicly</strong>.
+                            </p>
                         </div>
-                        <p id="prDocFileName" class="text-xs text-emerald-600 font-bold mt-1.5 hidden"></p>
+
+                        <!-- Big High-Impact Submit Button -->
+                        <button type="submit" id="prSubmitBtn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 via-primary to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-headline font-black text-sm uppercase tracking-wider shadow-xl shadow-red-500/25 hover:shadow-red-500/40 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer mt-4">
+                            <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">emergency</span>
+                            Dispatch Emergency Request Now
+                        </button>
+
+                    </div>
+                </form>
+            </div>
+
+            <!-- RIGHT COLUMN: Sticky Emergency Contacts & Dispatch Guide (4/5 Cols) -->
+            <div class="lg:col-span-5 xl:col-span-4 space-y-6 lg:sticky lg:top-24">
+                
+                <!-- VitalPulse Coordinator Desk Card -->
+                <div class="bg-gradient-to-br from-red-600 via-primary to-rose-700 rounded-3xl p-6 text-white shadow-xl shadow-red-600/20">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="inline-flex items-center gap-1.5 bg-white/20 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                            <span class="w-2 h-2 rounded-full bg-white animate-ping"></span> Live Coordinator Desk
+                        </span>
+                        <span class="text-[10px] font-bold text-white/80">VitalPulse Team</span>
                     </div>
 
-                    <!-- Pickup Instructions -->
-                    <div>
-                        <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Pickup Instructions <span class="text-slate-400 font-normal">(optional)</span></label>
-                        <textarea id="prPickup" rows="2" placeholder="e.g. Blood Bank Desk, Gate B" class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-red-400 focus:ring-2 focus:ring-red-100 text-sm font-medium text-slate-800 transition-all outline-none resize-none"></textarea>
-                    </div>
+                    <h3 class="font-headline font-black text-xl mb-2">Need Dispatch Assistance?</h3>
+                    <p class="text-xs text-white/90 leading-relaxed mb-5">
+                        Have questions about submitting or finding donors for your hospitalized family member? Our community coordination team is on standby to assist:
+                    </p>
 
-                    <!-- Privacy Notice -->
-                    <div class="flex items-start gap-2.5 bg-blue-50 rounded-xl p-3 border border-blue-100">
-                        <span class="material-symbols-outlined text-blue-500 text-base mt-0.5 shrink-0">shield</span>
-                        <p class="text-[11px] text-blue-700 leading-relaxed">
-                            <strong>Privacy Protected:</strong> Donors will only see the blood type, component, units, hospital name, and urgency level. Patient names are <strong>never</strong> shared with donors.
-                        </p>
+                    <div class="space-y-2.5">
+                        <a href="tel:+237652730980" class="w-full flex items-center justify-center gap-2 bg-white text-slate-900 hover:bg-slate-100 py-3 rounded-2xl text-xs font-black uppercase tracking-wider shadow-md transition-all">
+                            <span class="material-symbols-outlined text-red-600 text-base">call</span>
+                            Call Coordinator: +237 652 73 09 80
+                        </a>
+                        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Coordinator%20Desk,%20we%20need%20assistance%20with%20our%20urgent%20blood%20request." target="_blank" rel="noopener noreferrer" class="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-2xl text-xs font-black uppercase tracking-wider shadow-md transition-all">
+                            <span class="material-symbols-outlined text-base">chat</span>
+                            WhatsApp Desk: +237 674 92 20 15
+                        </a>
                     </div>
-
-                    <!-- Submit Button -->
-                    <button type="submit" id="prSubmitBtn" class="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 to-red-700 text-white font-extrabold text-sm shadow-lg shadow-red-500/30 hover:shadow-xl hover:shadow-red-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2 cursor-pointer">
-                        <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">emergency</span>
-                        Submit Emergency Request
-                    </button>
                 </div>
-            </form>
+
+                <!-- Process Clarity Card (How It Works) -->
+                <div class="bg-white rounded-3xl p-6 border border-slate-200/90 shadow-sm">
+                    <h4 class="font-headline font-black text-sm uppercase tracking-wider text-slate-900 mb-4 flex items-center gap-2">
+                        <span class="material-symbols-outlined text-primary text-base">timeline</span>
+                        How Rapid Dispatch Works
+                    </h4>
+
+                    <ol class="space-y-3.5 text-xs text-slate-600">
+                        <li class="flex items-start gap-2.5">
+                            <span class="w-5 h-5 rounded-full bg-red-100 text-red-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">1</span>
+                            <div>
+                                <strong class="text-slate-800 block mb-0.5">Spatial Proximity Matching</strong>
+                                The engine searches for compatible donors living or working within reachable travel radius.
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">2</span>
+                            <div>
+                                <strong class="text-slate-800 block mb-0.5">Multi-Channel SMS Broadcast</strong>
+                                Donors receive an urgent alert with the hospital name, required group, and triage desk instructions.
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-2.5">
+                            <span class="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">3</span>
+                            <div>
+                                <strong class="text-slate-800 block mb-0.5">Direct Hospital Intake</strong>
+                                Responding donors arrive directly at the facility blood bank for rapid crossmatching.
+                            </div>
+                        </li>
+                    </ol>
+                </div>
+
+                <!-- 100% Free Altruism Guarantee -->
+                <div class="bg-slate-50 rounded-3xl p-5 border border-slate-200/80 text-center">
+                    <span class="material-symbols-outlined text-emerald-600 text-2xl mb-1.5" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+                    <h5 class="font-headline font-bold text-xs text-slate-800 uppercase tracking-wider mb-1">100% Free &amp; Altruistic</h5>
+                    <p class="text-[11px] text-slate-500 leading-relaxed">
+                        Donated blood is never sold. VitalPulse coordinates voluntary civic heroes to protect human life across Cameroon.
+                    </p>
+                </div>
+
+            </div>
+
         </div>
 
-        <!-- Success Tracking Card (hidden initially) -->
-        <div id="trackingCard" class="hidden slide-up">
-            <div class="bg-white rounded-3xl shadow-xl shadow-slate-900/5 border border-slate-200/80 overflow-hidden">
-                <div class="bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 py-5 text-center">
-                    <span class="material-symbols-outlined text-white text-4xl mb-2" style="font-variation-settings:'FILL' 1">check_circle</span>
-                    <h2 class="text-white font-outfit text-2xl font-black">Request Submitted!</h2>
+        <!-- Success Live Tracking View (Hidden Initially) -->
+        <div id="trackingCard" class="hidden max-w-3xl mx-auto slide-up">
+            <div class="bg-white rounded-3xl shadow-2xl shadow-slate-900/10 border border-slate-200/90 overflow-hidden text-slate-800">
+                
+                <!-- Tracking Header Banner -->
+                <div class="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 px-6 sm:px-8 py-6 text-white text-center">
+                    <div class="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3 pulse-ring">
+                        <span class="material-symbols-outlined text-white text-3xl" style="font-variation-settings:'FILL' 1">check_circle</span>
+                    </div>
+                    <h2 class="font-headline text-2xl sm:text-3xl font-black mb-1">Emergency Request Dispatched!</h2>
+                    <p class="text-xs sm:text-sm text-white/90">Your requisition has been entered into the Cameroon regional dispatch stream.</p>
                 </div>
-                <div class="p-6 space-y-4">
-                    <div class="flex items-center justify-between bg-slate-50 rounded-xl p-4 border border-slate-100">
-                        <span class="text-xs text-slate-500 font-bold uppercase">Request ID</span>
-                        <span id="trackReqId" class="text-sm font-mono font-black text-slate-800">—</span>
-                    </div>
-                    <div class="flex items-center justify-between bg-slate-50 rounded-xl p-4 border border-slate-100">
-                        <span class="text-xs text-slate-500 font-bold uppercase">Status</span>
-                        <span id="trackStatus" class="text-sm font-black px-3 py-1 rounded-full">—</span>
-                    </div>
-                    <div id="trackMessage" class="text-sm text-slate-600 leading-relaxed bg-blue-50 rounded-xl p-4 border border-blue-100"></div>
 
-                    <!-- Emergency Hotline -->
-                    <div class="bg-red-50 rounded-xl p-4 border border-red-100 text-center">
-                        <p class="text-xs text-red-700 font-bold mb-2">Need immediate help beyond volunteer donors?</p>
-                        <a href="tel:+237600000000" class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-red-600 text-white font-bold text-sm shadow-lg shadow-red-500/30 hover:bg-red-700 transition-colors">
-                            <span class="material-symbols-outlined text-lg">call</span>
-                            Call Blood Bank Dispatch: +237 600 000 000
+                <div class="p-6 sm:p-8 space-y-6">
+                    
+                    <!-- Tracking Details Box -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200/80">
+                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Request ID</span>
+                            <div class="flex items-center justify-between">
+                                <span id="trackReqId" class="font-mono text-base font-black text-slate-900">—</span>
+                                <button type="button" id="copyReqIdBtn" class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-sm">content_copy</span> Copy
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200/80">
+                            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Live Status</span>
+                            <div id="trackStatus" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">
+                                📡 Broadcasting
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Message Box -->
+                    <div id="trackMessage" class="p-5 rounded-2xl bg-blue-50/80 border border-blue-100 text-xs sm:text-sm text-blue-900 leading-relaxed">
+                        <!-- Filled by JS -->
+                    </div>
+
+                    <!-- 1-Click WhatsApp Share Button -->
+                    <div class="bg-emerald-50 rounded-2xl p-5 border border-emerald-200/80 text-center">
+                        <p class="text-xs font-bold text-emerald-900 mb-1">Help spread the word to family, church &amp; community groups:</p>
+                        <p class="text-[11px] text-emerald-700 mb-3.5">Broadcasting on WhatsApp increases donor response speed by 3x.</p>
+                        
+                        <a id="trackWhatsappShareBtn" href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-headline font-black text-xs uppercase tracking-wider shadow-lg shadow-emerald-600/30 transition-all w-full sm:w-auto">
+                            <span class="material-symbols-outlined text-base">share</span>
+                            Share Alert on WhatsApp
                         </a>
                     </div>
 
-                    <button onclick="location.reload()" class="w-full py-3 rounded-xl border-2 border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors cursor-pointer">
+                    <!-- VitalPulse Coordinator Hotline Card -->
+                    <div class="bg-slate-50 rounded-2xl p-4 border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                        <div>
+                            <span class="text-xs font-bold text-slate-800 block">Need help following up on donor dispatch?</span>
+                            <span class="text-[11px] text-slate-500">The VitalPulse Coordinator Team is available to assist your family.</span>
+                        </div>
+                        <a href="tel:+237652730980" class="shrink-0 px-4 py-2.5 rounded-xl bg-red-600 text-white text-xs font-black uppercase tracking-wider hover:bg-red-700 transition-colors flex items-center gap-1.5">
+                            <span class="material-symbols-outlined text-sm">call</span>
+                            Call Desk +237 652 73 09 80
+                        </a>
+                    </div>
+
+                    <!-- Reset Action -->
+                    <button type="button" onclick="location.reload()" class="w-full py-3.5 rounded-2xl border border-slate-200 text-slate-600 font-bold text-xs uppercase tracking-wider hover:bg-slate-50 transition-colors cursor-pointer">
                         Submit Another Request
                     </button>
+
                 </div>
             </div>
         </div>
 
-        <!-- Toast Container -->
+        <!-- Toast Notifications Container -->
         <div id="toastContainer" class="fixed bottom-6 right-6 z-[9999] space-y-2"></div>
-    </main>
 
+    </main>
+    </div>
+
+    <!-- ===== MINIMAL EMERGENCY FOOTER ===== -->
+    <footer class="bg-slate-900 text-slate-400 py-6 px-4 border-t border-slate-800 text-center text-xs">
+        <p>&copy; 2026 VitalPulse Cameroon &bull; Emergency Clinical Coordination Network &bull; Triage line: <a href="tel:+237652730980" class="text-white hover:underline">+237 652 73 09 80</a></p>
+    </footer>
+
+    <!-- ===== CLIENT SCRIPT ===== -->
     <script type="module">
         import { submitPublicRequest } from './src/db.js';
         import { captureUserLocation } from './src/location.js';
 
-        // Show filename when document is selected
-        const docInput = document.getElementById('prDocument');
-        const docName = document.getElementById('prDocFileName');
-        docInput?.addEventListener('change', () => {
-            if (docInput.files.length > 0) {
-                docName.textContent = '📄 ' + docInput.files[0].name;
-                docName.classList.remove('hidden');
+        document.addEventListener('DOMContentLoaded', () => {
+            // Dismiss global loader
+            const loader = document.getElementById('global-loader');
+            if (loader) {
+                setTimeout(() => {
+                    loader.style.opacity = '0';
+                    setTimeout(() => loader.style.display = 'none', 400);
+                }, 100);
             }
-        });
 
-        // Device location is "soft" evidence, not a requirement — the request is never
-        // blocked on it, but sharing it makes the request harder to fake (see the
-        // Unverified/Document Attached/Hospital-Confirmed trust label computed server-side).
-        let capturedLocation = null;
-        const shareLocationBtn = document.getElementById('prShareLocationBtn');
-        const locationStatusEl = document.getElementById('prLocationStatus');
-        shareLocationBtn?.addEventListener('click', async () => {
-            shareLocationBtn.disabled = true;
-            shareLocationBtn.textContent = 'Getting location...';
-            const citySelect = document.getElementById('prCity');
-            const loc = await captureUserLocation(citySelect?.value || 'Yaoundé');
-            capturedLocation = loc;
-            if (loc.source === 'gps') {
-                shareLocationBtn.textContent = 'Location Shared ✓';
-                shareLocationBtn.className = 'shrink-0 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-3 py-2 rounded-lg cursor-default';
-                locationStatusEl.textContent = `GPS location captured (±${loc.accuracyKm ? loc.accuracyKm.toFixed(1) + 'km' : 'unknown'} accuracy)`;
-                locationStatusEl.className = 'text-[10px] text-emerald-600 font-medium';
-            } else {
-                shareLocationBtn.disabled = false;
-                shareLocationBtn.textContent = 'Try Again';
-                locationStatusEl.textContent = loc.reason ? `Couldn't get GPS (${loc.reason}) — using selected city instead` : 'Using selected city instead';
-                locationStatusEl.className = 'text-[10px] text-amber-600 font-medium';
-            }
-        });
-
-        function showToast(msg, type = 'success') {
-            const container = document.getElementById('toastContainer');
-            const colors = { success: 'bg-emerald-600', error: 'bg-red-600', warning: 'bg-amber-600', info: 'bg-blue-600' };
-            const toast = document.createElement('div');
-            toast.className = `${colors[type] || colors.info} text-white px-5 py-3 rounded-xl shadow-xl text-sm font-bold flex items-center gap-2 slide-up`;
-            toast.innerHTML = `<span class="material-symbols-outlined text-lg">info</span> ${msg}`;
-            container.appendChild(toast);
-            setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.4s'; setTimeout(() => toast.remove(), 500); }, 5000);
-        }
-
-        // Form submission
-        const form = document.getElementById('publicRequestForm');
-        form?.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const btn = document.getElementById('prSubmitBtn');
-            btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-lg">progress_activity</span> Submitting...';
-            btn.disabled = true;
-
-            try {
-                const phone = '+237' + (document.getElementById('prPhone').value || '').replace(/\s/g, '');
-                if (phone.length < 12) throw new Error('Please enter a valid 9-digit Cameroon phone number.');
-
-                const result = await submitPublicRequest({
-                    category: document.getElementById('prCategory').value,
-                    hospitalName: document.getElementById('prHospital').value.trim(),
-                    ward: document.getElementById('prWard').value.trim() || null,
-                    city: document.getElementById('prCity').value,
-                    bloodType: document.getElementById('prBloodType').value,
-                    componentType: document.getElementById('prComponent').value,
-                    units: parseInt(document.getElementById('prUnits').value, 10) || 1,
-                    urgency: document.getElementById('prUrgency').value,
-                    submitterName: document.getElementById('prSubmitterName').value.trim(),
-                    contactPhone: phone,
-                    relationship: document.getElementById('prRelationship').value,
-                    patientName: document.getElementById('prPatientName').value.trim() || null,
-                    documentUrl: docInput.files.length > 0 ? docInput.files[0].name : null,
-                    pickupInstructions: document.getElementById('prPickup').value.trim(),
-                    submitterLat: capturedLocation?.source === 'gps' ? capturedLocation.lat : null,
-                    submitterLng: capturedLocation?.source === 'gps' ? capturedLocation.lng : null,
-                    locationSource: capturedLocation?.source || 'none'
+            // Interactive Category Selector
+            const categoryPills = document.querySelectorAll('.category-pill');
+            const categoryInput = document.getElementById('prCategory');
+            categoryPills.forEach(pill => {
+                pill.addEventListener('click', () => {
+                    categoryPills.forEach(p => p.classList.remove('active'));
+                    pill.classList.add('active');
+                    categoryInput.value = pill.dataset.value;
                 });
+            });
 
-                // Show tracking card
-                document.getElementById('formContainer').classList.add('hidden');
-                document.getElementById('heroSection').classList.add('hidden');
-                const trackingCard = document.getElementById('trackingCard');
-                trackingCard.classList.remove('hidden');
+            // Interactive Urgency Selector
+            const urgencyCards = document.querySelectorAll('.urgency-card');
+            const urgencyInput = document.getElementById('prUrgency');
+            urgencyCards.forEach(card => {
+                card.addEventListener('click', () => {
+                    urgencyCards.forEach(c => {
+                        c.classList.remove('active', 'border-2', 'border-red-500', 'bg-red-50', 'text-red-900');
+                        c.classList.add('border', 'border-slate-200', 'bg-slate-50', 'text-slate-700');
+                    });
+                    card.classList.add('active', 'border-2');
+                    card.classList.remove('border', 'bg-slate-50', 'text-slate-700');
+                    if (card.dataset.value === 'Critical') {
+                        card.classList.add('border-red-500', 'bg-red-50', 'text-red-900');
+                    } else if (card.dataset.value === 'Urgent') {
+                        card.classList.add('border-amber-500', 'bg-amber-50', 'text-amber-900');
+                    } else {
+                        card.classList.add('border-emerald-500', 'bg-emerald-50', 'text-emerald-900');
+                    }
+                    urgencyInput.value = card.dataset.value;
+                });
+            });
 
-                document.getElementById('trackReqId').textContent = '#' + result.id.slice(0, 8).toUpperCase();
+            // Interactive 4x2 Blood Touch Grid
+            const bloodCards = document.querySelectorAll('.blood-card');
+            const bloodInput = document.getElementById('prBloodType');
+            bloodCards.forEach(card => {
+                card.addEventListener('click', () => {
+                    bloodCards.forEach(c => c.classList.remove('active'));
+                    card.classList.add('active');
+                    bloodInput.value = card.dataset.blood;
+                });
+            });
 
-                const statusEl = document.getElementById('trackStatus');
-                if (result.track === 'A') {
-                    statusEl.textContent = '📡 Broadcasting to Donors';
-                    statusEl.className = 'text-sm font-black px-3 py-1 rounded-full bg-emerald-100 text-emerald-800';
-                    document.getElementById('trackMessage').innerHTML = `
-                        <p class="font-bold text-emerald-700 mb-1">🚨 Your request is being broadcast to nearby donors NOW.</p>
-                        <p>Stay near your phone — a volunteer donor may contact you or head directly to the hospital. If no donor responds within 15 minutes, the search radius will automatically expand.</p>
-                    `;
+            // Unit Counter Stepper
+            const unitsInput = document.getElementById('prUnits');
+            document.getElementById('unitMinusBtn')?.addEventListener('click', () => {
+                let v = parseInt(unitsInput.value, 10) || 1;
+                if (v > 1) unitsInput.value = v - 1;
+            });
+            document.getElementById('unitPlusBtn')?.addEventListener('click', () => {
+                let v = parseInt(unitsInput.value, 10) || 1;
+                if (v < 10) unitsInput.value = v + 1;
+            });
+
+            // Document Upload Handler
+            const docInput = document.getElementById('prDocument');
+            const docPreview = document.getElementById('prDocFilePreview');
+            const docName = document.getElementById('prDocFileName');
+            const docRemoveBtn = document.getElementById('prDocRemoveBtn');
+
+            docInput?.addEventListener('change', () => {
+                if (docInput.files.length > 0) {
+                    docName.textContent = '📄 ' + docInput.files[0].name;
+                    docPreview.classList.remove('hidden');
+                    docPreview.classList.add('flex');
+                }
+            });
+
+            docRemoveBtn?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                docInput.value = '';
+                docPreview.classList.add('hidden');
+                docPreview.classList.remove('flex');
+            });
+
+            // Device GPS Lock
+            let capturedLocation = null;
+            const shareLocationBtn = document.getElementById('prShareLocationBtn');
+            const locationStatusEl = document.getElementById('prLocationStatus');
+
+            shareLocationBtn?.addEventListener('click', async () => {
+                shareLocationBtn.disabled = true;
+                shareLocationBtn.textContent = 'Locking GPS...';
+                const citySelect = document.getElementById('prCity');
+                const loc = await captureUserLocation(citySelect?.value || 'Yaoundé');
+                capturedLocation = loc;
+
+                if (loc.source === 'gps') {
+                    shareLocationBtn.textContent = 'GPS Locked ✓';
+                    shareLocationBtn.className = 'shrink-0 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-3 py-2 rounded-xl cursor-default';
+                    locationStatusEl.textContent = `GPS Captured (±${loc.accuracyKm ? loc.accuracyKm.toFixed(1) + 'km' : '50m'})`;
+                    locationStatusEl.className = 'text-[10px] text-emerald-700 font-bold';
                 } else {
-                    statusEl.textContent = '⏳ Pending Review';
-                    statusEl.className = 'text-sm font-black px-3 py-1 rounded-full bg-amber-100 text-amber-800';
-                    document.getElementById('trackMessage').innerHTML = `
-                        <p class="font-bold text-amber-700 mb-1">📋 Your request is being reviewed by our team.</p>
-                        <p>A VitalPulse team member will verify your request and broadcast it to donors shortly. You will receive an SMS update at <strong>${phone}</strong>.</p>
-                    `;
+                    shareLocationBtn.disabled = false;
+                    shareLocationBtn.textContent = 'Retry GPS';
+                    locationStatusEl.textContent = loc.reason ? `GPS fallback (${loc.reason}) — using city center` : 'Using city center';
+                    locationStatusEl.className = 'text-[10px] text-amber-700 font-medium';
+                }
+            });
+
+            // Toast helper
+            function showToast(msg, type = 'success') {
+                const container = document.getElementById('toastContainer');
+                const colors = { success: 'bg-emerald-600', error: 'bg-red-600', warning: 'bg-amber-600', info: 'bg-blue-600' };
+                const toast = document.createElement('div');
+                toast.className = `${colors[type] || colors.info} text-white px-5 py-3 rounded-2xl shadow-2xl text-xs font-bold flex items-center gap-2 slide-up`;
+                toast.innerHTML = `<span class="material-symbols-outlined text-base">info</span> ${msg}`;
+                container.appendChild(toast);
+                setTimeout(() => { 
+                    toast.style.opacity = '0'; 
+                    toast.style.transition = 'opacity 0.4s'; 
+                    setTimeout(() => toast.remove(), 400); 
+                }, 4500);
+            }
+
+            // Copy Request ID
+            document.getElementById('copyReqIdBtn')?.addEventListener('click', () => {
+                const reqId = document.getElementById('trackReqId').textContent;
+                navigator.clipboard.writeText(reqId).then(() => {
+                    showToast('Request ID copied to clipboard!', 'success');
+                });
+            });
+
+            // Form submission handler
+            const form = document.getElementById('publicRequestForm');
+            form?.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                if (!categoryInput.value) {
+                    showToast('Please select a clinical category.', 'warning');
+                    return;
+                }
+                if (!bloodInput.value) {
+                    showToast('Please select a blood group (e.g. O+, A-).', 'warning');
+                    return;
                 }
 
-                // Start client-side escalation timer for Track A critical requests
-                if (result.track === 'A') {
-                    startEscalationTimer(result.id);
+                const rawPhone = (document.getElementById('prPhone').value || '').replace(/\s/g, '');
+                if (rawPhone.length < 9) {
+                    showToast('Please enter a valid 9-digit Cameroon phone number (e.g. 6XX XXX XXX).', 'error');
+                    return;
                 }
+                const phone = '+237' + rawPhone;
 
-            } catch (err) {
-                console.error('Public request submission failed:', err);
-                showToast(err.message || 'Failed to submit request. Please try again.', 'error');
-            } finally {
-                btn.innerHTML = '<span class="material-symbols-outlined text-lg" style="font-variation-settings:\'FILL\' 1">emergency</span> Submit Emergency Request';
-                btn.disabled = false;
+                const btn = document.getElementById('prSubmitBtn');
+                btn.innerHTML = '<span class="material-symbols-outlined animate-spin text-lg">progress_activity</span> Dispatching Emergency Request...';
+                btn.disabled = true;
+
+                try {
+                    const hospitalVal = document.getElementById('prHospital').value.trim();
+                    const cityVal = document.getElementById('prCity').value;
+                    const bloodVal = bloodInput.value;
+                    const unitsVal = parseInt(document.getElementById('prUnits').value, 10) || 1;
+
+                    const result = await submitPublicRequest({
+                        category: categoryInput.value,
+                        hospitalName: hospitalVal,
+                        ward: document.getElementById('prWard').value.trim() || null,
+                        city: cityVal,
+                        bloodType: bloodVal,
+                        componentType: document.getElementById('prComponent').value,
+                        units: unitsVal,
+                        urgency: urgencyInput.value,
+                        submitterName: document.getElementById('prSubmitterName').value.trim(),
+                        contactPhone: phone,
+                        relationship: document.getElementById('prRelationship').value,
+                        patientName: document.getElementById('prPatientName').value.trim() || null,
+                        documentUrl: docInput.files.length > 0 ? docInput.files[0].name : null,
+                        pickupInstructions: document.getElementById('prPickup').value.trim(),
+                        submitterLat: capturedLocation?.source === 'gps' ? capturedLocation.lat : null,
+                        submitterLng: capturedLocation?.source === 'gps' ? capturedLocation.lng : null,
+                        locationSource: capturedLocation?.source || 'none'
+                    });
+
+                    // Switch view to tracking screen
+                    document.getElementById('intakeView').classList.add('hidden');
+                    const trackingCard = document.getElementById('trackingCard');
+                    trackingCard.classList.remove('hidden');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                    const fullId = '#' + result.id.slice(0, 8).toUpperCase();
+                    document.getElementById('trackReqId').textContent = fullId;
+
+                    const statusEl = document.getElementById('trackStatus');
+                    const messageEl = document.getElementById('trackMessage');
+
+                    if (result.track === 'A') {
+                        statusEl.textContent = '📡 Broadcasting to Donors';
+                        statusEl.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800';
+                        messageEl.innerHTML = `
+                            <p class="font-bold text-emerald-900 mb-1.5 text-sm">🚨 Emergency Alert Live in Dispatch Stream</p>
+                            <p class="mb-2">Your request for <strong>${unitsVal} unit(s) of ${bloodVal}</strong> at <strong>${hospitalVal}</strong> is actively broadcasting to verified donors in <strong>${cityVal}</strong>.</p>
+                            <p class="text-[11px] text-slate-600">Please keep phone <strong>${phone}</strong> available. If no donor claims the alert within 10 minutes, the dispatch radius will automatically expand.</p>
+                        `;
+                    } else {
+                        statusEl.textContent = '⏳ Under Medical Review';
+                        statusEl.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800';
+                        messageEl.innerHTML = `
+                            <p class="font-bold text-amber-900 mb-1.5 text-sm">📋 Requisition Under Review</p>
+                            <p class="mb-2">Your request for <strong>${unitsVal} unit(s) of ${bloodVal}</strong> at <strong>${hospitalVal}</strong> has been logged.</p>
+                            <p class="text-[11px] text-slate-600">A VitalPulse triage coordinator is verifying facility details before multi-channel broadcast. You will receive an SMS update at <strong>${phone}</strong>.</p>
+                        `;
+                    }
+
+                    // Setup WhatsApp Share Link
+                    const shareText = encodeURIComponent(
+                        `🚨 *URGENT BLOOD REQUISITION — VITALPULSE CAMEROON*\n\n` +
+                        `• *Blood Type:* ${bloodVal} (${unitsVal} Unit(s))\n` +
+                        `• *Hospital:* ${hospitalVal} (${cityVal})\n` +
+                        `• *Requisition ID:* ${fullId}\n` +
+                        `• *Urgency:* ${urgencyInput.value}\n\n` +
+                        `If you or someone you know is a compatible donor in ${cityVal}, please respond or share:\n` +
+                        `https://vitalpulse237.com/public-request.html`
+                    );
+                    const waShareBtn = document.getElementById('trackWhatsappShareBtn');
+                    if (waShareBtn) {
+                        waShareBtn.href = `https://wa.me/?text=${shareText}`;
+                    }
+
+                    // Start Client-side Escalation Timer for Track A
+                    if (result.track === 'A') {
+                        startEscalationTimer(result.id);
+                    }
+
+                } catch (err) {
+                    console.error('Public request error:', err);
+                    showToast(err.message || 'Failed to submit request. Please try again.', 'error');
+                } finally {
+                    btn.innerHTML = '<span class="material-symbols-outlined text-lg" style="font-variation-settings:\'FILL\' 1">emergency</span> Dispatch Emergency Request Now';
+                    btn.disabled = false;
+                }
+            });
+
+            // Escalation Timer Helper
+            async function startEscalationTimer(requestId) {
+                const { escalatePublicRequest } = await import('./src/db.js');
+                const schedule = [
+                    { delayMs: 5 * 60 * 1000, level: 1 },
+                    { delayMs: 10 * 60 * 1000, level: 2 },
+                    { delayMs: 15 * 60 * 1000, level: 3 }
+                ];
+                for (const step of schedule) {
+                    setTimeout(async () => {
+                        try {
+                            await escalatePublicRequest(requestId, step.level);
+                            console.log(`Escalated request ${requestId} to level ${step.level}`);
+                        } catch (e) {
+                            console.warn(`Escalation step ${step.level} error:`, e);
+                        }
+                    }, step.delayMs);
+                }
             }
         });
-
-        // Client-side escalation timer for Track A requests
-        // Level 0 (0 min): 25km — Level 1 (5 min): 50km — Level 2 (10 min): National — Level 3 (15 min): Human floor
-        async function startEscalationTimer(requestId) {
-            const { escalatePublicRequest } = await import('./src/db.js');
-            const schedule = [
-                { delayMs: 5 * 60 * 1000, level: 1 },
-                { delayMs: 10 * 60 * 1000, level: 2 },
-                { delayMs: 15 * 60 * 1000, level: 3 }
-            ];
-            for (const step of schedule) {
-                setTimeout(async () => {
-                    try {
-                        await escalatePublicRequest(requestId, step.level);
-                        console.log(`Escalated request ${requestId} to level ${step.level}`);
-                    } catch (e) {
-                        console.warn(`Escalation to level ${step.level} failed:`, e);
-                    }
-                }, step.delayMs);
-            }
-        }
     </script>
+    <script type="module" src="/src/main.js"></script>
 </body>
 </html>

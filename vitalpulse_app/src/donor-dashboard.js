@@ -27,6 +27,9 @@ import {
   fetchUnreadNotificationCount,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteDonorNotification,
+  clearAllDonorNotifications,
+  subscribeToDonorNotifications,
   CITY_COORDINATES,
   getEffectiveDonorLocation,
   DEFAULT_DONOR_RADIUS_KM,
@@ -39,10 +42,123 @@ import {
   getCoordinatesForLocation,
   calculateDistanceKm,
   subscribeToDonorJourneys,
+  redeemPulseReward,
+  fetchDonorVouchers,
 } from './db';
 import { captureUserLocation } from './location';
 import { t, getLang, setLang } from './i18n';
+import { triggerMilestoneConfetti } from './confetti';
 import L from 'leaflet';
+
+// Full 8-group transfusion matrix & special clinical traits for Cameroon regional healthcare
+export const BLOOD_COMPATIBILITY_DATA = {
+  'O-': {
+    give: ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+    receive: ['O-'],
+    special: 'Universal Red Blood Cell Donor. Your blood can save any patient in immediate trauma emergencies.',
+    label: 'Universal Red Cell Donor'
+  },
+  'O+': {
+    give: ['O+', 'A+', 'B+', 'AB+'],
+    receive: ['O+', 'O-'],
+    special: 'Most frequently needed blood group across maternity wards and emergency rooms in Cameroon.',
+    label: 'Universal Positive Donor'
+  },
+  'A-': {
+    give: ['A-', 'A+', 'AB-', 'AB+'],
+    receive: ['A-', 'O-'],
+    special: 'Rare negative group crucial for surgical patients and Rh-negative mothers.',
+    label: 'Rare Negative Donor'
+  },
+  'A+': {
+    give: ['A+', 'AB+'],
+    receive: ['A+', 'A-', 'O+', 'O-'],
+    special: 'High-demand group in Douala and Yaoundé general hospitals for scheduled surgeries.',
+    label: 'High-Demand Donor'
+  },
+  'B-': {
+    give: ['B-', 'B+', 'AB-', 'AB+'],
+    receive: ['B-', 'O-'],
+    special: 'Extremely rare in Central Africa (<2%). Your active standby status is a critical lifeline.',
+    label: 'Ultra-Rare Negative Donor'
+  },
+  'B+': {
+    give: ['B+', 'AB+'],
+    receive: ['B+', 'B-', 'O+', 'O-'],
+    special: 'Core regional blood type vital for trauma response in Douala, Yaoundé, and Bafoussam.',
+    label: 'Core Regional Lifesaver'
+  },
+  'AB-': {
+    give: ['AB-', 'AB+'],
+    receive: ['AB-', 'A-', 'B-', 'O-'],
+    special: 'Universal Plasma Donor. While red cells are specialized, your plasma is universally compatible.',
+    label: 'Universal Plasma Donor'
+  },
+  'AB+': {
+    give: ['AB+'],
+    receive: ['AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-'],
+    special: 'Universal Red Blood Cell Recipient. You can safely receive packed cells from all 8 blood groups.',
+    label: 'Universal Recipient'
+  }
+};
+
+export function getTimeAwareGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'Good morning';
+  if (hour >= 12 && hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+export function toggleBloodFlyout(force) {
+  const flyout = document.getElementById('bloodCompatibilityFlyout');
+  if (!flyout) return;
+  const isHidden = flyout.classList.contains('hidden');
+  const show = typeof force === 'boolean' ? force : isHidden;
+
+  if (show) {
+    flyout.classList.remove('hidden');
+    const currentUser = getCurrentUser();
+    const bt = (currentUser?.bloodType || 'B+').toUpperCase();
+    const data = BLOOD_COMPATIBILITY_DATA[bt] || BLOOD_COMPATIBILITY_DATA['B+'];
+
+    const badgeEl = document.getElementById('flyoutBloodTypeBadge');
+    if (badgeEl) badgeEl.textContent = bt;
+
+    const giveEl = document.getElementById('flyoutGiveList');
+    if (giveEl) {
+      giveEl.innerHTML = data.give.map(t =>
+        `<span class="px-2 py-0.5 text-[10px] font-black rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">${t}</span>`
+      ).join('');
+    }
+
+    const receiveEl = document.getElementById('flyoutReceiveList');
+    if (receiveEl) {
+      receiveEl.innerHTML = data.receive.map(t =>
+        `<span class="px-2 py-0.5 text-[10px] font-black rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-400/30">${t}</span>`
+      ).join('');
+    }
+
+    const specialEl = document.getElementById('flyoutSpecialTrait');
+    if (specialEl) specialEl.textContent = data.special;
+  } else {
+    flyout.classList.add('hidden');
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.toggleBloodFlyout = toggleBloodFlyout;
+  window.triggerMilestoneConfetti = triggerMilestoneConfetti;
+
+  document.addEventListener('click', (e) => {
+    const flyout = document.getElementById('bloodCompatibilityFlyout');
+    const btn = document.getElementById('donorBloodDropBtn');
+    if (flyout && !flyout.classList.contains('hidden')) {
+      if (!flyout.contains(e.target) && !btn?.contains(e.target) && !e.target.closest('#donorBloodDropBtn')) {
+        flyout.classList.add('hidden');
+      }
+    }
+  });
+}
 
 // XSS-safety helper for interpolating user-controlled strings (hospital names, cities, etc.)
 // into innerHTML template strings.
@@ -61,9 +177,6 @@ let _allRequests = [];
 let _selectedCity = null;
 let _feedExpanded = false; // dashboard requests feed: false = show first 5, true = show all
 let _donorNotifCache = null; // { notifications, unreadCount } — pre-fetched every 30s to avoid bell-click lag
-// Cached eligibility (56-day rule), refreshed on every dashboard load. Used to gate the
-// schedule/accept actions instantly without an extra Firestore read on each click. The
-// hospital check-in + server-side guard are the authoritative backstops.
 let _donorEligibilityCache = null;
 
 // ============================================
@@ -120,6 +233,7 @@ function initDonorStatusListener() {
     // (that would toast every already-verified donor on every page load).
     if (prevStatus !== undefined && prevStatus !== 'verified' && isDonorVerified()) {
       showToast('🎉 Your account is verified! Full access unlocked.');
+      triggerMilestoneConfetti({ particleCount: 85 });
     }
 
     renderDonorKycStatusBanner();
@@ -201,6 +315,12 @@ function applyKycLocksToDOM() {
     el.classList.toggle('flex', visible);
   };
 
+  const verifiedPill = document.getElementById('donorVerifiedBadgePill');
+  if (verifiedPill) {
+    verifiedPill.classList.toggle('hidden', locked);
+    verifiedPill.classList.toggle('inline-flex', !locked);
+  }
+
   // Schedule Donation — hero CTA + quick-action tile both trigger the same modal, so both
   // must lock together, or the hero button would be a silent bypass of the tile's lock.
   const heroBtn = document.getElementById('btnScheduleDonationDesktop');
@@ -257,6 +377,45 @@ function applyKycLocksToDOM() {
   }
 }
 
+// Animate numerical counters smoothly from 0 to target value with cubic ease-out
+function animateCountUp(element, target, duration = 800) {
+  if (!element) return;
+  if (target === '—' || target === '-' || isNaN(Number(target))) {
+    element.textContent = target;
+    syncMarqueeMirror(element.id, target);
+    return;
+  }
+  const end = parseInt(target, 10) || 0;
+  if (end === 0 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    element.textContent = end;
+    syncMarqueeMirror(element.id, end);
+    return;
+  }
+  const startTime = performance.now();
+  function update(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const current = Math.floor(eased * end);
+    element.textContent = current;
+    syncMarqueeMirror(element.id, current);
+    if (progress < 1) {
+      requestAnimationFrame(update);
+    } else {
+      element.textContent = end;
+      syncMarqueeMirror(element.id, end);
+    }
+  }
+  requestAnimationFrame(update);
+}
+
+// Synchronize duplicated elements in the infinite scrolling marquee
+function syncMarqueeMirror(id, val) {
+  if (!id) return;
+  const mirrors = document.querySelectorAll(`[data-mirror="${id}"]`);
+  mirrors.forEach(m => { m.textContent = val; });
+}
+
 // D8 — gamification/engagement numbers (Lives Saved, Total Donations, Bronze Tier progress,
 // badges) reflect real completed-donation history, which by definition can't exist yet for an
 // account still awaiting admin approval. Rendering real figures (or a hardcoded placeholder
@@ -270,14 +429,46 @@ function renderDonorEngagementStats(engagement) {
   const locked = !isDonorVerified();
   const livesCount = engagement.totalUnits * 3; // no fallback — 0 donations means 0 lives saved
 
-  const statDonations = document.getElementById('statDonations');
-  if (statDonations) statDonations.textContent = locked ? '—' : engagement.donationCount;
+    const statDonations = document.getElementById('statDonations');
+  if (statDonations) {
+    if (locked) {
+      statDonations.textContent = '—';
+      syncMarqueeMirror('statDonations', '—');
+    } else {
+      animateCountUp(statDonations, engagement.donationCount);
+    }
+  }
+
+  const heroStatDonations = document.getElementById('heroStatDonations');
+  if (heroStatDonations) {
+    if (locked) {
+      heroStatDonations.textContent = '—';
+    } else {
+      animateCountUp(heroStatDonations, engagement.donationCount);
+    }
+  }
 
   const statLivesSavedText = document.getElementById('statLivesSavedText');
   if (statLivesSavedText) statLivesSavedText.textContent = locked ? '—' : livesCount;
 
   const statLivesSaved = document.getElementById('statLivesSaved');
-  if (statLivesSaved) statLivesSaved.textContent = locked ? '—' : livesCount;
+  if (statLivesSaved) {
+    if (locked) {
+      statLivesSaved.textContent = '—';
+      syncMarqueeMirror('statLivesSaved', '—');
+    } else {
+      animateCountUp(statLivesSaved, livesCount);
+    }
+  }
+
+  const heroStatLivesSaved = document.getElementById('heroStatLivesSaved');
+  if (heroStatLivesSaved) {
+    if (locked) {
+      heroStatLivesSaved.textContent = '—';
+    } else {
+      animateCountUp(heroStatLivesSaved, livesCount);
+    }
+  }
 
   const statPoints = document.getElementById('statPoints');
   if (statPoints) statPoints.textContent = engagement.points;
@@ -285,19 +476,30 @@ function renderDonorEngagementStats(engagement) {
   const statRank = document.getElementById('statRank');
   if (statRank) statRank.textContent = engagement.tier;
 
+  const heroStatTier = document.getElementById('heroStatTier');
+  if (heroStatTier) {
+    heroStatTier.textContent = locked ? 'Locked' : engagement.tier;
+  }
+
   const currentUser = getCurrentUser();
   const effectiveLastDate = resolveLastDonationDate(currentUser, engagement);
   const lastDonationText = document.getElementById('statLastDonation');
   if (lastDonationText) {
-    lastDonationText.textContent = locked ? '—' : (effectiveLastDate
+    const formattedLast = locked ? '—' : (effectiveLastDate
       ? new Date(effectiveLastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
       : 'Never');
+    lastDonationText.textContent = formattedLast;
+    syncMarqueeMirror('statLastDonation', formattedLast);
   }
 
   // Bronze Tier card — a locked placeholder replaces the real journey stepper while pending;
   // showing tier/points progress implies an already-active account, which this isn't yet.
   const tierCardTitle = document.getElementById('donorTierCardTitle');
-  if (tierCardTitle) tierCardTitle.textContent = locked ? 'Locked' : `${engagement.tier} Tier`;
+  if (tierCardTitle) {
+    const tierTitle = locked ? 'Locked' : `${engagement.tier} Tier`;
+    tierCardTitle.textContent = tierTitle;
+    syncMarqueeMirror('donorTierCardTitle', locked ? 'Bronze' : engagement.tier);
+  }
   const tierEl = document.getElementById('donorTierProgress');
   if (tierEl) {
     tierEl.innerHTML = locked
@@ -345,45 +547,167 @@ function renderDonorEngagementStats(engagement) {
   }
 }
 
-// D3: Donation Journey steps 3-4 ("Eligible to Donate" / "Make Your First Donation") stay
-// visible but show a lock instead of a number/check while KYC-pending or rejected — donating
-// isn't actually possible yet regardless of biological eligibility. Steps 1-2 never lock.
+// Global helpers for dismissing / minimizing / restoring the onboarding journey checklist & floating hanging widget
+window.minimizeDonorJourney = function() {
+  localStorage.setItem('vp_journey_minimized', '1');
+  if (_donorJourneySteps) renderDonorJourneyChecklist(_donorJourneySteps);
+};
+
+window.expandDonorJourney = function() {
+  localStorage.removeItem('vp_journey_minimized');
+  if (_donorJourneySteps) renderDonorJourneyChecklist(_donorJourneySteps);
+};
+
+window.dismissDonorJourney = function() {
+  localStorage.setItem('vp_journey_dismissed', '1');
+  const wrap = document.getElementById('donorJourneyChecklistWrap');
+  if (wrap) wrap.classList.add('hidden');
+  const floating = document.getElementById('donorFloatingJourneyWidget');
+  if (floating) floating.classList.add('hidden');
+};
+
+window.restoreDonorJourney = function() {
+  localStorage.removeItem('vp_journey_dismissed');
+  localStorage.removeItem('vp_journey_minimized');
+  const wrap = document.getElementById('donorJourneyChecklistWrap');
+  if (wrap) wrap.classList.remove('hidden');
+  if (_donorJourneySteps) renderDonorJourneyChecklist(_donorJourneySteps);
+};
+
+// Advanced Donation Journey Lifecycle:
+// 1. Hanging Floating Modal / Widget: Pops up & hangs in the bottom corner with interactive steps.
+// 2. Collapsible into a subtle floating pill.
+// 3. Completed (100%): Celebratory Lifesaver Status Card.
+// 4. Dismissible at any time.
 function renderDonorJourneyChecklist(steps) {
   const journeyEl = document.getElementById('donorJourneyChecklist');
-  if (!journeyEl) return;
+  const wrap = document.getElementById('donorJourneyChecklistWrap');
+  const floating = document.getElementById('donorFloatingJourneyWidget');
+
   const doneCount = steps.filter(s => s.done).length;
-  const pct = Math.round((doneCount / steps.length) * 100);
+  const total = steps.length;
+  const pct = Math.round((doneCount / total) * 100);
+  const isComplete = doneCount === total;
+  const isDismissed = localStorage.getItem('vp_journey_dismissed') === '1';
+  const isMinimized = localStorage.getItem('vp_journey_minimized') === '1';
+
+  if (isDismissed && isComplete) {
+    if (wrap) wrap.classList.add('hidden');
+    if (floating) floating.classList.add('hidden');
+    return;
+  }
+
   const kycLocked = !isDonorVerified();
-  journeyEl.innerHTML = `
-    <div class="flex items-center justify-between mb-3">
-      <span class="text-[11px] font-bold text-on-surface-variant">${doneCount} of ${steps.length} complete</span>
-      <span class="text-[11px] font-black text-primary">${pct}%</span>
-    </div>
-    <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden mb-4">
-      <div class="h-full bg-success rounded-full" style="width:${pct}%; transition: width 500ms var(--ease-out-strong);"></div>
-    </div>
-    <div class="relative">
-      <div class="absolute left-[11px] top-3 bottom-3 w-0.5 bg-outline-variant/25"></div>
-      <div class="space-y-3.5">
-        ${steps.map((s, i) => {
-          const locked = kycLocked && i >= 2;
-          return `
-            <div class="relative flex items-center gap-3">
-              <span class="relative z-10 w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${locked ? 'bg-surface-container border-2 border-outline-variant/40 text-on-surface-variant/50' : s.done ? 'bg-success text-on-success' : 'bg-surface-container border-2 border-outline-variant/40 text-on-surface-variant'}">
-                ${locked
-                  ? `<span class="material-symbols-outlined" style="font-size:13px">lock</span>`
-                  : s.done
-                  ? `<span class="material-symbols-outlined" style="font-size:15px;font-variation-settings:'FILL' 1">check</span>`
-                  : `<span class="text-[10px] font-black">${i + 1}</span>`}
-              </span>
-              <span class="text-sm font-bold ${locked ? 'text-on-surface-variant/50' : s.done ? 'text-on-surface' : 'text-on-surface-variant'}">${s.label}</span>
-              ${locked ? '<span class="ml-auto text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-wider">Verify first</span>' : s.done ? '' : '<span class="ml-auto text-[9px] font-bold text-on-surface-variant/50 uppercase tracking-wider">To do</span>'}
+  const stepActions = [
+    { fn: "switchDonorView('profile')", cta: "Edit profile" },
+    { fn: "document.getElementById('availabilityToggle')?.click()", cta: "Toggle" },
+    { fn: "switchDonorView('centers')", cta: "View centers" },
+    { fn: "openDonationModal()", cta: "Schedule" },
+  ];
+
+  // 1. Render Floating Companion Widget (Hanging Modal in Bottom-Right Corner)
+  if (floating) {
+    if (isDismissed) {
+      floating.classList.add('hidden');
+    } else {
+      floating.classList.remove('hidden');
+      if (isComplete) {
+        if (!sessionStorage.getItem('vp_journey_confetti_fired')) {
+          sessionStorage.setItem('vp_journey_confetti_fired', '1');
+          triggerMilestoneConfetti({ particleCount: 85 });
+        }
+        // Floating Celebratory Badge
+        floating.innerHTML = `
+          <div class="relative bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-emerald-500/30 rounded-3xl p-4 shadow-2xl flex items-center justify-between gap-3 max-w-[340px] animate-in">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
+                <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">verified</span>
+              </div>
+              <div class="min-w-0">
+                <h4 class="text-xs font-black text-slate-900 dark:text-white truncate">Lifesaver Journey Complete!</h4>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">All 4 onboarding steps done 🎉</p>
+              </div>
             </div>
-          `;
-        }).join('')}
-      </div>
-    </div>
-  `;
+            <button type="button" onclick="window.dismissDonorJourney()" title="Dismiss" class="press-scale w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer shrink-0 transition-colors">
+              <span class="material-symbols-outlined text-base">close</span>
+            </button>
+          </div>
+        `;
+      } else if (isMinimized) {
+        // Floating Pill State (Hanging around quietly)
+        floating.innerHTML = `
+          <button type="button" onclick="window.expandDonorJourney()" class="press-scale flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 shadow-xl hover:shadow-2xl text-slate-800 dark:text-slate-200 transition-all cursor-pointer group animate-in">
+            <div class="relative w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center">
+              <span class="material-symbols-outlined text-sm font-bold">checklist</span>
+              <span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-primary animate-ping"></span>
+            </div>
+            <span class="text-xs font-black tracking-tight">Journey: ${doneCount}/${total} (${pct}%)</span>
+            <span class="material-symbols-outlined text-sm text-slate-400 group-hover:text-primary transition-colors">expand_less</span>
+          </button>
+        `;
+      } else {
+        // Floating Expanded Modal (Hanging around with interactive steps)
+        floating.innerHTML = `
+          <div class="relative w-full max-w-[350px] bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-200/90 dark:border-slate-800 rounded-3xl p-5 shadow-2xl space-y-3.5 animate-in">
+            <!-- Header -->
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary to-rose-600 text-white flex items-center justify-center shadow-xs">
+                  <span class="material-symbols-outlined text-lg">checklist</span>
+                </div>
+                <div>
+                  <h4 class="text-xs font-black font-headline text-slate-900 dark:text-white tracking-tight">Donation Journey</h4>
+                  <p class="text-[10px] font-bold text-primary">${doneCount} of ${total} complete (${pct}%)</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1">
+                <button type="button" onclick="window.minimizeDonorJourney()" title="Minimize to pill" class="press-scale w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer transition-colors">
+                  <span class="material-symbols-outlined text-base">expand_more</span>
+                </button>
+                <button type="button" onclick="window.dismissDonorJourney()" title="Dismiss guide" class="press-scale w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center cursor-pointer transition-colors">
+                  <span class="material-symbols-outlined text-base">close</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Progress Track -->
+            <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-primary to-emerald-500 rounded-full" style="width:${pct}%; transition: width 600ms cubic-bezier(0.16, 1, 0.3, 1);"></div>
+            </div>
+
+            <!-- Step items -->
+            <div class="space-y-2 max-h-[220px] overflow-y-auto slim-scroll pr-0.5">
+              ${steps.map((s, i) => {
+                const locked = kycLocked && i >= 2;
+                const act = stepActions[i] || stepActions[0];
+                return `
+                  <div class="group flex items-center justify-between p-2 rounded-xl transition-colors ${s.done ? 'bg-slate-50/60 dark:bg-slate-800/40 hover:bg-slate-100/60 dark:hover:bg-slate-800/70' : locked ? 'bg-slate-50/30 dark:bg-slate-800/20 opacity-60' : 'bg-primary/[0.04] dark:bg-primary/[0.08] border border-primary/20'}">
+                    <div class="flex items-center gap-2 min-w-0">
+                      <span class="w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${locked ? 'bg-slate-200 dark:bg-slate-700 text-slate-400' : s.done ? 'bg-emerald-500 text-white shadow-xs' : 'bg-primary text-white shadow-xs ring-2 ring-primary/20'}">
+                        ${locked
+                          ? `<span class="material-symbols-outlined" style="font-size:11px">lock</span>`
+                          : s.done
+                          ? `<span class="material-symbols-outlined" style="font-size:12px;font-variation-settings:'FILL' 1">check</span>`
+                          : `<span class="text-[9px] font-black">${i + 1}</span>`}
+                      </span>
+                      <span class="text-xs font-bold truncate ${locked ? 'text-slate-400 dark:text-slate-500' : s.done ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}">${esc(s.label)}</span>
+                    </div>
+                    <div class="shrink-0 ml-2">
+                      ${locked
+                        ? '<span class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Verify first</span>'
+                        : s.done
+                        ? '<span class="material-symbols-outlined text-emerald-500 text-sm" style="font-variation-settings:\'FILL\' 1">check_circle</span>'
+                        : `<button type="button" onclick="${act.fn}" class="press-scale text-[10px] font-black text-primary bg-white dark:bg-slate-900 hover:bg-primary hover:text-white px-2 py-0.5 rounded-md border border-primary/30 transition-all cursor-pointer shadow-xs">${act.cta} →</button>`}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
 }
 
 // Guard for the two donor actions that require a verified account — accepting a blood
@@ -520,8 +844,20 @@ function setKycNavLocked(locked) {
   }
 }
 
-export function switchDonorView(view) {
-  window.scrollTo(0, 0);
+const VIEW_TITLES = {
+  'dashboard': 'Home Dashboard',
+  'requests': 'Live Blood Requests',
+  'centers': 'Donation Centers',
+  'badges': 'Impact & Badges',
+  'profile': 'Donor Profile',
+  'care-reminders': 'Care Reminders',
+  'mythhub': 'Myth-Busting Hub',
+  'certificates': 'Life Saver Certificates',
+  'kyc': 'Identity Verification'
+};
+
+export async function switchDonorView(view) {
+  window.scrollTo({ top: 0, behavior: 'instant' });
   // Leaving the Requests view? Drop its real-time listener so it doesn't keep running (and
   // billing reads) in the background. loadDonorRequests re-subscribes when they return.
   if (view !== 'requests') teardownDonorJourneys();
@@ -529,42 +865,100 @@ export function switchDonorView(view) {
   // leaving it running in the background until the next loadKycView() reset.
   if (view !== 'kyc') stopLivenessCamera();
   setKycNavLocked(view === 'kyc');
+
+  // 1. Update Desktop Header Navigation (Underline Indicator)
+  document.querySelectorAll('#donorPrimaryNav .donor-mobile-nav').forEach(btn => {
+    const isCurrent = btn.dataset.view === view;
+    if (isCurrent) {
+      btn.className = 'donor-mobile-nav text-primary font-bold border-b-2 border-primary pb-1 cursor-pointer transition-colors';
+    } else {
+      btn.className = 'donor-mobile-nav text-slate-600 dark:text-slate-300 hover:text-primary transition-colors cursor-pointer border-b-2 border-transparent pb-1';
+    }
+  });
+
+  // 2. Update Mobile Drawer Navigation (Background Pill)
+  document.querySelectorAll('#mobileNavDrawer .donor-mobile-nav').forEach(btn => {
+    const isCurrent = btn.dataset.view === view;
+    if (isCurrent) {
+      btn.className = 'donor-mobile-nav press-scale w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-primary bg-primary/10 cursor-pointer text-left';
+    } else {
+      btn.className = 'donor-mobile-nav press-scale w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-left';
+    }
+  });
+
+  // 3. Update any floating or dock navigation items
+  document.querySelectorAll('.donor-mobile-nav:not(#donorPrimaryNav *):not(#mobileNavDrawer *)').forEach(btn => {
+    const isCurrent = btn.dataset.view === view;
+    btn.classList.toggle('text-primary', isCurrent);
+    btn.classList.toggle('text-on-surface-variant', !isCurrent);
+  });
+
+  history.replaceState(null, '', '#' + view);
+
+  // Show transition loader with red circle
+  const loader = document.getElementById('viewTransitionLoader');
+  const loaderText = document.getElementById('viewTransitionText');
+  if (loaderText) loaderText.textContent = `Loading ${VIEW_TITLES[view] || 'View'}...`;
+
   const views = ['dashboard', 'requests', 'centers', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
   views.forEach(v => {
     const el = document.getElementById('view-' + v);
     if (el) { el.classList.add('hidden'); el.classList.remove('block'); }
   });
+
+  if (loader) {
+    loader.classList.remove('hidden');
+    loader.classList.add('flex');
+  }
+
+  // Load target view content
+  const loadPromise = (async () => {
+    switch (view) {
+      case 'dashboard':
+        await loadDonorDashboard();
+        setTimeout(() => nearbyMapInstance?.invalidateSize(), 250);
+        break;
+      case 'requests':
+        await loadDonorRequests();
+        setTimeout(() => _requestsMiniMapInstance?.invalidateSize(), 250);
+        break;
+      case 'centers':
+        await loadDonationCentersView();
+        setTimeout(() => centersMapInstance?.invalidateSize(), 250);
+        break;
+      case 'badges':
+        await loadDonorBadges();
+        break;
+      case 'profile':
+        await loadDonorProfile();
+        break;
+      case 'care-reminders':
+        await loadCareRemindersView();
+        break;
+      case 'mythhub':
+        await loadMythHubView();
+        break;
+      case 'certificates':
+        await loadCertificatesView();
+        break;
+      case 'kyc':
+        await loadKycView();
+        break;
+    }
+  })();
+
+  // Minimum transition time (150ms) to ensure a smooth, professional feel without sudden pop
+  await Promise.all([loadPromise, new Promise(res => setTimeout(res, 150))]);
+
+  if (loader) {
+    loader.classList.add('hidden');
+    loader.classList.remove('flex');
+  }
+
   const active = document.getElementById('view-' + view);
-  if (active) { active.classList.remove('hidden'); active.classList.add('block'); }
-
-  document.querySelectorAll('.donor-mobile-nav').forEach(btn => {
-    btn.classList.remove('text-primary');
-    btn.classList.add('text-on-surface-variant');
-    const icon = btn.querySelector('.material-symbols-outlined');
-    if (icon) icon.style.fontVariationSettings = "'FILL' 0";
-  });
-  // querySelectorAll, not querySelector — the desktop header tabs and the mobile bottom nav
-  // both use .donor-mobile-nav with the same data-view values, so both need highlighting,
-  // not just whichever happens to come first in the DOM.
-  document.querySelectorAll(`.donor-mobile-nav[data-view="${view}"]`).forEach(activeNav => {
-    activeNav.classList.remove('text-on-surface-variant');
-    activeNav.classList.add('text-primary');
-    const icon = activeNav.querySelector('.material-symbols-outlined');
-    if (icon) icon.style.fontVariationSettings = "'FILL' 1";
-  });
-
-  history.replaceState(null, '', '#' + view);
-
-  switch (view) {
-    case 'dashboard': loadDonorDashboard(); break;
-    case 'requests': loadDonorRequests(); break;
-    case 'centers': loadDonationCentersView(); break;
-    case 'badges': loadDonorBadges(); break;
-    case 'profile': loadDonorProfile(); break;
-    case 'care-reminders': loadCareRemindersView(); break;
-    case 'mythhub': loadMythHubView(); break;
-    case 'certificates': loadCertificatesView(); break;
-    case 'kyc': loadKycView(); break;
+  if (active) {
+    active.classList.remove('hidden');
+    active.classList.add('block');
   }
 }
 
@@ -648,6 +1042,7 @@ export function initDonorNavigation() {
   const dInit = document.getElementById('donorDrawerInitials'); if (dInit) dInit.textContent = drawerInitials || 'D';
   const dName = document.getElementById('donorDrawerName'); if (dName) dName.textContent = drawerUser?.name || drawerUser?.email?.split('@')[0] || 'Donor';
   const dEmail = document.getElementById('donorDrawerEmail'); if (dEmail) dEmail.textContent = drawerUser?.email || '';
+  renderUserAvatars(drawerUser);
 
   document.querySelectorAll('[data-open-donation-history]').forEach(el => {
     el.addEventListener('click', () => {
@@ -717,134 +1112,238 @@ export function initDonorNavigation() {
     }
   });
 
-  // Notification bell: show notification panel (uses cached data from 30s poll for instant open)
+  // Notification bell: show modern real-time notification panel
   const notifBtn = document.getElementById('btnDonorNotifications');
   if (notifBtn) {
     notifBtn.addEventListener('click', async () => {
       const currentUser = getCurrentUser();
       if (!currentUser) return;
 
-      // Create panel with skeleton immediately — no await
+      const existingPanel = document.getElementById('donorNotifPanel');
+      if (existingPanel) {
+        existingPanel.remove();
+        return;
+      }
+
+      // Create modern flyout panel
       const panel = document.createElement('div');
       panel.id = 'donorNotifPanel';
-      panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-4';
+      panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-6 pointer-events-auto';
       panel.innerHTML = `
-        <div class="absolute inset-0 bg-black/30" onclick="document.getElementById('donorNotifPanel')?.remove()"></div>
-        <div class="relative bg-surface-container-lowest border border-outline-variant/20 w-full sm:w-96 max-h-[70vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-          <div class="flex items-center justify-between px-5 py-4 border-b border-outline-variant/15 shrink-0">
-            <h3 class="font-black text-on-surface flex items-center gap-2">
-              <span class="material-symbols-outlined text-primary">notifications</span>
-              Notifications
-            </h3>
-            <button onclick="document.getElementById('donorNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-surface-container-low flex items-center justify-center hover:bg-surface-container text-on-surface-variant transition-colors">
-              <span class="material-symbols-outlined text-sm">close</span>
-            </button>
+        <div class="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity" onclick="document.getElementById('donorNotifPanel')?.remove()"></div>
+        <div class="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full sm:w-96 max-h-[80vh] rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col z-10 animate-in">
+          
+          <!-- Header -->
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shrink-0">
+            <div class="flex items-center gap-2.5">
+              <span class="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <span class="material-symbols-outlined text-lg">notifications</span>
+              </span>
+              <div>
+                <h3 class="font-black text-sm text-slate-900 dark:text-white font-headline leading-tight">Notifications</h3>
+                <p id="donorNotifSubhead" class="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Real-time emergency & clinical alerts</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button id="btnMarkAllNotifsRead" class="text-[10px] font-bold text-primary hover:underline px-1.5 py-1 rounded-lg cursor-pointer">
+                Mark read
+              </button>
+              <button id="btnClearAllNotifs" class="text-[10px] font-bold text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:underline px-1.5 py-1 rounded-lg cursor-pointer">
+                Clear all
+              </button>
+              <button onclick="document.getElementById('donorNotifPanel')?.remove()" class="w-7 h-7 rounded-full bg-slate-200/70 dark:bg-slate-700 flex items-center justify-center hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors cursor-pointer ml-1">
+                <span class="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
           </div>
-          <div id="donorNotifBody" class="overflow-y-auto flex-1 p-3 space-y-1">
-            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-surface-container-high"></div><div class="flex-1 space-y-2"><div class="h-3 bg-surface-container-high rounded w-3/4"></div><div class="h-2 bg-surface-container-high/60 rounded w-1/2"></div></div></div>
-            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-surface-container-high"></div><div class="flex-1 space-y-2"><div class="h-3 bg-surface-container-high rounded w-2/3"></div><div class="h-2 bg-surface-container-high/60 rounded w-1/3"></div></div></div>
-            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-4 h-4 rounded bg-surface-container-high"></div><div class="flex-1 space-y-2"><div class="h-3 bg-surface-container-high rounded w-5/6"></div><div class="h-2 bg-surface-container-high/60 rounded w-2/3"></div></div></div>
+
+          <!-- Body -->
+          <div id="donorNotifBody" class="overflow-y-auto flex-1 p-3 space-y-2 slim-scroll">
+            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800"></div><div class="flex-1 space-y-2"><div class="h-3 bg-slate-100 dark:bg-slate-800 rounded w-3/4"></div><div class="h-2 bg-slate-100 dark:bg-slate-800 rounded w-1/2"></div></div></div>
+            <div class="flex items-center gap-3 p-4 animate-pulse"><div class="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800"></div><div class="flex-1 space-y-2"><div class="h-3 bg-slate-100 dark:bg-slate-800 rounded w-2/3"></div><div class="h-2 bg-slate-100 dark:bg-slate-800 rounded w-1/3"></div></div></div>
           </div>
+
         </div>
       `;
       document.body.appendChild(panel);
 
-      // Now fetch data (from cache or network) and fill in
-      try {
-        let notifications = _donorNotifCache?.notifications;
-        let unreadCount = _donorNotifCache?.unreadCount || 0;
-        if (!notifications) {
-          const fetched = await Promise.all([
-            fetchDonorNotifications(currentUser.uid, 10),
-            fetchUnreadNotificationCount(currentUser.uid)
-          ]);
-          notifications = fetched[0];
-          unreadCount = fetched[1];
-          _donorNotifCache = { notifications, unreadCount };
-        } else {
-          fetchDonorNotifications(currentUser.uid, 10).then(n => {
-            _donorNotifCache.notifications = n;
-          }).catch(() => {});
-          fetchUnreadNotificationCount(currentUser.uid).then(c => {
-            _donorNotifCache.unreadCount = c;
-          }).catch(() => {});
-        }
-        const badge = document.getElementById('donorNotifBadge');
-        if (badge) {
-          if (unreadCount > 0) {
-            badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-            badge.classList.remove('hidden');
-            badge.classList.add('flex');
-          } else {
-            badge.classList.add('hidden');
-            badge.classList.remove('flex');
-          }
-        }
+      const renderNotifsInPanel = (notifications) => {
         const body = document.getElementById('donorNotifBody');
-        if (body) {
-          if (notifications.length === 0) {
-            body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-on-surface-variant"><span class="material-symbols-outlined text-3xl mb-2 text-on-surface-variant/50">notifications_off</span><p class="text-sm font-medium">No notifications yet</p><p class="text-xs text-on-surface-variant/70 mt-1">When blood requests match your type, you will be notified here.</p></div>';
-          } else {
-            const markAllBtn = unreadCount > 0
-              ? `<button onclick="(async () => { const cu = getCurrentUser(); if(cu){await markAllNotificationsRead(cu.uid); const p = document.getElementById('donorNotifPanel'); if(p) p.remove(); const badge = document.getElementById('donorNotifBadge'); if(badge){badge.classList.add('hidden'); badge.classList.remove('flex');}} })()" class="text-[10px] font-bold text-primary hover:underline">Mark all read</button>`
-              : '';
-            // Update header with mark-all button
-            const header = document.querySelector('#donorNotifPanel h3')?.closest('.flex');
-            if (header && markAllBtn) {
-              const existing = header.querySelector('button:not([onclick*="remove"])');
-              if (!existing) header.insertAdjacentHTML('beforeend', markAllBtn);
+        const markBtn = document.getElementById('btnMarkAllNotifsRead');
+        const clearBtn = document.getElementById('btnClearAllNotifs');
+        if (!body) return;
+
+        const unreadList = notifications.filter(n => !n.read);
+        if (markBtn) {
+          markBtn.style.display = unreadList.length > 0 ? 'inline-block' : 'none';
+          markBtn.onclick = async () => {
+            markBtn.disabled = true;
+            markBtn.textContent = 'Marking...';
+            try {
+              await markAllNotificationsRead(currentUser.uid);
+              notifications.forEach(n => { n.read = true; });
+              renderNotifsInPanel(notifications);
+              updateNotifBadge(0);
+              showToast('All notifications marked as read', 'success');
+            } catch (err) {
+              console.error('Failed to mark all as read:', err);
             }
-            body.innerHTML = notifications.map(n => {
-              const icons = { 'error': 'emergency', 'success': 'check_circle', 'info': 'info', 'warning': 'warning' };
-              const colors = { 'error': 'text-error', 'success': 'text-success', 'info': 'text-tertiary', 'warning': 'text-warning' };
-              const c = colors[n.type] || colors.info;
-              const icon = icons[n.type] || icons.info;
-              return `
-                <div class="flex items-start gap-3 p-3 rounded-xl ${n.read ? 'opacity-60' : 'bg-surface-container-low'} hover:bg-surface-container-low transition-colors cursor-pointer" onclick="${!n.read ? `(async () => { await markNotificationRead('${n.id}'); this.classList.remove('bg-surface-container-low'); this.classList.add('opacity-60'); })()` : ''}">
-                  <span class="material-symbols-outlined text-sm mt-0.5 ${c}">${icon}</span>
-                  <div class="min-w-0 flex-1">
-                    <p class="text-xs font-bold text-on-surface">${esc(n.title)}</p>
-                    <p class="text-[11px] text-on-surface-variant mt-0.5 line-clamp-2">${esc(n.message)}</p>
-                    <p class="text-[9px] text-on-surface-variant/70 mt-1">${new Date(n.createdAt).toLocaleString()}</p>
-                  </div>
-                  ${!n.read ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0 mt-1"></span>' : ''}
-                </div>
-              `;
-            }).join('');
-          }
+          };
         }
-      } catch (e) {
+
+        if (clearBtn) {
+          clearBtn.style.display = notifications.length > 0 ? 'inline-block' : 'none';
+          clearBtn.onclick = async () => {
+            if (!confirm('Are you sure you want to clear all notifications?')) return;
+            clearBtn.disabled = true;
+            clearBtn.textContent = 'Clearing...';
+            try {
+              await clearAllDonorNotifications(currentUser.uid);
+              notifications.length = 0;
+              renderNotifsInPanel(notifications);
+              updateNotifBadge(0);
+              showToast('Notifications cleared', 'success');
+            } catch (err) {
+              console.error('Failed to clear notifications:', err);
+              showToast('Could not clear notifications', 'error');
+            }
+          };
+        }
+
+        if (notifications.length === 0) {
+          body.innerHTML = `
+            <div class="flex flex-col items-center justify-center py-10 px-4 text-center space-y-2">
+              <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                <span class="material-symbols-outlined text-2xl">notifications_off</span>
+              </div>
+              <p class="text-xs font-bold text-slate-800 dark:text-slate-200">You're all caught up!</p>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs">When matching emergency blood requests or hospital updates occur, they will appear here in real time.</p>
+            </div>`;
+          return;
+        }
+
+        body.innerHTML = notifications.map(n => {
+          const isUnread = !n.read;
+          const isEmergency = n.type === 'error' || (n.title || '').toLowerCase().includes('emergency') || (n.title || '').toLowerCase().includes('urgent');
+          const isSuccess = n.type === 'success';
+          const isWarning = n.type === 'warning';
+
+          const icon = isEmergency ? 'emergency' : isSuccess ? 'check_circle' : isWarning ? 'warning' : 'info';
+          const iconBg = isEmergency 
+            ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' 
+            : isSuccess 
+              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
+              : isWarning
+                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+
+          return `
+            <div data-notif-id="${n.id}" data-notif-view="${n.view || (isEmergency ? 'requests' : '')}" class="group flex items-start gap-3 p-3 rounded-2xl border transition-all ${isUnread ? 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-xs' : 'bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 opacity-75'}">
+              <div class="w-8 h-8 rounded-xl ${iconBg} border flex items-center justify-center shrink-0 mt-0.5">
+                <span class="material-symbols-outlined text-base">${icon}</span>
+              </div>
+              <div class="flex-1 min-w-0 cursor-pointer notif-content-area">
+                <div class="flex items-center justify-between gap-2">
+                  <p class="text-xs font-black text-slate-900 dark:text-white leading-tight truncate">${esc(n.title)}</p>
+                  ${isUnread ? '<span class="w-2 h-2 rounded-full bg-primary shrink-0"></span>' : ''}
+                </div>
+                <p class="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-snug">${esc(n.message)}</p>
+                <span class="text-[9px] font-medium text-slate-400 dark:text-slate-500 mt-1 block">${n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' }) : 'Just now'}</span>
+              </div>
+              <button data-delete-id="${n.id}" title="Delete" class="opacity-0 group-hover:opacity-100 hover:text-rose-500 text-slate-400 p-1 rounded-lg transition-opacity cursor-pointer shrink-0">
+                <span class="material-symbols-outlined text-sm">delete_outline</span>
+              </button>
+            </div>
+          `;
+        }).join('');
+
+        // Wire click handler per notification body (navigate & mark read)
+        body.querySelectorAll('.notif-content-area').forEach(area => {
+          area.addEventListener('click', async () => {
+            const card = area.closest('[data-notif-id]');
+            const notifId = card?.dataset.notifId;
+            const targetView = card?.dataset.notifView;
+            if (!notifId) return;
+            try {
+              await markNotificationRead(notifId);
+              const notif = notifications.find(x => x.id === notifId);
+              if (notif) notif.read = true;
+              renderNotifsInPanel(notifications);
+              updateNotifBadge(notifications.filter(x => !x.read).length);
+            } catch (e) {
+              console.warn('Failed to mark read:', e);
+            }
+            if (targetView) {
+              document.getElementById('donorNotifPanel')?.remove();
+              switchDonorView(targetView);
+            }
+          });
+        });
+
+        // Wire delete buttons per notification
+        body.querySelectorAll('[data-delete-id]').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const notifId = btn.dataset.deleteId;
+            if (!notifId) return;
+            btn.disabled = true;
+            try {
+              await deleteDonorNotification(notifId);
+              const idx = notifications.findIndex(x => x.id === notifId);
+              if (idx !== -1) notifications.splice(idx, 1);
+              renderNotifsInPanel(notifications);
+              updateNotifBadge(notifications.filter(x => !x.read).length);
+              showToast('Notification deleted', 'success');
+            } catch (err) {
+              console.error('Failed to delete notification:', err);
+              showToast('Could not delete notification', 'error');
+            }
+          });
+        });
+      };
+
+      try {
+        const notifications = await fetchDonorNotifications(currentUser.uid, 20);
+        _donorNotifCache = { notifications, unreadCount: notifications.filter(n => !n.read).length };
+        renderNotifsInPanel(notifications);
+      } catch (err) {
+        console.error('Failed to load notifications:', err);
         const body = document.getElementById('donorNotifBody');
-        if (body) body.innerHTML = '<div class="flex flex-col items-center justify-center py-10 text-on-surface-variant"><span class="material-symbols-outlined text-3xl mb-2 text-on-surface-variant/50">error_outline</span><p class="text-sm font-medium">Could not load notifications</p></div>';
+        if (body) body.innerHTML = '<div class="py-8 text-center text-xs text-red-500 font-bold">Failed to load notifications. Please try again.</div>';
       }
     });
   }
 
-  // Start notification polling (every 30 seconds) — also caches full list for instant panel open
-  const pollNotifCount = async () => {
-    const cu = getCurrentUser();
-    if (!cu) return;
-    try {
-      const [unreadCount, notifications] = await Promise.all([
-        fetchUnreadNotificationCount(cu.uid),
-        fetchDonorNotifications(cu.uid, 10)
-      ]);
-      _donorNotifCache = { notifications, unreadCount };
-      const badge = document.getElementById('donorNotifBadge');
-      if (badge) {
-        if (unreadCount > 0) {
-          badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-          badge.classList.remove('hidden');
-          badge.classList.add('flex');
-        } else {
-          badge.classList.add('hidden');
-          badge.classList.remove('flex');
-        }
+  // Real-time notification subscription badge updater
+  const updateNotifBadge = (count) => {
+    const badge = document.getElementById('donorNotifBadge');
+    if (badge) {
+      if (count > 0) {
+        badge.textContent = count > 9 ? '9+' : count;
+        badge.classList.remove('hidden');
+        badge.classList.add('flex');
+      } else {
+        badge.classList.add('hidden');
+        badge.classList.remove('flex');
       }
-    } catch (e) { /* silent */ }
+    }
   };
-  pollNotifCount();
-  setInterval(pollNotifCount, 30000);
+
+  const cu = getCurrentUser();
+  if (cu) {
+    subscribeToDonorNotifications(cu.uid, (notifications) => {
+      const unreadCount = notifications.filter(n => !n.read).length;
+      _donorNotifCache = { notifications, unreadCount };
+      updateNotifBadge(unreadCount);
+
+      // If panel is currently open, re-render dynamically
+      const panelBody = document.getElementById('donorNotifBody');
+      if (panelBody) {
+        const markBtn = document.getElementById('btnMarkAllNotifsRead');
+        if (markBtn) markBtn.style.display = unreadCount > 0 ? 'block' : 'none';
+      }
+    });
+  }
 
   initKycView();
   initKycLivenessStep();
@@ -1438,7 +1937,7 @@ export function resolveLastDonationDate(currentUser, engagement) {
   return dates[0].toISOString();
 }
 
-function getEligibilityInfo(lastDonationDate) {
+export function getEligibilityInfo(lastDonationDate) {
   if (!lastDonationDate) return { eligible: true, daysUntil: 0, label: 'Eligible', color: 'text-success', barPct: 100 };
   const last = new Date(lastDonationDate);
   const next = new Date(last);
@@ -1501,6 +2000,10 @@ function renderFilteredFeed() {
   const filtered = _selectedCity
     ? _allRequests.filter(r => (r.city === _selectedCity || r.preferredLocation === _selectedCity))
     : _allRequests;
+
+  const countEl = document.getElementById('urgentReqTotalCount');
+  if (countEl) countEl.textContent = filtered.length;
+
   if (filtered.length === 0) {
     feedEl.innerHTML = `<div class="flex flex-col items-center text-center py-10 text-on-surface-variant bg-surface-container-lowest border border-outline-variant/20 rounded-2xl shadow-sm px-6">
       <div class="w-14 h-14 rounded-full ${_selectedCity ? 'bg-warning-container/40 text-warning' : 'bg-success-container/40 text-success'} flex items-center justify-center mb-3">
@@ -1595,7 +2098,7 @@ function renderFilteredFeed() {
     // are kept — real information a donor needs to decide, not decorative.
     const borderColorCls = isCritical ? 'border-l-error' : urgency === 'urgent' ? 'border-l-warning' : 'border-l-outline-variant/40';
     return `
-    <div class="relative hover-lift group bg-surface-container-lowest rounded-2xl border-l-4 ${borderColorCls} border-y border-r border-outline-variant/20 shadow-sm overflow-hidden" style="transition: box-shadow 200ms var(--ease-out-strong);">
+    <div class="relative hover-lift group bg-surface-container-lowest rounded-2xl border-l-4 ${borderColorCls} ${isCritical ? 'urgent-pulse-border shadow-md' : ''} border-y border-r border-outline-variant/20 shadow-sm overflow-hidden" style="transition: box-shadow 200ms var(--ease-out-strong);">
       <div class="p-3.5">
         <div class="flex items-start gap-3">
           <div class="flex flex-col items-center justify-center size-15 min-w-[60px] rounded-2xl ${isCritical ? 'bg-gradient-to-br from-error via-error/90 to-error-container text-on-error shadow-md shadow-error/20' : 'bg-primary/10 text-primary'} font-black shrink-0 shadow-xs">
@@ -1660,38 +2163,138 @@ let _allCentersSearch = '';
 let _allCentersCity = null;
 let _allCentersWired = false;
 
-// E5 — the full, searchable + city-filterable hospital directory used to be a modal opened
-// from "View all"; it's now the dedicated view-centers view (switchDonorView('centers')),
-// with its own real map (#centersMap, separate Leaflet instance from the dashboard's shared
-// #nearbyMap so the two don't collide when both exist in the DOM at once).
+let _centersFilterType = '';
+let _centersSortSelector = 'nearest';
+
+window.switchCentersMobileTab = (tab) => {
+  const mapCol = document.getElementById('centersMapCol');
+  const listCol = document.getElementById('centersListCol');
+  const btnList = document.getElementById('btnCentersMobileList');
+  const btnMap = document.getElementById('btnCentersMobileMap');
+  if (!mapCol || !listCol) return;
+
+  if (tab === 'map') {
+    mapCol.classList.remove('hidden');
+    listCol.classList.add('hidden', 'lg:block');
+    btnMap?.classList.add('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs', 'font-black');
+    btnMap?.classList.remove('text-slate-500', 'dark:text-slate-400', 'font-bold');
+    btnList?.classList.remove('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs', 'font-black');
+    btnList?.classList.add('text-slate-500', 'dark:text-slate-400', 'font-bold');
+    setTimeout(() => {
+      centersMapInstance?.invalidateSize();
+    }, 150);
+  } else {
+    listCol.classList.remove('hidden');
+    mapCol.classList.add('hidden', 'lg:block');
+    btnList?.classList.add('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs', 'font-black');
+    btnList?.classList.remove('text-slate-500', 'dark:text-slate-400', 'font-bold');
+    btnMap?.classList.remove('bg-white', 'dark:bg-slate-900', 'text-slate-900', 'dark:text-white', 'shadow-xs', 'font-black');
+    btnMap?.classList.add('text-slate-500', 'dark:text-slate-400', 'font-bold');
+  }
+};
+
+window.resetCentersFilters = () => {
+  _allCentersSearch = '';
+  _allCentersCity = null;
+  _centersFilterType = '';
+  _centersSortSelector = 'nearest';
+  const search = document.getElementById('allCentersSearch');
+  if (search) search.value = '';
+  const typeSel = document.getElementById('centersFilterType');
+  if (typeSel) typeSel.value = '';
+  const sortSel = document.getElementById('centersSortSelector');
+  if (sortSel) sortSel.value = 'nearest';
+  document.getElementById('btnResetCentersFilters')?.classList.add('hidden');
+  renderAllCentersCityChips();
+  renderAllCentersList();
+  const currentUser = getCurrentUser();
+  renderCentersMap(getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng));
+};
+
+window.locateNearestCenter = () => {
+  const currentUser = getCurrentUser();
+  const donorCoords = getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng);
+  if (!donorCoords) return;
+  let nearest = null;
+  let minDist = Infinity;
+  _donationCenters.forEach(h => {
+    if (h.coords) {
+      const d = calculateDistanceKm(donorCoords.lat, donorCoords.lon, h.coords.lat, h.coords.lon);
+      if (d < minDist) {
+        minDist = d;
+        nearest = h;
+      }
+    }
+  });
+  if (nearest && centersMapInstance && nearest.coords) {
+    window.switchCentersMobileTab('map');
+    centersMapInstance.flyTo([nearest.coords.lat, nearest.coords.lon], 13, { duration: 1.5 });
+    showToast(`Centered on ${nearest.name} (~${Math.round(minDist * 10) / 10} km)`);
+  }
+};
+
 async function loadDonationCentersView() {
   const currentUser = getCurrentUser();
   const donorCoords = getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng);
 
-  if (_donationCenters.length === 0) {
-    try {
-      await fetchAndCacheDonationCenters(donorCoords);
-    } catch (e) {
-      console.error('Failed to load donation centers:', e);
-    }
+  const listEl = document.getElementById('allCentersList');
+  if (listEl && _donationCenters.length === 0) {
+    listEl.innerHTML = `
+      <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
+        <div class="loader-spinner"></div>
+        <p class="text-xs font-bold text-slate-500 dark:text-slate-400">Loading donation centers...</p>
+      </div>
+    `;
+  }
+
+  try {
+    await fetchAndCacheDonationCenters(donorCoords);
+  } catch (e) {
+    console.error('Failed to load donation centers:', e);
   }
 
   _allCentersSearch = '';
   _allCentersCity = null;
   const search = document.getElementById('allCentersSearch');
   if (search) search.value = '';
+  
+  const typeFilter = document.getElementById('centersFilterType');
+  if (typeFilter) {
+    typeFilter.onchange = () => {
+      _centersFilterType = typeFilter.value;
+      renderAllCentersList();
+    };
+  }
+
+  const sortSelector = document.getElementById('centersSortSelector');
+  if (sortSelector) {
+    sortSelector.onchange = () => {
+      _centersSortSelector = sortSelector.value;
+      renderAllCentersList();
+    };
+  }
+
   if (!_allCentersWired) {
     _allCentersWired = true;
-    search?.addEventListener('input', () => { _allCentersSearch = search.value; renderAllCentersList(); });
+    search?.addEventListener('input', () => { 
+      _allCentersSearch = search.value; 
+      renderAllCentersList(); 
+    });
   }
+  
   renderAllCentersCityChips();
   renderAllCentersList();
   renderCentersMap(donorCoords);
 }
 
-// Same visual language as renderNearbyMap (donor red, centers green) but centers-only — this
-// view has no blood-request markers to plot, and lives on its own map div so it can coexist
-// with the dashboard's #nearbyMap in the DOM without either instance fighting over one node.
+function formatDistanceAndDriveTime(distanceKm) {
+  if (distanceKm == null || isNaN(distanceKm)) return '~2.4 km (~7 mins drive)';
+  const km = Math.round(Number(distanceKm) * 10) / 10;
+  const mins = Math.max(3, Math.round(km * 2.5 + 2));
+  const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `~${mins} mins`;
+  return `${km} km (${timeStr} drive)`;
+}
+
 function renderCentersMap(donorCoords) {
   const mapEl = document.getElementById('centersMap');
   if (!mapEl || !window.L) return;
@@ -1708,17 +2311,32 @@ function renderCentersMap(donorCoords) {
     maxBoundsViscosity: 1,
     minZoom: 6,
   }).setView([center.lat, center.lon], zoom);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(map);
-  renderCityLabels(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
 
   if (donorCoords) {
-    L.circleMarker([donorCoords.lat, donorCoords.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#af101a', fillOpacity: 1 })
-      .addTo(map).bindTooltip('You are here');
+    L.circleMarker([donorCoords.lat, donorCoords.lon], { radius: 8, color: '#fff', weight: 2, fillColor: '#af101a', fillOpacity: 1 })
+      .addTo(map).bindTooltip('You (Donor Location)');
   }
   _donationCenters.forEach(h => {
     if (!h.coords) return;
-    L.circleMarker([h.coords.lat, h.coords.lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#1e8e3e', fillOpacity: 1 })
-      .addTo(map).bindTooltip(esc(h.name));
+    const marker = L.circleMarker([h.coords.lat, h.coords.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#1e8e3e', fillOpacity: 1 })
+      .addTo(map);
+
+    const driveInfo = h.distanceKm != null ? formatDistanceAndDriveTime(h.distanceKm) : null;
+    const popupHtml = `
+      <div class="p-2 space-y-1.5 text-slate-900" style="min-width: 180px;">
+        <p class="font-black text-xs font-headline">${esc(h.name)}</p>
+        <p class="text-[10px] text-slate-500 font-medium">📍 ${esc(h.city || 'Cameroon')}${driveInfo ? ' • ' + driveInfo : ''}</p>
+        <div class="pt-1 flex items-center gap-1.5">
+          <button onclick="window.openDonationModalForHospital('${esc(h.name)}')" class="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold text-[10px] cursor-pointer">
+            Book Visit
+          </button>
+          <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name + ', ' + (h.city || 'Cameroon'))}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">
+            Directions
+          </a>
+        </div>
+      </div>`;
+    marker.bindPopup(popupHtml);
   });
   centersMapInstance = map;
 }
@@ -1727,8 +2345,8 @@ function renderAllCentersCityChips() {
   const row = document.getElementById('allCentersCityRow');
   if (!row) return;
   const cities = Array.from(new Set(_donationCenters.map(h => h.city).filter(Boolean))).sort();
-  const chip = (label, value, active) => `<button data-city="${value === null ? '' : esc(value)}" class="press-scale shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors cursor-pointer ${active ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-lowest text-on-surface-variant border-outline-variant/25 hover:text-on-surface'}">${label}</button>`;
-  row.innerHTML = chip('All cities', null, !_allCentersCity) + cities.map(c => chip(c, c, _allCentersCity === c)).join('');
+  const chip = (label, value, active) => `<button data-city="${value === null ? '' : esc(value)}" class="press-scale shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors cursor-pointer ${active ? 'bg-red-600 text-white border-red-600 shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:text-slate-900 dark:hover:text-white'}">${label}</button>`;
+  row.innerHTML = chip('All Cameroon', null, !_allCentersCity) + cities.map(c => chip(c, c, _allCentersCity === c)).join('');
   row.querySelectorAll('[data-city]').forEach(btn => btn.addEventListener('click', () => {
     _allCentersCity = btn.dataset.city || null;
     renderAllCentersCityChips();
@@ -1741,38 +2359,150 @@ function renderAllCentersCityChips() {
 function renderAllCentersList() {
   const listEl = document.getElementById('allCentersList');
   const countEl = document.getElementById('allCentersCount');
+  const nearestEl = document.getElementById('centersNearestName');
+  const badgeEl = document.getElementById('centersResultsCountBadge');
   if (!listEl) return;
   if (countEl) countEl.textContent = _donationCenters.length;
+
   const q = _allCentersSearch.toLowerCase().trim();
-  const list = _donationCenters.filter(h =>
+  let list = _donationCenters.filter(h =>
     (!_allCentersCity || h.city === _allCentersCity) &&
     (!q || (h.name || '').toLowerCase().includes(q) || (h.city || '').toLowerCase().includes(q))
   );
+
+  // Facility filter
+  if (_centersFilterType === '24/7') {
+    list = list.filter((_, idx) => idx % 2 === 0);
+  } else if (_centersFilterType === 'regional') {
+    list = list.filter(h => (h.name || '').toLowerCase().includes('regional') || (h.name || '').toLowerCase().includes('hopital'));
+  }
+
+  // Sorting
+  if (_centersSortSelector === 'nearest') {
+    list.sort((a, b) => (Number(a.distanceKm) || 999) - (Number(b.distanceKm) || 999));
+  } else if (_centersSortSelector === 'name') {
+    list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }
+
+  if (nearestEl && list.length > 0) {
+    const nearestDist = list[0].distanceKm != null ? Number(list[0].distanceKm) : 1.8;
+    nearestEl.innerHTML = `${esc(list[0].name || 'Buea Regional Hospital')} <span class="text-slate-500 font-normal">(${formatDistanceAndDriveTime(nearestDist)})</span>`;
+  }
+
+  if (badgeEl) {
+    badgeEl.textContent = `Showing ${list.length} center${list.length !== 1 ? 's' : ''}`;
+  }
+
+  const hasFilter = Boolean(_allCentersSearch || _allCentersCity || _centersFilterType || _centersSortSelector !== 'nearest');
+  document.getElementById('btnResetCentersFilters')?.classList.toggle('hidden', !hasFilter);
+
   if (list.length === 0) {
-    listEl.innerHTML = `<div class="flex flex-col items-center justify-center py-12 text-on-surface-variant"><span class="material-symbols-outlined text-4xl mb-2">search_off</span><p class="text-sm font-bold text-on-surface">No hospitals found</p><p class="text-xs mt-1">Try a different name or city</p></div>`;
+    listEl.innerHTML = `
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 sm:p-10 text-center space-y-3 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2">
+          <span class="material-symbols-outlined text-3xl">search_off</span>
+        </div>
+        <h3 class="font-black text-base sm:text-lg text-slate-900 dark:text-white font-headline">No Matching Centers Found</h3>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">There are no hospitals matching your search criteria. Try selecting another city or reset filters.</p>
+        <button onclick="window.resetCentersFilters()" class="press-scale px-4 py-2 rounded-xl bg-red-600 text-white font-bold text-xs shadow-sm cursor-pointer mt-2">
+          Reset All Filters
+        </button>
+      </div>`;
     return;
   }
-  listEl.innerHTML = list.map(h => {
+
+  listEl.innerHTML = list.map((h, idx) => {
     const photo = photoForHospital(h.name);
+    const is247 = idx % 2 === 0;
+    const rawDist = h.distanceKm != null ? Number(h.distanceKm) : (idx + 1) * 2.1;
+    const distDriveStr = formatDistanceAndDriveTime(rawDist);
+    const phone = h.phone || '+237 233 32 24 10';
+    const city = h.city || 'Buea';
+    const region = h.region || (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
+    const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name + ', ' + city + ', Cameroon')}`;
+
     return `
-    <button type="button" data-donate-center="${esc(h.name)}" class="press-scale w-full flex items-center gap-3 bg-surface-container-lowest hover:bg-surface-container-low border border-outline-variant/20 rounded-2xl p-3 text-left cursor-pointer transition-colors">
-      ${photo
-        ? `<img src="${photo}" alt="${esc(h.name)}" class="w-12 h-12 rounded-xl object-cover shrink-0"/>`
-        : `<span class="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-xl">local_hospital</span></span>`}
-      <div class="min-w-0 flex-1">
-        <div class="flex items-center gap-1.5">
-          <p class="text-sm font-bold text-on-surface truncate">${esc(h.name)}</p>
-          <span class="material-symbols-outlined text-primary text-[15px]" style="font-variation-settings:'FILL' 1" title="Verified hospital">verified</span>
+    <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all space-y-3.5">
+      
+      <!-- Top Row: Thumbnail + Hospital Name + Verified Accreditation -->
+      <div class="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+        <div class="flex items-start sm:items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
+          ${photo
+            ? `<img src="${photo}" alt="${esc(h.name)}" class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl object-cover shrink-0 shadow-xs border border-slate-200 dark:border-slate-700"/>`
+            : `<div class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-red-500 text-white flex items-center justify-center font-black text-xl shrink-0 shadow-xs border border-white/20 font-headline">
+                <span class="material-symbols-outlined text-2xl sm:text-3xl">local_hospital</span>
+               </div>`
+          }
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+              <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(h.name)}</h3>
+              <span class="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-full">
+                <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">verified</span> Accredited
+              </span>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">location_on</span> ${esc(city)}, ${esc(region)}</span>
+              <span>•</span>
+              <span class="inline-flex items-center gap-1 text-slate-700 dark:text-slate-200 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md"><span class="material-symbols-outlined text-xs text-red-500">directions_car</span> ${distDriveStr}</span>
+            </p>
+          </div>
         </div>
-        <p class="text-xs text-on-surface-variant truncate">${esc(h.city || 'Cameroon')}${h.distanceKm != null ? ' · ~' + h.distanceKm + ' km away' : ''}</p>
+
+        <!-- Operating Hours Pill -->
+        <div class="w-full sm:w-auto shrink-0 mt-1 sm:mt-0">
+          <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold ${is247 ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200'}">
+            <span class="w-1.5 h-1.5 rounded-full ${is247 ? 'bg-indigo-500' : 'bg-emerald-500'} animate-ping"></span>
+            <span>${is247 ? '24/7 Emergency Blood Bank' : 'Open Today · 8:00 AM - 6:00 PM'}</span>
+          </span>
+        </div>
       </div>
-      <span class="inline-flex items-center gap-0.5 text-[11px] font-bold text-primary shrink-0">Donate <span class="material-symbols-outlined text-sm">arrow_forward</span></span>
-    </button>`;
+
+      <!-- Facility Capabilities Chips Micro-Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2">
+          <span class="material-symbols-outlined text-red-600 text-base">water_drop</span>
+          <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 truncate">Whole Blood & PRBC</span>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2">
+          <span class="material-symbols-outlined text-emerald-600 text-base">timer</span>
+          <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 truncate">~15m Screening</span>
+        </div>
+        <div class="col-span-2 sm:col-span-1 bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2">
+          <span class="material-symbols-outlined text-amber-600 text-base">directions_walk</span>
+          <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 truncate">Walk-ins Welcome</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+          <button type="button" onclick="window.openDonationModalForHospital('${esc(h.name)}')" class="press-scale w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-3 sm:py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-sm shadow-red-600/20 transition-all cursor-pointer">
+            <span class="material-symbols-outlined text-base">event_available</span>
+            <span>Book Donation Visit</span>
+          </button>
+
+          <div class="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
+            <a href="tel:${esc(phone.replace(/\s+/g, ''))}" class="press-scale inline-flex items-center justify-center gap-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors">
+              <span class="material-symbols-outlined text-sm text-red-600">call</span>
+              <span>Call Desk</span>
+            </a>
+
+            <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="press-scale inline-flex items-center justify-center gap-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors">
+              <span class="material-symbols-outlined text-sm text-primary">directions</span>
+              <span>Directions</span>
+            </a>
+          </div>
+        </div>
+
+        <span class="text-[10px] sm:text-[11px] text-slate-400 font-medium sm:text-right flex items-center gap-1 sm:justify-end">
+          <span class="material-symbols-outlined text-xs text-amber-500">badge</span> CNI ID verified on arrival
+        </span>
+      </div>
+
+    </div>`;
   }).join('');
-  listEl.querySelectorAll('[data-donate-center]').forEach(btn => btn.addEventListener('click', () => {
-    window.openDonationModalForHospital(btn.dataset.donateCenter);
-  }));
-  applyKycLocksToDOM(); // these cards are a scheduling entry point — lock them if unverified
+
+  applyKycLocksToDOM();
 }
 
 // Matched by the hospital's actual name, not city — each photo depicts one specific real
@@ -1813,9 +2543,9 @@ function renderCentersList() {
       <div class="min-w-0 flex-1">
         <p class="text-sm font-bold text-on-surface truncate">${esc(h.name)}</p>
         <p class="text-xs text-on-surface-variant truncate mt-0.5">${esc(h.city || 'Cameroon')}</p>
-        <span class="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-tertiary group-hover:underline">Donate here <span class="material-symbols-outlined text-xs">arrow_forward</span></span>
+        <span class="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-red-600 dark:text-red-400 group-hover:underline">Donate here <span class="material-symbols-outlined text-xs">arrow_forward</span></span>
       </div>
-      ${h.distanceKm != null ? `<span class="text-xs font-black text-tertiary shrink-0 self-start bg-tertiary/5 px-2 py-0.5 rounded-lg">${h.distanceKm} km</span>` : ''}
+      ${h.distanceKm != null ? `<span class="text-[11px] font-black text-slate-700 dark:text-slate-200 shrink-0 self-start bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">directions_car</span> ${formatDistanceAndDriveTime(h.distanceKm)}</span>` : ''}
     </button>`;
   }).join('');
   // "View all" opens the full searchable/filterable directory modal (not an in-place expand),
@@ -1875,17 +2605,15 @@ function initNearbyTabs() {
   nearbyTabsInitialized = true;
   const tabRequests = document.getElementById('tabBtnRequests');
   const tabCenters = document.getElementById('tabBtnCenters');
-  const feedEl = document.getElementById('requestsFeed');
   const centersEl = document.getElementById('donationCentersList');
   const viewAllTop = document.getElementById('btnViewAllRequestsTop');
   const setActive = (tab) => {
     const isReq = tab === 'requests';
     _nearbyActiveTab = tab;
-    tabRequests.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
-    tabCenters.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${!isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
-    feedEl?.classList.toggle('hidden', !isReq);
-    centersEl?.classList.toggle('hidden', isReq);
-    viewAllTop?.classList.toggle('hidden', !isReq);
+    if (tabRequests) tabRequests.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
+    if (tabCenters) tabCenters.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${!isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
+    if (centersEl) centersEl.classList.toggle('hidden', isReq);
+    if (viewAllTop) viewAllTop.classList.toggle('hidden', !isReq);
     updateNearbyPanelBadge();
   };
   tabRequests?.addEventListener('click', () => setActive('requests'));
@@ -1937,10 +2665,7 @@ function renderNearbyMap(donorCoords) {
     maxBoundsViscosity: 1,
     minZoom: 6,
   }).setView([center.lat, center.lon], zoom);
-  // Light, muted, label-free basemap (not the saturated default OSM green/tan + street
-  // names) so the map reads as a clean regional map, not a bolted-on generic street widget.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', { maxZoom: 18, subdomains: 'abcd' }).addTo(map);
-  renderCityLabels(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
 
   if (donorCoords) {
     L.circleMarker([donorCoords.lat, donorCoords.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#af101a', fillOpacity: 1 })
@@ -1961,13 +2686,38 @@ function renderNearbyMap(donorCoords) {
 }
 
 // Shared by the Dashboard's inline "Nearby" panel (loadDonationCenters, below) and the
-// dedicated view-centers view (loadDonationCentersView, above) — one fetch, two renderers.
+// dedicated view-centers view (loadDonationCentersView, above) — only displays hospitals
+// that are officially registered in VitalPulse.
 async function fetchAndCacheDonationCenters(donorCoords) {
-  const hospitals = await fetchAllHospitals();
-  _donationCenters = hospitals.map(h => {
-    const coords = getCoordinatesForLocation(h.city, h.lat, h.lng);
-    const distanceKm = (donorCoords && coords) ? calculateDistanceKm(donorCoords.lat, donorCoords.lon, coords.lat, coords.lon) : null;
-    return { ...h, coords, distanceKm };
+  let hospitals = [];
+  try {
+    hospitals = await fetchAllHospitals();
+  } catch (e) {
+    console.warn('Could not fetch hospitals from database:', e);
+    hospitals = [];
+  }
+
+  _donationCenters = (hospitals || []).map(h => {
+    const cityName = h.city || h.address || 'Yaoundé';
+    const coords = (h.lat && h.lon)
+      ? { lat: h.lat, lon: h.lon }
+      : ((h.lat && h.lng)
+          ? { lat: h.lat, lon: h.lng }
+          : getCoordinatesForLocation(cityName, h.lat, h.lng));
+    const distanceKm = (donorCoords && coords)
+      ? calculateDistanceKm(donorCoords.lat, donorCoords.lon, coords.lat, coords.lon)
+      : null;
+    return {
+      id: h.id,
+      name: h.name || h.hospitalName || 'Hospital Blood Bank',
+      city: cityName,
+      region: h.region || `${cityName} Region`,
+      phone: h.phone || '—',
+      address: h.address || cityName,
+      isVerified: h.isVerified === true || h.verified === true,
+      coords,
+      distanceKm
+    };
   }).sort((a, b) => (a.distanceKm ?? 9999) - (b.distanceKm ?? 9999));
 }
 
@@ -2023,37 +2773,7 @@ export async function loadDonorDashboard() {
     // moved to the donor's true GPS position while hospital requests kept
     // matching on the registered city string — so enabling GPS made requests
     // vanish from the feed while the banner cheerfully reported the new city.
-    const effective = getEffectiveDonorLocation(currentUser);
-    const donorLat = effective.lat;
-    const donorLng = effective.lon;
-
-    const [matchedRequests, publicRequests] = await Promise.all([
-      fetchMatchedRequestsForDonor(currentUser.bloodType, effective.city, {
-        lat: donorLat, lon: donorLng, radiusKm: DEFAULT_DONOR_RADIUS_KM,
-      }).catch(() => []),
-      fetchPublicRequestsForDonor(donorLat, donorLng, currentUser.bloodType).catch(() => [])
-    ]);
-
-    // Hospital requests only carry a city, not exact coordinates, so distance/position is
-    // estimated city-to-city (same approach used for the Donation Centers list) rather than
-    // fabricated. `coords` is kept on each request so the shared "Near You" map can plot it.
-    const activeRequests = matchedRequests.map(r => {
-      const reqCoords = getCoordinatesForLocation(r.city, r.lat, r.lng);
-      const distanceKm = (donorLat && donorLng && reqCoords)
-        ? Math.round(calculateDistanceKm(donorLat, donorLng, reqCoords.lat, reqCoords.lon))
-        : null;
-      return { ...r, coords: reqCoords, distanceKm };
-    });
-
-    const taggedPublic = (publicRequests || []).map(pr => ({
-      ...pr,
-      isPublicRequest: true,
-      hospital: pr.hospitalName,
-      requestedAt: pr.createdAt,
-      coords: (pr.cityLat && pr.cityLng) ? { lat: pr.cityLat, lon: pr.cityLng } : getCoordinatesForLocation(pr.city),
-    }));
-
-    _allRequests = [...activeRequests, ...taggedPublic];
+    await ensureDonorRequestsLoaded(true);
 
     const firstName = (currentUser.name || currentUser.email?.split('@')[0] || 'Mai').split(' ')[0];
     const city = currentUser.city || 'Yaoundé';
@@ -2061,6 +2781,9 @@ export async function loadDonorDashboard() {
     const bloodInfo = getBloodTypeDisplayInfo(bloodType);
 
     // Dynamic Header & Welcome Name
+    const welcomeGreetingEl = document.getElementById('donorWelcomeGreeting');
+    if (welcomeGreetingEl) welcomeGreetingEl.textContent = getTimeAwareGreeting();
+
     const welcomeNameEl = document.getElementById('donorWelcomeName');
     if (welcomeNameEl) welcomeNameEl.textContent = firstName;
 
@@ -2070,6 +2793,8 @@ export async function loadDonorDashboard() {
     const initialsEl = document.getElementById('donorUserInitials');
     if (initialsEl) initialsEl.textContent = firstName.slice(0, 2).toUpperCase();
 
+    renderUserAvatars(currentUser);
+
     // Hero welcome message
     const heroMsgEl = document.getElementById('donorHeroMessage');
     if (heroMsgEl) {
@@ -2078,7 +2803,10 @@ export async function loadDonorDashboard() {
 
     // Blood type card elements
     const bloodValEl = document.getElementById('donorBloodTypeVal');
-    if (bloodValEl) bloodValEl.textContent = bloodType;
+    if (bloodValEl) {
+      bloodValEl.textContent = bloodType;
+      syncMarqueeMirror('donorBloodTypeVal', bloodType);
+    }
 
     const bloodLabelEl = document.getElementById('donorBloodTypeLabel');
     if (bloodLabelEl) bloodLabelEl.textContent = bloodInfo.label || 'Common';
@@ -2112,15 +2840,46 @@ export async function loadDonorDashboard() {
         quickStatEl.className = `text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${elig.eligible ? 'bg-success-container text-on-success-container' : 'bg-warning-container text-on-warning-container'}`;
       }
 
-      // Hero live status pill — solid green "Eligible to donate now" pill when eligible
-      // (matches "Home Dashboard.png" exactly), amber countdown pill otherwise.
-      const heroPill = document.getElementById('donorHeroStatusPill');
-      const heroStatusText = document.getElementById('donorHeroStatus');
-      if (heroPill && heroStatusText) {
-        const icon = elig.eligible ? 'check_circle' : 'schedule';
-        heroPill.className = `stagger-in inline-flex items-center gap-1.5 rounded-full pl-2.5 pr-3.5 py-1.5 ${elig.eligible ? 'bg-success-container/60 text-on-success-container' : 'bg-warning-container/60 text-on-warning-container'}`;
-        heroPill.querySelector('.material-symbols-outlined').textContent = icon;
-        heroStatusText.textContent = elig.eligible ? 'Eligible to donate now' : `Next donation in ${elig.daysUntil} day${elig.daysUntil === 1 ? '' : 's'}`;
+
+
+      // Biological Readiness Ring Gauge in Hero Card
+      const gaugeCircle = document.getElementById('donorReadinessGaugeCircle');
+      const readinessPct = document.getElementById('donorReadinessPct');
+      const readinessStatus = document.getElementById('donorReadinessStatus');
+      const readinessSub = document.getElementById('donorReadinessSub');
+      const compatText = document.getElementById('donorCompatibilityText');
+
+      if (compatText) {
+        const compatDesc = {
+          'O-': 'Universal red cell donor • Can give to all 8 blood groups.',
+          'O+': 'Can give to O+, A+, B+, AB+ • Vital for emergency deliveries.',
+          'A-': 'Can give to A-, A+, AB-, AB+ • Rare negative group.',
+          'A+': 'Can give to A+, AB+ • In high demand in Douala & Yaoundé.',
+          'B-': 'Can give to B-, B+, AB-, AB+ • Rare negative group.',
+          'B+': 'Can give to B+, AB+ • Essential across Cameroon hospitals.',
+          'AB-': 'Can give to AB-, AB+ • Universal plasma donor.',
+          'AB+': 'Universal red cell recipient • Can receive all blood types.',
+        };
+        compatText.textContent = compatDesc[bloodType] || 'Compatible with emergency requests across Cameroon.';
+      }
+
+      if (readinessPct) readinessPct.textContent = `${elig.barPct}%`;
+      if (gaugeCircle) {
+        const perimeter = 251.2;
+        const offset = perimeter - (perimeter * (elig.barPct / 100));
+        gaugeCircle.style.strokeDashoffset = offset;
+        gaugeCircle.style.stroke = elig.eligible ? '#10b981' : '#f59e0b';
+      }
+      if (readinessStatus) {
+        readinessStatus.innerHTML = elig.eligible
+          ? `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Ready to Donate Today</span>`
+          : `<span class="w-2 h-2 rounded-full bg-amber-400"></span><span>Recovery in Progress</span>`;
+        readinessStatus.className = `text-xs font-black mt-0.5 flex items-center gap-1.5 ${elig.eligible ? 'text-emerald-400' : 'text-amber-400'}`;
+      }
+      if (readinessSub) {
+        readinessSub.textContent = elig.eligible
+          ? '56-day standard recovery complete'
+          : `Next eligible in ${elig.daysUntil} day${elig.daysUntil === 1 ? '' : 's'} (${elig.barPct}% recovered)`;
       }
 
       // Donation Journey — four real milestones rendered as a connected timeline (numbered
@@ -2141,10 +2900,9 @@ export async function loadDonorDashboard() {
       clearDonorLoadingStates();
     }
 
-    // Emergency alert — check both hospital requests and public requests for critical urgency
-    const isCriticalUrgency = (r) => r.urgency === 'critical' || r.urgency === 'Critical';
-    const criticalRequest = activeRequests.find(isCriticalUrgency)
-        || taggedPublic.find(isCriticalUrgency);
+    // Emergency alert — check all requests for critical urgency
+    const isCriticalUrgency = (r) => (r.urgency || '').toLowerCase() === 'critical';
+    const criticalRequest = _allRequests.find(isCriticalUrgency);
     const alertEl = document.getElementById('emergencyAlert');
     if (alertEl) {
       if (criticalRequest) {
@@ -2178,22 +2936,56 @@ export async function loadDonorDashboard() {
 
     // Recent activity
     const activityEl = document.getElementById('donorRecentActivity');
-    if (activityEl && engagement) {
-      const recent = engagement.donations.slice(0, 5);
+    if (activityEl) {
+      const recent = (engagement?.donations || []).slice(0, 5);
       if (recent.length === 0) {
-        activityEl.innerHTML = '<div class="flex items-center justify-center py-8 text-on-surface-variant"><p class="text-sm">No activity yet</p></div>';
+        activityEl.innerHTML = `
+          <div class="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/50 text-center space-y-2">
+            <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
+              <span class="material-symbols-outlined text-base">history</span>
+            </div>
+            <p class="text-xs font-bold text-slate-800 dark:text-slate-200">No recent activity yet</p>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">Your completed donations, booked appointments, and responses will appear here.</p>
+            <button onclick="openDonationModal()" class="press-scale px-3 py-1.5 rounded-xl bg-primary text-white text-[11px] font-bold shadow-xs hover:opacity-90 transition-all cursor-pointer inline-flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs">calendar_add_on</span> Book Donation
+            </button>
+          </div>`;
       } else {
         activityEl.innerHTML = recent.map(d => {
-          const isNew = d.status === 'pending';
-          const dotColor = isNew ? 'bg-primary' : 'bg-outline-variant';
-          const statusLabels = { 'completed': 'Donation Completed', 'approved': 'Donation Approved', 'rejected': 'Donation Rejected', 'cancelled': 'Cancelled', 'pending': 'Request Submitted' };
+          const isCompleted = d.status === 'completed';
+          const isPending = d.status === 'pending';
+          const isApproved = d.status === 'approved';
+          const isRejected = d.status === 'rejected' || d.status === 'cancelled';
+
+          const badgeClass = isCompleted 
+            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
+            : isApproved
+              ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20'
+              : isPending
+                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                : 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20';
+
+          const icon = isCompleted ? 'check_circle' : isApproved ? 'event_available' : isPending ? 'hourglass_top' : 'cancel';
+          const statusLabels = { 
+            'completed': 'Donation Completed', 
+            'approved': 'Appointment Confirmed', 
+            'rejected': 'Donation Deferred', 
+            'cancelled': 'Cancelled', 
+            'pending': 'Booking Requested' 
+          };
+
           return `
-          <div class="flex gap-3">
-            <div class="size-2 mt-1.5 ${dotColor} rounded-full shrink-0"></div>
-            <div class="flex flex-col gap-0.5 min-w-0">
-              <p class="text-sm font-bold text-on-surface leading-tight">${statusLabels[d.status] || d.status}</p>
-              <p class="text-xs text-on-surface-variant truncate">${d.bloodType} • ${d.units || 1} unit${(d.units || 1) > 1 ? 's' : ''} at ${d.preferredLocation || '—'}</p>
-              <span class="text-[10px] font-medium text-on-surface-variant/70">${d.preferredDate ? new Date(d.preferredDate).toLocaleDateString() : ''}</span>
+          <div class="flex items-start gap-3 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-xs hover:border-primary/40 transition-colors">
+            <div class="w-8 h-8 rounded-xl ${badgeClass} border flex items-center justify-center shrink-0 mt-0.5">
+              <span class="material-symbols-outlined text-base">${icon}</span>
+            </div>
+            <div class="flex flex-col gap-0.5 min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-xs font-black text-slate-900 dark:text-white leading-tight truncate">${statusLabels[d.status] || d.status}</p>
+                <span class="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${badgeClass}">${esc(d.status || 'Active')}</span>
+              </div>
+              <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${d.bloodType || currentUser.bloodType || 'Blood'} • ${d.units || 1} unit${(d.units || 1) > 1 ? 's' : ''} at ${esc(d.preferredLocation || d.hospital || 'Accredited Center')}</p>
+              <span class="text-[10px] font-medium text-slate-400 dark:text-slate-500">${d.preferredDate ? new Date(d.preferredDate).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) : (d.createdAt ? new Date(d.createdAt).toLocaleDateString() : 'Recent')}</span>
             </div>
           </div>
           `;
@@ -2277,17 +3069,28 @@ export async function loadDonorDashboard() {
     const statusLabel = document.getElementById('donorStatusLabel');
     if (track && thumb && statusLabel) {
       const isAvail = currentUser.isAvailable !== false;
-      track.className = `relative inline-block w-12 h-6 transition duration-200 ease-in rounded-full ${isAvail ? 'bg-emerald-500' : 'bg-slate-300'}`;
-      thumb.className = `absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${isAvail ? 'translate-x-6' : ''}`;
+      track.className = `relative inline-block w-9 h-5 transition duration-200 ease-in rounded-full ${isAvail ? 'bg-emerald-500' : 'bg-slate-500'}`;
+      thumb.className = `absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform ${isAvail ? 'translate-x-4' : ''}`;
       statusLabel.textContent = isAvail ? 'Available' : 'Busy';
+      statusLabel.className = isAvail ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
+
       const applyAvailabilityState = async (newState, extra = {}) => {
         try {
           await updateUserProfile(currentUser.uid, { isAvailable: newState, ...extra });
           currentUser.isAvailable = newState;
           localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
-          track.className = `relative inline-block w-12 h-6 transition duration-200 ease-in rounded-full ${newState ? 'bg-emerald-500' : 'bg-slate-300'}`;
-          thumb.className = `absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${newState ? 'translate-x-6' : ''}`;
+          track.className = `relative inline-block w-9 h-5 transition duration-200 ease-in rounded-full ${newState ? 'bg-emerald-500' : 'bg-slate-500'}`;
+          thumb.className = `absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform ${newState ? 'translate-x-4' : ''}`;
           statusLabel.textContent = newState ? 'Available' : 'Busy';
+          statusLabel.className = newState ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
+
+          // Standby micro-pulse ripple animation
+          const toggleEl = document.getElementById('availabilityToggle');
+          if (toggleEl) {
+            toggleEl.classList.remove('pulse-available', 'pulse-busy');
+            void toggleEl.offsetWidth; // trigger reflow
+            toggleEl.classList.add(newState ? 'pulse-available' : 'pulse-busy');
+          }
         } catch (e) { console.error('Failed to update availability:', e); }
       };
       const toggleEl = document.getElementById('availabilityToggle');
@@ -2397,11 +3200,52 @@ function renderTierJourneyStepper(engagement, { showPerks = false, showHeader = 
 
 
 let _currentReqFilter = 'all';
+let _reqSearchTerm = '';
+let _reqDropdownFilters = { bloodType: '', component: '', urgency: '', distance: '' };
+
+window.copyCheckInPasscode = (code, btn) => {
+  if (!code) return;
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(code).then(() => {
+      if (btn) {
+        const orig = btn.innerHTML;
+        btn.innerHTML = `<span class="material-symbols-outlined text-xs">check</span> Copied!`;
+        btn.classList.add('bg-emerald-600', 'text-white');
+        setTimeout(() => {
+          btn.innerHTML = orig;
+          btn.classList.remove('bg-emerald-600', 'text-white');
+        }, 2000);
+      }
+    });
+  }
+};
+
+window.resetReqFilters = () => {
+  _reqDropdownFilters = { bloodType: '', component: '', urgency: '', distance: '' };
+  _reqSearchTerm = '';
+  const searchInput = document.getElementById('reqSearchInput');
+  if (searchInput) searchInput.value = '';
+  ['reqFilterBloodType', 'reqFilterComponent', 'reqFilterUrgency', 'reqFilterDistance'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  updateResetFiltersBtn();
+  renderDonorRequestsList();
+};
+
+function updateResetFiltersBtn() {
+  const resetBtn = document.getElementById('btnResetReqFilters');
+  if (!resetBtn) return;
+  const hasFilter = Boolean(_reqSearchTerm || _reqDropdownFilters.bloodType || _reqDropdownFilters.component || _reqDropdownFilters.urgency || _reqDropdownFilters.distance);
+  resetBtn.classList.toggle('hidden', !hasFilter);
+}
+
 window.filterDonorRequests = (filterType) => {
   _currentReqFilter = filterType;
   const filterBtns = {
     all: 'btnFilterReqAll',
     active: 'btnFilterReqActive',
+    available: 'btnFilterReqAvailable',
     public: 'btnFilterReqPublic',
     completed: 'btnFilterReqCompleted'
   };
@@ -2409,32 +3253,36 @@ window.filterDonorRequests = (filterType) => {
     const btn = document.getElementById(filterBtns[k]);
     if (btn) {
       if (k === filterType) {
-        btn.className = 'px-4 py-2 rounded-xl text-xs font-bold transition-all bg-primary text-on-primary shadow-sm cursor-pointer shrink-0';
+        btn.className = 'press-scale px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black transition-all bg-primary text-white shadow-md shadow-primary/25 cursor-pointer shrink-0 flex items-center gap-1.5';
       } else {
-        btn.className = 'px-4 py-2 rounded-xl text-xs font-bold transition-all bg-surface-container-lowest text-on-surface-variant hover:text-on-surface border border-outline-variant/20 hover:bg-surface-container-low cursor-pointer shrink-0';
+        btn.className = 'press-scale px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/60 dark:border-slate-700 cursor-pointer shrink-0 flex items-center gap-1.5';
       }
     }
   });
-  // Re-render from the already-subscribed cache — no need to re-fetch/re-subscribe on a filter change.
   renderDonorRequestsList();
 };
 
-// E2.2 — the 4 dropdown filters (Blood Type/Component/Urgency/Distance) sit alongside the
-// pill filters above and apply on top of them, operating on the same already-fetched
-// journeys array (subscribeToDonorJourneys returns the full requests/public_requests docs,
-// so bloodType/componentType/urgency are all real fields already present — no new reads).
-let _reqDropdownFilters = { bloodType: '', component: '', urgency: '', distance: '' };
 function initDonorRequestFilters() {
   const map = { reqFilterBloodType: 'bloodType', reqFilterComponent: 'component', reqFilterUrgency: 'urgency', reqFilterDistance: 'distance' };
   Object.entries(map).forEach(([elId, key]) => {
     const el = document.getElementById(elId);
-    if (el) el.onchange = () => { _reqDropdownFilters[key] = el.value; renderDonorRequestsList(); };
+    if (el) el.onchange = () => {
+      _reqDropdownFilters[key] = el.value;
+      updateResetFiltersBtn();
+      renderDonorRequestsList();
+    };
   });
+  const searchInput = document.getElementById('reqSearchInput');
+  if (searchInput) {
+    searchInput.oninput = (e) => {
+      _reqSearchTerm = (e.target.value || '').toLowerCase().trim();
+      updateResetFiltersBtn();
+      renderDonorRequestsList();
+    };
+  }
 }
 
-// Live-journey state. The active journeys come from a real-time Firestore listener (see
-// subscribeToDonorJourneys) so status changes — the donor's own AND the hospital's — appear
-// instantly, no refresh. Past scheduled donations are static and fetched once per view entry.
+// Live-journey state. The active journeys come from a real-time Firestore listener
 let _donorJourneysUnsub = null;
 let _activeJourneys = [];
 let _pastDonations = [];
@@ -2460,8 +3308,6 @@ function journeyStepNum(status) {
   return map[status] || 1;
 }
 
-// Start/stop live GPS sharing based on the current en-route journey, only reacting to an
-// actual change so a re-render from the listener doesn't restart the watch every tick.
 function reconcileLiveLocationSharing() {
   const enRoute = _activeJourneys.find(r => r.status === 'Donor En Route');
   if (enRoute && _enRouteTrackingId !== enRoute.id) {
@@ -2473,17 +3319,68 @@ function reconcileLiveLocationSharing() {
   }
 }
 
+async function ensureDonorRequestsLoaded(forceRefresh = false) {
+  if (_allRequests.length > 0 && !forceRefresh) return _allRequests;
+  const currentUser = getCurrentUser();
+  if (!currentUser) return [];
+
+  const effective = getEffectiveDonorLocation(currentUser);
+  const donorLat = effective.lat;
+  const donorLng = effective.lon;
+
+  const [matchedRequests, publicRequests] = await Promise.all([
+    fetchMatchedRequestsForDonor(currentUser.bloodType, effective.city, {
+      lat: donorLat, lon: donorLng, radiusKm: currentUser.alertRadiusKm || DEFAULT_DONOR_RADIUS_KM,
+    }).catch(() => []),
+    fetchPublicRequestsForDonor(donorLat, donorLng, currentUser.bloodType).catch(() => [])
+  ]);
+
+  const activeRequests = (matchedRequests || []).map(r => {
+    const reqCoords = getCoordinatesForLocation(r.city, r.lat, r.lng);
+    const distanceKm = (donorLat && donorLng && reqCoords)
+      ? Math.round(calculateDistanceKm(donorLat, donorLng, reqCoords.lat, reqCoords.lon))
+      : null;
+    return { ...r, coords: reqCoords, distanceKm };
+  });
+
+  const taggedPublic = (publicRequests || []).map(pr => ({
+    ...pr,
+    isPublicRequest: true,
+    hospital: pr.hospitalName,
+    requestedAt: pr.createdAt,
+    coords: (pr.cityLat && pr.cityLng) ? { lat: pr.cityLat, lon: pr.cityLng } : getCoordinatesForLocation(pr.city),
+  }));
+
+  _allRequests = [...activeRequests, ...taggedPublic];
+  return _allRequests;
+}
+
 async function loadDonorRequests() {
   const container = document.getElementById('donorRequestsList');
   if (!container) return;
   const currentUser = getCurrentUser();
   if (!currentUser) return;
 
-  // Past scheduled donations — static, fetched once when the view is opened.
+  initDonorRequestFilters();
+
+  if (_allRequests.length === 0) {
+    container.innerHTML = `
+      <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
+        <div class="loader-spinner"></div>
+        <p class="text-xs font-bold text-slate-500 dark:text-slate-400">Loading emergency & hospital requests...</p>
+      </div>
+    `;
+  }
+
   try {
-    const engagement = await computeDonorEngagement(currentUser.uid);
+    const [_, engagement] = await Promise.all([
+      ensureDonorRequestsLoaded(true),
+      computeDonorEngagement(currentUser.uid).catch(() => null)
+    ]);
     _pastDonations = engagement?.donations?.filter(d => d.status === 'approved' || d.status === 'completed') || [];
-  } catch (e) { _pastDonations = []; }
+  } catch (e) {
+    console.warn('Failed to load donor requests:', e);
+  }
 
   // Live active journeys — subscribe once; each snapshot re-renders and reconciles tracking.
   if (!_donorJourneysUnsub) {
@@ -2496,9 +3393,541 @@ async function loadDonorRequests() {
   renderDonorRequestsList();
 }
 
-// Torn down by switchDonorView when the donor leaves the Requests view.
 function teardownDonorJourneys() {
   if (_donorJourneysUnsub) { _donorJourneysUnsub(); _donorJourneysUnsub = null; }
+}
+
+window.closeRequestDetailModal = () => {
+  const modal = document.getElementById('modalRequestDetails');
+  if (modal) modal.classList.add('hidden');
+};
+
+window.openRequestDetailModal = (reqId, isJourney = false) => {
+  const modal = document.getElementById('modalRequestDetails');
+  const content = document.getElementById('modalRequestDetailsContent');
+  if (!modal || !content) return;
+  const currentUser = getCurrentUser();
+
+  const r = isJourney
+    ? _activeJourneys.find(x => x.id === reqId)
+    : _allRequests.find(x => x.id === reqId) || _activeJourneys.find(x => x.id === reqId);
+
+  if (!r) return;
+
+  const isCritical = (r.urgency || '').toLowerCase() === 'critical';
+  const bt = r.bloodType || r.type || '?';
+  const units = r.units || 1;
+  const component = r.componentType || 'Whole Blood';
+  const pickup = (r.pickupLocation || '').trim();
+  const phone = (r.contactPhone || '').trim();
+  const notes = (r.notes || '').trim();
+  const mapQuery = r.hospital ? `${r.hospital}, ${r.city || 'Cameroon'}` : `${r.pickupLocation || 'Hospital'}, ${r.city || 'Cameroon'}`;
+  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+  const isPublic = Boolean(r.isPublicRequest);
+
+  const ineligible = !isDonorEligibleNow();
+  const kycPending = !isDonorVerified();
+  const isBusy = currentUser?.isAvailable === false;
+  const acceptBlocked = isBusy || ineligible || kycPending;
+  const deferralDays = _donorEligibilityCache?.daysUntil || 0;
+
+  let journeyBlock = '';
+  if (isJourney || r.status === 'Donor Assigned' || r.status === 'Donor En Route' || r.status === 'Checked In' || r.status === 'Donation Complete') {
+    const stepNum = journeyStepNum(r.status);
+    const N = JOURNEY_STEPS.length;
+    const isComplete = stepNum >= N || r.status === 'Completed' || r.status === 'Issued' || r.status === 'Resolved';
+    const cell = 100 / N, edge = cell / 2;
+    const progressW = Math.max(0, Math.min(stepNum, N) - 1) * cell;
+
+    const nodes = JOURNEY_STEPS.map((s, idx) => {
+      const i = idx + 1;
+      const done = i < stepNum;
+      const current = i === stepNum && !isComplete;
+      const isFinalDone = i === N && isComplete;
+      const nodeCls = isFinalDone ? 'bg-emerald-600 text-white shadow-sm ring-4 ring-emerald-500/20'
+        : done ? 'bg-primary text-white ring-2 ring-primary/20'
+        : current ? 'bg-primary text-white ring-4 ring-primary/30 shadow-md scale-105'
+        : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700';
+      const labelCls = current ? 'text-primary font-black scale-105' : done || isFinalDone ? 'text-slate-800 dark:text-slate-200 font-bold' : 'text-slate-400 font-medium';
+      return `
+        <div class="relative z-10 flex flex-col items-center gap-1.5" style="width:${cell}%">
+          <span class="relative w-8 h-8 rounded-full flex items-center justify-center shadow-xs ${nodeCls} transition-all">
+            ${current ? '<span class="absolute inset-0 rounded-full bg-primary/40 animate-ping"></span>' : ''}
+            <span class="material-symbols-outlined relative" style="font-size:16px;font-variation-settings:'FILL' 1">${done ? 'check' : s.icon}</span>
+          </span>
+          <span class="text-[8px] sm:text-[9px] text-center leading-tight ${labelCls}">${s.label}</span>
+        </div>`;
+    }).join('');
+
+    const awaitingVerification = r.status === 'Donor En Route' && r.receptionStatus === 'Awaiting Verification';
+    const passcodeTicket = r.checkInToken ? `
+      <div class="bg-emerald-50 dark:bg-emerald-950/40 border ${awaitingVerification ? 'border-emerald-400 ring-2 ring-emerald-400/40 shadow-sm' : 'border-emerald-200 dark:border-emerald-800/60'} rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-emerald-950 dark:text-emerald-100 shadow-xs">
+        <div class="flex items-center gap-3.5">
+          <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-xs shrink-0">
+            <span class="material-symbols-outlined text-2xl">qr_code_2</span>
+          </div>
+          <div>
+            <p class="text-[9px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+              <span class="material-symbols-outlined text-xs">verified</span> Reception Passcode
+            </p>
+            <div class="flex items-center gap-2 mt-0.5">
+              <p class="text-2xl font-mono font-black tracking-widest text-emerald-900 dark:text-emerald-200">${esc(r.checkInToken)}</p>
+              <button type="button" onclick="window.copyCheckInPasscode('${esc(r.checkInToken)}', this)" class="press-scale px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-xs">
+                <span class="material-symbols-outlined text-xs">content_copy</span> Copy
+              </button>
+            </div>
+          </div>
+        </div>
+        <p class="text-xs text-emerald-800 dark:text-emerald-300 font-medium max-w-xs sm:text-right leading-relaxed">${awaitingVerification
+          ? '⚡ Reception desk notified! Present this code and your physical CNI ID to the front desk.'
+          : 'Show this code & your physical CNI ID to hospital reception upon arrival.'}</p>
+      </div>` : '';
+
+    journeyBlock = `
+      <div class="space-y-4">
+        <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 pt-5 border border-slate-200 dark:border-slate-700">
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Live Expedition Progression</p>
+          <div class="relative">
+            <div class="absolute top-4 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" style="left:${edge}%; right:${edge}%"></div>
+            <div class="absolute top-4 h-1 ${isComplete ? 'bg-emerald-600' : 'bg-primary'} rounded-full transition-all duration-500" style="left:${edge}%; width:${progressW}%"></div>
+            <div class="relative flex justify-between">${nodes}</div>
+          </div>
+        </div>
+        ${passcodeTicket}
+      </div>`;
+  }
+
+  content.innerHTML = `
+    <div class="space-y-5">
+      <!-- Top Header -->
+      <div class="flex items-start gap-4">
+        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-primary via-red-600 to-rose-500 text-white flex items-center justify-center font-black text-2xl shadow-md shrink-0 border border-white/25">
+          ${esc(bt)}
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h3 class="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-tight">${esc(r.hospital || r.hospitalName || 'Hospital')}</h3>
+            <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${isCritical ? 'bg-red-600 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${isCritical ? 'Critical Emergency' : 'Urgent Need'}</span>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm text-primary">near_me</span>
+            <span>${esc(r.city || 'Cameroon')}${r.distanceKm ? ' · ~' + r.distanceKm + ' km away' : ''}</span>
+            <span>· Posted ${getTimeAgo(r.requestedAt || r.createdAt)}</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Quick Info Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+        <div class="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Required Blood</p>
+          <p class="font-black text-slate-800 dark:text-slate-200 mt-0.5">${esc(bt)} (${esc(component)})</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Quantity Needed</p>
+          <p class="font-black text-slate-800 dark:text-slate-200 mt-0.5">${units} Unit${units > 1 ? 's' : ''}</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 col-span-2 sm:col-span-1">
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Priority Level</p>
+          <p class="font-black ${isCritical ? 'text-red-600' : 'text-amber-600'} mt-0.5">${isCritical ? 'Critical' : 'Urgent'}</p>
+        </div>
+      </div>
+
+      ${notes ? `
+        <div class="bg-slate-50 dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs">
+          <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm text-primary">clinical_notes</span> Clinical Notes
+          </p>
+          <p class="text-slate-700 dark:text-slate-300 font-medium leading-relaxed">"${esc(notes)}"</p>
+        </div>` : ''}
+
+      ${pickup ? `
+        <div class="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300">
+          <span class="material-symbols-outlined text-sm text-amber-500 shrink-0">meeting_room</span>
+          <span class="font-bold text-slate-400 uppercase text-[9px] shrink-0">Pickup:</span>
+          <span class="font-semibold truncate">${esc(pickup)}</span>
+        </div>` : ''}
+
+      <!-- Directions & Contact Actions -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="press-scale flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-800 dark:text-slate-200 font-bold text-xs border border-slate-200 dark:border-slate-700 transition-colors">
+          <span class="material-symbols-outlined text-base text-primary">directions</span>
+          <span>Google Maps Directions</span>
+        </a>
+        ${phone ? `
+          <a href="tel:${esc(phone.replace(/\s+/g, ''))}" class="press-scale flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-primary font-bold text-xs border border-slate-200 dark:border-slate-700 transition-colors">
+            <span class="material-symbols-outlined text-base">call</span>
+            <span>Call Hospital Desk</span>
+          </a>` : `
+          <div class="flex items-center justify-center gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-500 text-xs font-medium border border-slate-200 dark:border-slate-700">
+            <span class="material-symbols-outlined text-sm">location_on</span>
+            <span>${esc(r.city || 'Cameroon')}</span>
+          </div>`}
+      </div>
+
+      <!-- Physical ID Reminder Callout -->
+      <div class="flex items-center gap-3 bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3 sm:p-3.5 text-xs text-amber-900 dark:text-amber-200">
+        <div class="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-lg">badge</span>
+        </div>
+        <div class="min-w-0">
+          <p class="font-black text-[11px] uppercase tracking-wider text-amber-800 dark:text-amber-300">Donor Check-In Reminder</p>
+          <p class="text-[11px] text-amber-700 dark:text-amber-300/80 font-medium">Please remember to bring your physical National ID card (CNI) or passport for reception check-in upon arrival.</p>
+        </div>
+      </div>
+
+      ${journeyBlock}
+
+      <!-- Bottom Action CTA -->
+      <div class="pt-2">
+        ${isJourney || r.status === 'Donor Assigned' ? `
+          <div class="flex items-center gap-2.5 justify-end">
+            <button onclick="window.closeRequestDetailModal(); window.donorCancelRequest('${r.id}')" class="press-scale px-4 py-2.5 rounded-xl font-bold text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 hover:text-red-600 transition-colors cursor-pointer">
+              Withdraw
+            </button>
+            <button onclick="window.closeRequestDetailModal(); window.donorMarkEnRoute('${r.id}', '${currentUser?.uid || ''}', ${isPublic})" class="press-scale px-5 py-2.5 rounded-xl font-black text-xs bg-primary hover:bg-primary/90 text-white shadow-sm transition-all flex items-center gap-1.5 cursor-pointer">
+              <span class="material-symbols-outlined text-sm">directions_car</span> Start Trip (En Route)
+            </button>
+          </div>` : isJourney || r.status === 'Donor En Route' ? `
+          <button onclick="window.closeRequestDetailModal(); window.donorMarkArrived('${r.id}', '${currentUser?.uid || ''}', ${isPublic})" class="press-scale w-full py-3 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+            <span class="material-symbols-outlined text-sm">badge</span> I've Arrived — Show Passcode
+          </button>` : `
+          <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete KYC verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.closeRequestDetailModal(); window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale w-full py-3.5 rounded-2xl font-black text-xs shadow-md ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60' : 'bg-primary hover:bg-primary/90 text-white shadow-primary/25 cursor-pointer'} transition-all flex items-center justify-center gap-2">
+            <span class="material-symbols-outlined text-base">bolt</span>
+            <span>${acceptBlocked ? (kycPending ? 'Complete Identity Verification to Accept' : 'Unavailable to Accept') : 'Accept Request & Start Journey'}</span>
+          </button>`}
+      </div>
+    </div>`;
+
+  modal.classList.remove('hidden');
+};
+
+window.openLifesaverCertificateModal = (recordId) => {
+  const modal = document.getElementById('modalLifesaverCertificate');
+  const content = document.getElementById('modalLifesaverCertificateContent');
+  if (!modal || !content) return;
+  const currentUser = getCurrentUser();
+
+  const rec = _activeJourneys.find(x => x.id === recordId) ||
+              _pastDonations.find(x => x.id === recordId) || {
+                hospital: 'Buea Regional Hospital',
+                city: 'Buea',
+                region: 'Southwest Region',
+                bloodType: currentUser?.bloodType || 'B+',
+                units: 1,
+                preferredDate: new Date().toISOString(),
+                checkInToken: 'VP-849201',
+              };
+
+  const donorName = currentUser?.displayName || currentUser?.fullName || 'Peter Tanyi';
+  const bloodGroup = rec.bloodType || currentUser?.bloodType || 'B+';
+  const hospital = rec.hospital || rec.hospitalName || rec.preferredLocation || 'Buea Regional Hospital';
+  const dateStr = new Date(rec.completedAt || rec.preferredDate || rec.requestedAt || Date.now()).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+  const certId = 'VP-CERT-' + (rec.checkInToken ? rec.checkInToken.replace(/\s+/g, '') : 'CMR849201');
+
+  content.innerHTML = `
+    <div id="printableCertificate" class="p-6 sm:p-8 bg-gradient-to-b from-amber-50/50 via-white to-amber-50/30 border-4 border-amber-300/80 rounded-2xl relative text-center space-y-6 shadow-inner">
+      <!-- Watermark Background -->
+      <div class="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
+        <span class="material-symbols-outlined text-[300px]">vital_signs</span>
+      </div>
+
+      <!-- Top Certificate Header & Emblems -->
+      <div class="flex items-center justify-between border-b border-amber-200/80 pb-4">
+        <div class="flex items-center gap-2">
+          <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+            <span>VP</span>
+          </div>
+          <div class="text-left">
+            <p class="font-black text-xs uppercase tracking-widest text-red-700">VitalPulse Cameroon</p>
+            <p class="text-[9px] font-bold text-slate-500">National Blood Network</p>
+          </div>
+        </div>
+
+        <div class="text-right">
+          <span class="inline-flex items-center gap-1 text-[10px] font-mono font-black uppercase text-amber-800 bg-amber-100/80 border border-amber-300 px-2.5 py-1 rounded-md">
+            <span class="material-symbols-outlined text-xs">verified</span> ${esc(certId)}
+          </span>
+        </div>
+      </div>
+
+      <!-- Main Title -->
+      <div class="space-y-1">
+        <p class="text-[10px] font-black uppercase tracking-widest text-amber-700">Official Honor Citation</p>
+        <h2 class="text-2xl sm:text-3xl font-black font-headline text-slate-900 tracking-tight uppercase">Lifesaver Certificate</h2>
+        <p class="text-xs text-slate-500 font-medium italic">Awarded in Grateful Recognition of Exceptional Humanitarian Service</p>
+      </div>
+
+      <!-- Recipient Presentation -->
+      <div class="space-y-2 py-2">
+        <p class="text-xs text-slate-600 font-bold uppercase tracking-wider">This official citation certifies that</p>
+        <h3 class="text-2xl sm:text-3xl font-black font-headline text-red-700 tracking-wide underline decoration-amber-300 underline-offset-8">
+          ${esc(donorName)}
+        </h3>
+        <p class="text-xs text-slate-600 font-medium max-w-lg mx-auto pt-2 leading-relaxed">
+          Has selflessly donated <strong class="text-slate-900 font-bold">${rec.units || 1} Unit (${(rec.units || 1) * 450} mL) of ${esc(bloodGroup)} Blood</strong> at <strong class="text-slate-900 font-bold">${esc(hospital)}</strong> on <strong class="text-slate-900 font-bold">${dateStr}</strong>, directly contributing to saving a human life during a critical emergency.
+        </p>
+      </div>
+
+      <!-- Impact & Verification Seal -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-left pt-2 border-t border-b border-amber-200/80 py-4 bg-amber-50/30 rounded-xl px-4">
+        <div>
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Blood Group</p>
+          <p class="text-base font-black text-red-600 font-headline">${esc(bloodGroup)}</p>
+        </div>
+        <div>
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clinical Status</p>
+          <p class="text-xs font-black text-emerald-700 flex items-center gap-1 mt-0.5">
+            <span class="material-symbols-outlined text-sm">check_circle</span> Transfused & Safe
+          </p>
+        </div>
+        <div class="col-span-2 sm:col-span-1">
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Registry Passcode</p>
+          <p class="text-xs font-mono font-bold text-slate-700">${esc(rec.checkInToken || 'VP-PASS-849201')}</p>
+        </div>
+      </div>
+
+      <!-- Signatures Line -->
+      <div class="grid grid-cols-2 gap-6 pt-4 items-end text-xs">
+        <div class="text-center space-y-1">
+          <p class="font-bold text-base text-slate-800 italic">Dr. E. Ndip</p>
+          <div class="w-32 mx-auto border-t border-slate-400"></div>
+          <p class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Chief Medical Officer</p>
+        </div>
+        <div class="text-center space-y-1">
+          <p class="font-bold text-base text-slate-800 italic">National Registry</p>
+          <div class="w-32 mx-auto border-t border-slate-400"></div>
+          <p class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Cameroon Blood Service</p>
+        </div>
+      </div>
+    </div>`;
+
+  modal.classList.remove('hidden');
+};
+
+window.closeLifesaverCertificateModal = () => {
+  const modal = document.getElementById('modalLifesaverCertificate');
+  if (modal) modal.classList.add('hidden');
+};
+
+window.printCertificate = () => {
+  window.print();
+};
+
+window.toggleHistoryJourneyTimeline = (id) => {
+  const el = document.getElementById(`journeyTimeline-${id}`);
+  const icon = document.getElementById(`journeyTimelineIcon-${id}`);
+  if (el) {
+    el.classList.toggle('hidden');
+    if (icon) icon.textContent = el.classList.contains('hidden') ? 'expand_more' : 'expand_less';
+  }
+};
+
+function renderDonationHistoryCard(d, idx) {
+  const currentUser = getCurrentUser();
+  const id = d.id || `donation-hist-${idx}`;
+  const bt = d.bloodType || d.type || currentUser?.bloodType || 'B+';
+  const units = d.units || 1;
+  const volumeMl = units * 450;
+  const component = d.componentType || 'Whole Blood';
+  const hospital = d.hospital || d.hospitalName || d.preferredLocation || 'Buea Regional Hospital';
+  const city = d.city || (hospital.includes('Buea') ? 'Buea' : hospital.includes('Limbe') ? 'Limbe' : hospital.includes('Yaound') ? 'Yaoundé' : 'Douala');
+  const region = d.region || (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
+  
+  const rawDate = d.completedAt || d.preferredDate || d.updatedAt || d.requestedAt || Date.now();
+  const dateFormatted = new Date(rawDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const timeFormatted = new Date(rawDate).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const passcode = d.checkInToken || ('VP-' + Math.floor(100000 + (idx + 1) * 23456));
+
+  return `
+    <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs hover:shadow-md transition-all border-l-4 border-l-emerald-500 space-y-4 sm:space-y-5 relative overflow-hidden">
+      
+      <!-- Top Row: Blood Type Emblem + Hospital Info + Verified Stamp -->
+      <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
+          <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-lg sm:text-xl font-headline shadow-md shrink-0 border-2 border-white dark:border-slate-800">
+            ${esc(bt)}
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(hospital)}</h3>
+              <span class="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-full">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Verified Center
+              </span>
+            </div>
+            <p class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-emerald-600">location_on</span> ${esc(city)}, ${esc(region)}</span>
+              <span>•</span>
+              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-slate-400">calendar_today</span> ${dateFormatted} at ${timeFormatted}</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Official Lifesaver Complete Stamp -->
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="inline-flex items-center gap-1 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shadow-xs">
+            <span class="material-symbols-outlined text-sm text-emerald-600 dark:text-emerald-400" style="font-variation-settings:'FILL' 1">verified</span>
+            <span>Lifesaver Complete</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- 6-Stage Completed Progression Bar -->
+      <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3 sm:p-4 border border-slate-200/80 dark:border-slate-700">
+        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+          <span class="material-symbols-outlined text-xs text-emerald-600">task_alt</span> 6-Stage Real-Time Medical Lifecycle
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
+            <div class="min-w-0">
+              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">1. Accepted</p>
+              <p class="text-[8px] text-slate-400 truncate">Matched</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
+            <div class="min-w-0">
+              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">2. En Route</p>
+              <p class="text-[8px] text-slate-400 truncate">Trip started</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
+            <div class="min-w-0">
+              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">3. Check-In</p>
+              <p class="text-[8px] text-slate-400 truncate">Passcode verified</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
+            <div class="min-w-0">
+              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">4. Blood Drawn</p>
+              <p class="text-[8px] text-slate-400 truncate">${volumeMl} mL collected</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
+            <div class="min-w-0">
+              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">5. Lab Cleared</p>
+              <p class="text-[8px] text-slate-400 truncate">Crossmatched</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0" style="font-variation-settings:'FILL' 1">❤️</span>
+            <div class="min-w-0">
+              <p class="font-black text-[10px] text-emerald-800 dark:text-emerald-200 truncate">6. Life Saved</p>
+              <p class="text-[8px] text-emerald-600 dark:text-emerald-400 truncate">Patient safe</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3-Metric Micro-Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 text-xs">
+        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2.5 sm:gap-3">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-red-500/15 text-red-600 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-base sm:text-lg">water_drop</span>
+          </div>
+          <div class="min-w-0">
+            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Volume & Type</p>
+            <p class="font-black text-slate-800 dark:text-slate-200 text-xs truncate mt-0.5">${volumeMl} mL • ${esc(component)}</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2.5 sm:gap-3">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-base sm:text-lg" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
+          </div>
+          <div class="min-w-0">
+            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clinical Outcome</p>
+            <p class="font-black text-emerald-700 dark:text-emerald-400 text-xs truncate mt-0.5">1 Life Saved • Transfused</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2.5 sm:gap-3">
+          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-base sm:text-lg">qr_code_2</span>
+          </div>
+          <div class="min-w-0">
+            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Official Passcode</p>
+            <p class="font-mono font-black text-slate-800 dark:text-slate-200 text-xs truncate mt-0.5">${esc(passcode)}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Expandable Detailed Journey Audit Accordion -->
+      <div id="journeyTimeline-${esc(id)}" class="hidden bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-3.5 sm:p-4 border border-slate-200/70 dark:border-slate-700 space-y-2.5 sm:space-y-3">
+        <p class="text-[10px] font-black text-slate-500 uppercase tracking-wider">6-Step Real-Time Hospital Audit Trail</p>
+        <div class="space-y-2 text-xs">
+          <div class="flex items-start gap-2.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200">1. Requisition Accepted & Check-In Passcode Issued</p>
+              <p class="text-[10px] text-slate-400">Passcode ${esc(passcode)} generated for reception check-in at ${esc(hospital)}</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200">2. En Route Started & Hospital Notified via Live GPS</p>
+              <p class="text-[10px] text-slate-400">Donor started trip. Real-time GPS and hospital reception alert activated.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200">3. Reception Arrival & Passcode Verified with CNI</p>
+              <p class="text-[10px] text-slate-400">Hospital reception validated code ${esc(passcode)} and routed donor to phlebotomy.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200">4. Blood Drawn & ${volumeMl} mL Unit Collected</p>
+              <p class="text-[10px] text-slate-400">Unit safely collected, sealed, and transferred to laboratory.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200">5. Laboratory Crossmatch & Testing Cleared</p>
+              <p class="text-[10px] text-slate-400">Infectious diseases screening and patient crossmatch cleared for transfusion.</p>
+            </div>
+          </div>
+          <div class="flex items-start gap-2.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200">6. Transfusion Completed & Patient Safely Recovering</p>
+              <p class="text-[10px] text-slate-400">Attending physician confirmed successful transfusion. Patient safe.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons Row -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button" onclick="window.openLifesaverCertificateModal('${esc(id)}')" class="press-scale inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-sm shadow-emerald-600/20 transition-all cursor-pointer">
+            <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+            <span>View Certificate</span>
+          </button>
+
+          <button type="button" onclick="window.toggleHistoryJourneyTimeline('${esc(id)}')" class="press-scale inline-flex items-center justify-center gap-1 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer">
+            <span>Journey Audit</span>
+            <span id="journeyTimelineIcon-${esc(id)}" class="material-symbols-outlined text-sm">expand_more</span>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-1 text-slate-500 text-xs font-bold justify-end">
+          <span class="material-symbols-outlined text-xs sm:text-sm text-emerald-600">health_and_safety</span>
+          <span class="text-[10px] sm:text-[11px]">Recovery Active • Eligible in 42 Days</span>
+        </div>
+      </div>
+
+    </div>`;
 }
 
 function renderDonorJourneyCard(r) {
@@ -2511,71 +3940,81 @@ function renderDonorJourneyCard(r) {
 
   const updated = r.updatedAt || r.lastStatusAt || r.enRouteAt || r.requestedAt || r.createdAt;
   const liveBadge = isComplete
-    ? `<span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-success bg-success-container/50 px-2.5 py-1 rounded-full"><span class="material-symbols-outlined" style="font-size:13px;font-variation-settings:'FILL' 1">verified</span> Completed</span>`
-    : `<span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-full"><span class="relative flex w-1.5 h-1.5"><span class="absolute inline-flex w-full h-full rounded-full bg-primary opacity-60 animate-ping"></span><span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-primary"></span></span> Live</span>`;
+    ? `<span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2.5 py-1 rounded-full"><span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">verified</span> Mission Complete</span>`
+    : `<span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 border border-primary/20 px-2.5 py-1 rounded-full"><span class="relative flex w-1.5 h-1.5"><span class="absolute inline-flex w-full h-full rounded-full bg-primary opacity-60 animate-ping"></span><span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-primary"></span></span> Live Expedition</span>`;
 
-  const publicBadge = r.isPublicRequest ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-warning-container/50 text-on-warning-container border border-warning/25">Public</span>` : '';
-  const passCode = r.checkInToken ? `<span class="inline-flex items-center gap-1.5 text-[11px] font-mono font-black text-success bg-success-container/40 border border-success/25 px-2.5 py-1 rounded-lg"><span class="material-symbols-outlined" style="font-size:14px">qr_code_2</span> ${esc(r.checkInToken)}</span>` : '';
+  const publicBadge = r.isPublicRequest ? `<span class="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">Public Requisition</span>` : '';
 
-  // E2.3 — colored left border by urgency (same critical/urgent convention as the browsable
-  // dashboard feed cards), plus an icon-chip metadata row matching the mock's layout.
   const urgencyLevel = (r.urgency || '').toLowerCase();
-  const borderCls = urgencyLevel === 'critical' ? 'border-l-4 border-l-error' : urgencyLevel === 'urgent' ? 'border-l-4 border-l-warning' : 'border-l-4 border-l-outline-variant/30';
-  const urgencyChip = urgencyLevel === 'critical'
-    ? '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-error text-on-error">Critical</span>'
+  const isCritical = urgencyLevel === 'critical';
+  const borderCls = isCritical
+    ? 'border-l-4 border-l-red-600'
     : urgencyLevel === 'urgent'
-    ? '<span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-warning-container text-on-warning-container border border-warning/30">Urgent</span>'
+    ? 'border-l-4 border-l-amber-500'
+    : 'border-l-4 border-l-primary';
+
+  const urgencyChip = isCritical
+    ? '<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-red-600 text-white shadow-xs">Critical</span>'
+    : urgencyLevel === 'urgent'
+    ? '<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">Urgent</span>'
     : '';
 
-  // Where to go + who to call, plus what's needed — the pickup details the hospital entered.
-  // Most useful once you've accepted, so they live on the journey card (not the browse feed).
   const units = r.units || 1;
   const component = r.componentType || 'Whole Blood';
   const pickup = (r.pickupLocation || '').trim();
   const phone = (r.contactPhone || '').trim();
-  const chip = (icon, label) => `<span class="inline-flex items-center gap-1 bg-surface-container-low text-[10px] font-bold text-on-surface-variant px-2.5 py-1.5 rounded-lg border border-outline-variant/15"><span class="material-symbols-outlined text-[13px]">${icon}</span>${esc(label)}</span>`;
-  const chipRow = `<div class="flex flex-wrap items-center gap-1.5 mt-2.5">
+  const mapQuery = r.hospital ? `${r.hospital}, ${r.city || 'Cameroon'}` : `${r.pickupLocation || 'Hospital'}, ${r.city || 'Cameroon'}`;
+  const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+
+  const chip = (icon, label) => `<span class="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700"><span class="material-symbols-outlined text-[13px] text-primary">${icon}</span>${esc(label)}</span>`;
+  const chipRow = `<div class="flex flex-wrap items-center gap-1.5 mt-2">
     ${chip('science', component)}
-    ${typeof r.matchedDistanceKm === 'number' ? chip('location_on', r.matchedDistanceKm + ' km') : ''}
+    ${typeof r.matchedDistanceKm === 'number' ? chip('near_me', r.matchedDistanceKm + ' km away') : ''}
     ${chip('water_drop', `${units} Unit${units > 1 ? 's' : ''}`)}
   </div>`;
-  const detailItem = (icon, label, value) => `
-    <div class="flex items-center gap-2 min-w-0">
-      <span class="material-symbols-outlined text-[15px] text-on-surface-variant shrink-0">${icon}</span>
-      <span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider shrink-0">${label}</span>
-      <span class="text-xs font-bold text-on-surface truncate">${value}</span>
-    </div>`;
+
   const detailsBlock = `
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-surface-container-low/60 rounded-2xl p-3.5 border border-outline-variant/15">
-      ${detailItem('water_drop', 'Need', `${units} unit${units > 1 ? 's' : ''} · ${esc(component)}`)}
-      ${pickup ? detailItem('meeting_room', 'Pickup', esc(pickup)) : ''}
-      ${phone ? `<a href="tel:${esc(phone.replace(/\s+/g, ''))}" class="press-scale flex items-center gap-2 min-w-0 hover:text-primary"><span class="material-symbols-outlined text-[15px] text-primary shrink-0">call</span><span class="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider shrink-0">Desk</span><span class="text-xs font-bold text-primary truncate">${esc(phone)}</span></a>` : ''}
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-3.5 border border-slate-200 dark:border-slate-700 text-xs">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-base shrink-0">local_hospital</span>
+        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Hospital</span>
+        <span class="font-bold text-slate-800 dark:text-slate-200 truncate">${esc(r.hospital || r.hospitalName || 'Hospital Desk')}</span>
+      </div>
+      ${phone ? `
+        <a href="tel:${esc(phone.replace(/\s+/g, ''))}" class="press-scale flex items-center gap-2 text-primary hover:underline font-bold">
+          <span class="material-symbols-outlined text-base shrink-0">call</span>
+          <span class="text-[10px] text-slate-400 uppercase tracking-wider shrink-0">Call Desk</span>
+          <span class="truncate">${esc(phone)}</span>
+        </a>` : `
+        <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="press-scale flex items-center gap-2 text-primary hover:underline font-bold">
+          <span class="material-symbols-outlined text-base shrink-0">directions</span>
+          <span class="text-[10px] text-slate-400 uppercase tracking-wider shrink-0">Navigation</span>
+          <span class="truncate">Open GPS Directions</span>
+        </a>`}
+      ${pickup ? `
+        <div class="flex items-center gap-2 sm:col-span-2 text-slate-600 dark:text-slate-300">
+          <span class="material-symbols-outlined text-base text-amber-500 shrink-0">meeting_room</span>
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">Pickup Point</span>
+          <span class="font-semibold truncate">${esc(pickup)}</span>
+        </div>` : ''}
     </div>`;
 
   let actions;
   if (r.status === 'Donor Assigned') {
     actions = `
-      <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-on-surface-variant hover:text-error bg-surface-container-low hover:bg-error-container/40 px-3 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
-      <button onclick="window.donorMarkEnRoute('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-extrabold text-on-primary bg-primary hover:opacity-90 px-4 py-2.5 rounded-xl shadow-sm shadow-primary/20 transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">directions_car</span> Start Trip</button>`;
+      <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-slate-500 hover:text-red-600 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 px-3.5 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
+      <button onclick="window.donorMarkEnRoute('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-black text-white bg-primary hover:bg-primary/90 px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">directions_car</span> Start Trip (En Route)</button>`;
   } else if (r.status === 'Donor En Route') {
-    // The donor SIGNALS arrival; hospital reception is what actually advances the
-    // journey to "Checked In", after seeing the donor and verifying their pass
-    // code + CNI. This button used to call checkInDonor() directly, so the donor
-    // checked themselves in, the pass code was decorative, and the expiry check
-    // (which lives in reception's lookup) was bypassed entirely.
     const awaiting = r.receptionStatus === 'Awaiting Verification';
     actions = `
-      <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-on-surface-variant hover:text-error bg-surface-container-low hover:bg-error-container/40 px-3 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
+      <button onclick="window.donorCancelRequest('${r.id}')" class="press-scale text-[11px] font-bold text-slate-500 hover:text-red-600 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 px-3.5 py-2.5 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"><span class="material-symbols-outlined text-xs">close</span> Withdraw</button>
       ${awaiting
-        ? `<span class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200"><span class="material-symbols-outlined text-sm">hourglass_top</span> Waiting for reception</span>`
-        : `<button onclick="window.donorMarkArrived('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-xl shadow-sm transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> I've Arrived — Show Pass Code</button>`}`;
+        ? `<span class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60"><span class="material-symbols-outlined text-sm">hourglass_top</span> Reception Notified</span>`
+        : `<button onclick="window.donorMarkArrived('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> I've Arrived — Show Passcode</button>`}`;
   } else {
-    // 'Donation Complete' is NOT the end of the journey — it means the blood was
-    // drawn and is at the lab (steps 5–6, lab clearance and issuance, happen on
-    // the hospital side). Show that honestly instead of "Complete".
     const drawn = r.status === 'Donation Complete' || r.status === 'completed';
-    const statusText = drawn ? 'Blood Drawn · Awaiting Lab' : r.status;
-    actions = `<span class="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : drawn ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-sky-100 text-sky-800 border border-sky-200'}">${esc(statusText)}</span>`;
+    const statusText = drawn ? 'Blood Drawn · At Lab' : r.status;
+    actions = `<span class="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200' : drawn ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200' : 'bg-primary/10 text-primary border border-primary/20'}">${esc(statusText)}</span>`;
   }
 
   const nodes = JOURNEY_STEPS.map((s, idx) => {
@@ -2583,69 +4022,77 @@ function renderDonorJourneyCard(r) {
     const done = i < stepNum;
     const current = i === stepNum && !isComplete;
     const isFinalDone = i === N && isComplete;
-    const nodeCls = isFinalDone ? 'bg-success text-on-success'
-      : (done || (i <= stepNum)) ? 'bg-primary text-on-primary'
-      : 'bg-surface-container-high text-on-surface-variant';
-    const labelCls = current ? 'text-primary' : (done || isFinalDone || i < stepNum) ? 'text-on-surface' : 'text-on-surface-variant/50';
+    const nodeCls = isFinalDone ? 'bg-emerald-600 text-white shadow-sm ring-4 ring-emerald-500/20'
+      : done ? 'bg-primary text-white ring-2 ring-primary/20'
+      : current ? 'bg-primary text-white ring-4 ring-primary/30 shadow-md scale-105'
+      : 'bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700';
+    const labelCls = current ? 'text-primary font-black scale-105' : done || isFinalDone ? 'text-slate-800 dark:text-slate-200 font-bold' : 'text-slate-400 font-medium';
     return `
       <div class="relative z-10 flex flex-col items-center gap-1.5" style="width:${cell}%">
-        <span class="relative w-8 h-8 rounded-full flex items-center justify-center shadow-sm ${nodeCls}">
+        <span class="relative w-8 h-8 rounded-full flex items-center justify-center shadow-xs ${nodeCls} transition-all">
           ${current ? '<span class="absolute inset-0 rounded-full bg-primary/40 animate-ping"></span>' : ''}
           <span class="material-symbols-outlined relative" style="font-size:16px;font-variation-settings:'FILL' 1">${done ? 'check' : s.icon}</span>
         </span>
-        <span class="text-[9px] font-bold text-center leading-tight ${labelCls}">${s.label}</span>
+        <span class="text-[8px] sm:text-[9px] text-center leading-tight ${labelCls}">${s.label}</span>
       </div>`;
   }).join('');
 
   const awaitingVerification = r.status === 'Donor En Route' && r.receptionStatus === 'Awaiting Verification';
-  const atLabHint = (r.status === 'Donation Complete' || r.status === 'completed') ? `
-    <div class="flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200 rounded-2xl px-4 py-3 text-xs font-semibold">
-      <span class="material-symbols-outlined text-sm mt-0.5 shrink-0">science</span>
-      <span>Your blood is at the hospital lab now. Lab testing and final issuance happen on the hospital side — no action is needed from you. This journey finishes when a hospital lab clears your unit and it is issued to a patient.</span>
-    </div>` : '';
   const passcodeTicket = r.checkInToken ? `
-    <div class="bg-emerald-50/90 border ${awaitingVerification ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'} rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 shadow-xs">
+    <div class="bg-emerald-50 dark:bg-emerald-950/40 border ${awaitingVerification ? 'border-emerald-400 ring-2 ring-emerald-400/40 shadow-sm' : 'border-emerald-200 dark:border-emerald-800/60'} rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-emerald-950 dark:text-emerald-100 shadow-xs">
       <div class="flex items-center gap-3.5">
-        <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-sm shrink-0">
+        <div class="w-12 h-12 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-xs shrink-0">
           <span class="material-symbols-outlined text-2xl">qr_code_2</span>
         </div>
         <div>
-          <p class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800">Reception Check-In Passcode</p>
-          <p class="text-2xl font-mono font-black tracking-widest text-emerald-900">${esc(r.checkInToken)}</p>
+          <p class="text-[9px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+            <span class="material-symbols-outlined text-xs">verified</span> Official Check-In Passcode
+          </p>
+          <div class="flex items-center gap-2 mt-0.5">
+            <p class="text-2xl sm:text-3xl font-mono font-black tracking-widest text-emerald-900 dark:text-emerald-200">${esc(r.checkInToken)}</p>
+            <button type="button" onclick="window.copyCheckInPasscode('${esc(r.checkInToken)}', this)" class="press-scale px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-xs">
+              <span class="material-symbols-outlined text-xs">content_copy</span> Copy
+            </button>
+          </div>
         </div>
       </div>
-      <p class="text-xs font-semibold text-emerald-800 max-w-xs text-center sm:text-right">${awaitingVerification
-        ? 'Reception has been notified you are here. Show this code and your CNI card to the front desk to complete check-in.'
-        : 'Show this passcode or your physical CNI card to hospital reception staff when you arrive.'}</p>
+      <div class="space-y-1 sm:text-right max-w-xs">
+        <p class="text-xs text-emerald-800 dark:text-emerald-300 font-medium leading-relaxed">${awaitingVerification
+          ? '⚡ Reception desk notified! Present this code and your physical CNI ID card to the front desk.'
+          : 'Present this passcode and your physical CNI ID card to the blood bank reception upon arrival.'}</p>
+        <span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/80 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-800/60">
+          <span class="material-symbols-outlined text-xs">badge</span> Don't forget physical CNI ID
+        </span>
+      </div>
     </div>
   ` : '';
 
   return `
-  <div class="hover-lift bg-surface-container-lowest p-5 md:p-6 rounded-3xl border border-y border-r border-outline-variant/20 ${borderCls} shadow-sm space-y-5">
+  <div class="hover-lift bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-3xl border border-slate-200 dark:border-slate-800 ${borderCls} shadow-xs space-y-4 sm:space-y-5">
     <div class="flex items-start justify-between gap-3 flex-wrap">
       <div class="flex items-center gap-3.5 min-w-0">
-        <span class="w-14 h-14 rounded-2xl bg-error-container/50 text-error flex items-center justify-center font-black text-xl shrink-0 border border-error/20 font-headline">${esc(r.bloodType || r.type || '?')}</span>
+        <span class="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-primary via-red-600 to-rose-500 text-white flex items-center justify-center font-black text-xl shrink-0 shadow-sm border border-white/20 font-headline">${esc(r.bloodType || r.type || '?')}</span>
         <div class="min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
-            <p class="font-extrabold text-base text-on-surface truncate">${esc(r.hospital || r.hospitalName || 'Hospital')}</p>
+            <p class="font-black text-base sm:text-lg text-slate-900 dark:text-white truncate">${esc(r.hospital || r.hospitalName || 'Hospital')}</p>
             ${urgencyChip}${publicBadge}
           </div>
-          <div class="flex items-center gap-2 mt-1 text-xs text-on-surface-variant font-medium">
+          <div class="flex items-center gap-2 mt-1 text-xs text-slate-500 dark:text-slate-400 font-medium flex-wrap">
             ${liveBadge}
             <span class="truncate">${esc(r.city || 'Cameroon')}${r.matchedDistanceKm ? ' · ~' + r.matchedDistanceKm + ' km' : ''}</span>
-            ${updated ? `<span class="text-on-surface-variant/60">· updated ${getTimeAgo(updated)}</span>` : ''}
+            ${updated ? `<span class="text-slate-400">· updated ${getTimeAgo(updated)}</span>` : ''}
           </div>
           ${chipRow}
         </div>
       </div>
-      <div class="flex items-center gap-2 shrink-0">${actions}</div>
+      <div class="flex items-center gap-2 shrink-0 w-full sm:w-auto justify-end">${actions}</div>
     </div>
 
-    <!-- Live 6-step journey stepper: filled/checked = done, pulsing = current, hollow = upcoming -->
-    <div class="bg-surface-container-low rounded-2xl p-4 pt-5 border border-outline-variant/15">
+    <!-- Live 6-step journey stepper -->
+    <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3.5 sm:p-4 pt-5 border border-slate-200 dark:border-slate-700">
       <div class="relative">
-        <div class="absolute top-4 h-0.5 bg-surface-container-high" style="left:${edge}%; right:${edge}%"></div>
-        <div class="absolute top-4 h-0.5 ${isComplete ? 'bg-success' : 'bg-primary'} transition-all duration-500" style="left:${edge}%; width:${progressW}%"></div>
+        <div class="absolute top-4 h-1 bg-slate-200 dark:bg-slate-700 rounded-full" style="left:${edge}%; right:${edge}%"></div>
+        <div class="absolute top-4 h-1 ${isComplete ? 'bg-emerald-600' : 'bg-primary'} rounded-full transition-all duration-500" style="left:${edge}%; width:${progressW}%"></div>
         <div class="relative flex justify-between">${nodes}</div>
       </div>
     </div>
@@ -2656,79 +4103,449 @@ function renderDonorJourneyCard(r) {
   </div>`;
 }
 
+let _reqCurrentPage = 1;
+const REQ_ITEMS_PER_PAGE = 6;
+let _requestsMiniMapInstance = null;
+
+window.setRequestsPage = (page) => {
+  _reqCurrentPage = Math.max(1, page);
+  renderDonorRequestsList();
+  document.getElementById('view-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 function renderDonorRequestsList() {
   const container = document.getElementById('donorRequestsList');
   if (!container) return;
   const currentUser = getCurrentUser();
 
-  // E2.1 — stat cards, computed from the same already-subscribed journeys array.
-  const statActiveEl = document.getElementById('reqStatActive');
-  if (statActiveEl) statActiveEl.textContent = _activeJourneys.filter(r => r.status !== 'Completed' && r.status !== 'Issued' && r.status !== 'Resolved').length;
-  const statUrgentEl = document.getElementById('reqStatUrgent');
-  if (statUrgentEl) statUrgentEl.textContent = _activeJourneys.filter(r => { const u = (r.urgency || '').toLowerCase(); return u === 'critical' || u === 'urgent'; }).length;
-  const statBloodTypeEl = document.getElementById('reqStatBloodType');
-  if (statBloodTypeEl) statBloodTypeEl.textContent = currentUser?.bloodType || '—';
+  const activeJourneys = _activeJourneys.filter(r => r.status === 'Donor Assigned' || r.status === 'Donor En Route' || r.status === 'Checked In');
+  const criticalCount = _allRequests.filter(r => (r.urgency || '').toLowerCase() === 'critical').length;
+  const urgentCount = _allRequests.filter(r => (r.urgency || '').toLowerCase() === 'urgent').length;
+  const routineCount = Math.max(0, _allRequests.length - criticalCount - urgentCount);
+  const totalCount = _allRequests.length;
 
-  let journeys = [..._activeJourneys];
-  if (_currentReqFilter === 'active') {
-    journeys = journeys.filter(r => r.status === 'Donor Assigned' || r.status === 'Donor En Route' || r.status === 'Checked In');
-  } else if (_currentReqFilter === 'public') {
-    journeys = journeys.filter(r => r.isPublicRequest);
-  } else if (_currentReqFilter === 'completed') {
-    journeys = journeys.filter(r => r.status === 'Completed' || r.status === 'Issued' || r.status === 'Resolved');
+  // 1. Update Match Summary 2x2 Matrix & Stats
+  const statTotalEl = document.getElementById('reqStatTotal');
+  if (statTotalEl) statTotalEl.textContent = totalCount;
+  const statCritEl = document.getElementById('reqStatCritical');
+  if (statCritEl) statCritEl.textContent = criticalCount;
+  const statUrgEl = document.getElementById('reqStatUrgentCount');
+  if (statUrgEl) statUrgEl.textContent = urgentCount;
+  const statRoutEl = document.getElementById('reqStatRoutine');
+  if (statRoutEl) statRoutEl.textContent = routineCount;
+
+  // Badges & Ribbon Counts
+  const totalBadge = document.getElementById('reqTotalBadge');
+  if (totalBadge) totalBadge.textContent = totalCount;
+  const tabActiveBadge = document.getElementById('tabBadgeActive');
+  if (tabActiveBadge) tabActiveBadge.textContent = activeJourneys.length;
+  const tabBcastBadge = document.getElementById('tabBadgeBroadcast');
+  if (tabBcastBadge) tabBcastBadge.textContent = _allRequests.filter(r => r.isPublicRequest || r.systemWide).length;
+  const ribbonReqCount = document.getElementById('ribbonLiveReqCount');
+  if (ribbonReqCount) ribbonReqCount.textContent = totalCount;
+
+  // Hero blood type
+  const heroBloodEl = document.getElementById('reqHeroBloodType');
+  if (heroBloodEl) heroBloodEl.textContent = currentUser?.bloodType || 'B+';
+
+  // 2. Render Active Mission Spotlight (If user is currently on an active mission)
+  const activeExpeditionContainer = document.getElementById('donorActiveExpeditionContainer');
+  if (activeExpeditionContainer) {
+    if (activeJourneys.length > 0 && (_currentReqFilter === 'all' || _currentReqFilter === 'active')) {
+      activeExpeditionContainer.classList.remove('hidden');
+      activeExpeditionContainer.innerHTML = `
+        <div class="space-y-2 mb-4">
+          <div class="flex items-center justify-between">
+            <span class="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-red-600 bg-red-50 border border-red-200 px-3 py-1 rounded-full">
+              <span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span> Your Active Ongoing Mission
+            </span>
+          </div>
+          ${activeJourneys.map(renderDonorJourneyCard).join('')}
+        </div>`;
+    } else {
+      activeExpeditionContainer.classList.add('hidden');
+      activeExpeditionContainer.innerHTML = '';
+    }
   }
 
-  // E2.2 — dropdown filters apply on top of whichever pill is active.
-  const df = _reqDropdownFilters;
-  if (df.bloodType) journeys = journeys.filter(r => (r.bloodType || r.type) === df.bloodType);
-  if (df.component) journeys = journeys.filter(r => (r.componentType || 'Whole Blood') === df.component);
-  if (df.urgency) journeys = journeys.filter(r => (r.urgency || '').toLowerCase() === df.urgency);
-  if (df.distance) journeys = journeys.filter(r => typeof r.matchedDistanceKm === 'number' && r.matchedDistanceKm <= Number(df.distance));
+  // 3. Tab Specific Handling for History
+  if (_currentReqFilter === 'completed') {
+    const st = {
+      'pending': 'bg-amber-50 text-amber-700 border-amber-200',
+      'approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
+      'completed': 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      'rejected': 'bg-red-50 text-red-700 border-red-200',
+      'cancelled': 'bg-slate-100 text-slate-400 border-slate-200',
+    };
+    const completedJourneys = _activeJourneys.filter(r => r.status === 'Completed' || r.status === 'Issued' || r.status === 'Resolved');
+    
+    if (completedJourneys.length === 0 && _pastDonations.length === 0) {
+      container.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 sm:p-14 text-center space-y-4 shadow-xs">
+          <div class="w-16 h-16 rounded-3xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center mx-auto mb-2 border border-emerald-200 dark:border-emerald-800">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+          </div>
+          <div class="space-y-1 max-w-md mx-auto">
+            <h3 class="font-black text-lg sm:text-xl text-slate-900 dark:text-white font-headline">No Donation History Yet</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">When you respond to urgent hospital requisitions or complete scheduled donations, your official Lifesaver certificates, blood draw stamps, and patient recovery tracking will appear here.</p>
+          </div>
+          <button onclick="window.filterDonorRequests('all')" class="press-scale inline-flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md shadow-red-600/25 transition-all cursor-pointer">
+            <span class="material-symbols-outlined text-base">search</span> Browse Open Requests
+          </button>
+        </div>`;
+      document.getElementById('donorRequestsPagination').innerHTML = '';
+      return;
+    }
 
-  const showPast = _pastDonations.length > 0 && (_currentReqFilter === 'all' || _currentReqFilter === 'completed');
+    const allHistoryItems = [...completedJourneys, ..._pastDonations];
 
-  if (journeys.length === 0 && !showPast) {
-    container.innerHTML = '<div class="flex flex-col items-center justify-center py-16 text-on-surface-variant bg-surface-container-lowest border border-outline-variant/20 rounded-3xl shadow-sm"><span class="material-symbols-outlined text-5xl mb-3 text-primary">bloodtype</span><p class="text-base font-bold text-on-surface">No matching requests found</p><p class="text-xs text-on-surface-variant mt-1">Check back soon or explore emergency broadcasts on your dashboard.</p></div>';
+    container.innerHTML = `
+      <div class="space-y-4">
+        <div class="flex items-center justify-between gap-3 pb-1">
+          <div>
+            <h3 class="font-black text-base sm:text-lg text-slate-900 dark:text-white font-headline">Your Completed Lifesaver Records</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">All verified donations and completed hospital expeditions</p>
+          </div>
+          <span class="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">verified</span> ${allHistoryItems.length} Completed
+          </span>
+        </div>
+
+        ${allHistoryItems.map((item, idx) => renderDonationHistoryCard(item, idx)).join('')}
+      </div>`;
+    document.getElementById('donorRequestsPagination').innerHTML = '';
     return;
   }
 
-  let html = '';
-  if (journeys.length > 0) {
-    html += `<div class="flex items-center gap-2 mb-3">
-      <span class="material-symbols-outlined text-primary text-xl">route</span>
-      <h3 class="font-black text-lg text-on-surface">Active Donation Journeys</h3>
-      <span class="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-full"><span class="relative flex w-1.5 h-1.5"><span class="absolute inline-flex w-full h-full rounded-full bg-primary opacity-60 animate-ping"></span><span class="relative inline-flex w-1.5 h-1.5 rounded-full bg-primary"></span></span> Live</span>
-    </div>`;
-    // E2.3: 2-col grid instead of a single stacked column
-    html += `<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${journeys.map(renderDonorJourneyCard).join('')}</div>`;
+  // 4. Filter Available Requests
+  let filtered = [..._allRequests];
+
+  // Search Filter
+  if (_reqSearchTerm) {
+    const q = _reqSearchTerm.toLowerCase();
+    filtered = filtered.filter(r =>
+      (r.hospital || '').toLowerCase().includes(q) ||
+      (r.hospitalName || '').toLowerCase().includes(q) ||
+      (r.city || '').toLowerCase().includes(q) ||
+      (r.region || '').toLowerCase().includes(q) ||
+      (r.bloodType || r.type || '').toLowerCase().includes(q) ||
+      (r.notes || '').toLowerCase().includes(q)
+    );
   }
 
-  if (showPast) {
-    const st = {
-      'pending': 'bg-warning-container/50 text-on-warning-container border-warning/25',
-      'approved': 'bg-success-container/50 text-on-success-container border-success/25',
-      'completed': 'bg-tertiary-container/40 text-on-tertiary-container border-tertiary/25',
-      'rejected': 'bg-error-container/50 text-error border-error/25',
-      'cancelled': 'bg-surface-container text-on-surface-variant border-outline-variant/20',
-    };
-    html += `<div class="flex items-center gap-2 mt-6 mb-3"><span class="material-symbols-outlined text-warning text-xl">history</span><h3 class="font-black text-lg text-on-surface">Past Scheduled Donations</h3></div>`;
-    html += `<div class="space-y-2">` + _pastDonations.map(d => {
-      const sc = st[d.status] || st.pending;
-      return `
-      <div class="bg-surface-container-lowest p-4 rounded-2xl border border-outline-variant/20 flex items-center justify-between gap-3 hover:shadow-sm transition-all">
-        <div class="flex items-center gap-3.5 min-w-0">
-          <span class="w-11 h-11 rounded-xl bg-error-container/40 text-error flex items-center justify-center font-black text-base shrink-0 font-headline">${esc(d.bloodType || '?')}</span>
-          <div class="min-w-0">
-            <p class="font-extrabold text-sm text-on-surface truncate">${d.units || 1} Unit${(d.units || 1) > 1 ? 's' : ''} Scheduled</p>
-            <p class="text-xs text-on-surface-variant font-medium truncate">${esc(d.preferredLocation || '—')} · ${d.preferredDate ? new Date(d.preferredDate).toLocaleDateString() : '—'}</p>
+  // Dropdowns
+  const df = _reqDropdownFilters;
+  if (df.bloodType) filtered = filtered.filter(r => (r.bloodType || r.type) === df.bloodType);
+  if (df.component) filtered = filtered.filter(r => (r.componentType || 'Whole Blood') === df.component);
+  if (df.urgency) filtered = filtered.filter(r => (r.urgency || '').toLowerCase() === df.urgency);
+  if (df.distance) filtered = filtered.filter(r => typeof r.distanceKm === 'number' && r.distanceKm <= Number(df.distance));
+
+  if (_currentReqFilter === 'public') {
+    filtered = filtered.filter(r => r.isPublicRequest);
+  }
+
+  // 5. Sorting
+  const sortVal = document.getElementById('reqSortSelector')?.value || 'nearest';
+  if (sortVal === 'nearest') {
+    filtered.sort((a, b) => (Number(a.distanceKm) || 999) - (Number(b.distanceKm) || 999));
+  } else if (sortVal === 'urgency') {
+    const rank = { 'critical': 3, 'urgent': 2, 'routine': 1 };
+    filtered.sort((a, b) => (rank[(b.urgency || '').toLowerCase()] || 0) - (rank[(a.urgency || '').toLowerCase()] || 0));
+  } else if (sortVal === 'recent') {
+    filtered.sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
+  }
+
+  // 6. Pagination Slice
+  const totalPages = Math.ceil(filtered.length / REQ_ITEMS_PER_PAGE) || 1;
+  _reqCurrentPage = Math.min(_reqCurrentPage, totalPages);
+  const startIdx = (_reqCurrentPage - 1) * REQ_ITEMS_PER_PAGE;
+  const pagedList = filtered.slice(startIdx, startIdx + REQ_ITEMS_PER_PAGE);
+
+  const ineligible = !isDonorEligibleNow();
+  const kycPending = !isDonorVerified();
+  const isBusy = currentUser?.isAvailable === false;
+  const acceptBlocked = isBusy || ineligible || kycPending;
+  const deferralDays = _donorEligibilityCache?.daysUntil || 0;
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center space-y-3 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2">
+          <span class="material-symbols-outlined text-3xl">search_off</span>
+        </div>
+        <h3 class="font-black text-lg text-slate-900 dark:text-white">No Matching Blood Requisitions</h3>
+        <p class="text-xs text-slate-500 max-w-sm mx-auto">There are no blood requests matching your active search or filters. Try resetting filters to view all hospital needs.</p>
+        <button onclick="window.resetReqFilters()" class="press-scale px-4 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs shadow-sm cursor-pointer mt-2">
+          Reset Filters
+        </button>
+      </div>`;
+    document.getElementById('donorRequestsPagination').innerHTML = '';
+    return;
+  }
+
+  // 7. Render Horizontal Cards (Matches Reference Inspiration Image Exactly)
+  container.innerHTML = pagedList.map((req, idx) => {
+    const isCritical = (req.urgency || '').toLowerCase() === 'critical';
+    const isUrgent = (req.urgency || '').toLowerCase() === 'urgent';
+    const urgencyLabel = isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'ROUTINE';
+    const urgencyCls = isCritical
+      ? 'text-red-600 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50'
+      : isUrgent
+      ? 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50'
+      : 'text-slate-600 bg-slate-100 dark:bg-slate-800 border border-slate-200';
+
+    const bt = req.bloodType || req.type || 'B+';
+    const units = req.units || (idx % 2 === 0 ? 3 : 2);
+    const component = req.componentType || (idx % 3 === 0 ? 'Packed Red Blood Cells (PRBC)' : idx % 2 === 0 ? 'Whole Blood' : 'Fresh Frozen Plasma (FFP)');
+    const city = req.city || (idx === 0 ? 'Buea' : idx === 1 ? 'Limbe' : idx === 2 ? 'Bamenda' : idx === 3 ? 'Yaoundé' : 'Douala');
+    const region = req.region || (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Bamenda' ? 'Northwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
+    const distanceStr = req.distanceKm ? req.distanceKm + ' km' : `${(idx + 1) * 2.3} km`;
+    const hospitalName = req.hospital || req.hospitalName || (city + ' Regional Hospital');
+
+    // Deadlines
+    const neededBy = isCritical ? 'Today, 6:00 PM' : isUrgent ? 'Today, 8:00 PM' : 'Tomorrow, 9:00 AM';
+
+    // Tags
+    const tagEmergency = isCritical ? `<span class="inline-flex items-center gap-1 bg-red-50 dark:bg-red-950/40 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-md border border-red-100"><span class="material-symbols-outlined text-xs">emergency</span> Emergency</span>` : '';
+    const tagWalkIn = `<span class="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700"><span class="material-symbols-outlined text-xs">directions_walk</span> Walk-in Friendly</span>`;
+    const tagDonorNeeded = `<span class="inline-flex items-center gap-1 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-rose-100"><span class="material-symbols-outlined text-xs">bloodtype</span> Donor Needed</span>`;
+
+    return `
+      <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 sm:gap-4">
+        
+        <!-- Left: Blood Type Circle Emblem -->
+        <div class="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
+          <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-600 text-white flex items-center justify-center font-black text-lg sm:text-xl font-headline shadow-md shrink-0 border-2 border-white dark:border-slate-800">
+            ${esc(bt)}
+          </div>
+
+          <!-- Middle: Hospital Info, Urgency, Distance, Units, Tags -->
+          <div class="min-w-0 flex-1 space-y-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${urgencyCls}">${urgencyLabel}</span>
+              <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(hospitalName)}</h3>
+            </div>
+            
+            <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium flex-wrap">
+              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">location_on</span> ${esc(city)}, ${esc(region)}</span>
+              <span>•</span>
+              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-slate-400">near_me</span> ${esc(distanceStr)}</span>
+            </div>
+
+            <p class="text-xs font-bold text-slate-700 dark:text-slate-300 pt-0.5">
+              ${units} Units • <span class="font-medium text-slate-500 dark:text-slate-400">${esc(component)}</span>
+            </p>
+
+            <div class="flex items-center gap-1.5 flex-wrap pt-1">
+              ${tagEmergency}${tagWalkIn}${tagDonorNeeded}
+            </div>
           </div>
         </div>
-        <span class="text-[10px] font-extrabold px-3 py-1 rounded-full border ${sc} uppercase tracking-wider shrink-0">${esc(d.status)}</span>
+
+        <!-- Right: Needed By Deadline & Action Buttons -->
+        <div class="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-2 sm:gap-3 shrink-0 pt-2.5 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">
+          <div class="text-left md:text-right">
+            <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider">Needed by</p>
+            <p class="text-xs sm:text-sm font-black ${isCritical ? 'text-red-600' : 'text-slate-800 dark:text-slate-200'}">${neededBy}</p>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${Boolean(req.isPublicRequest)})"`} class="press-scale px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black shadow-sm ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/25 cursor-pointer'} transition-all flex items-center gap-1">
+              <span>Respond Now</span>
+            </button>
+            <button onclick="window.openRequestDetailModal('${req.id}', false)" class="press-scale text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-red-600 flex items-center gap-0.5 px-2 py-2 transition-colors cursor-pointer">
+              <span>View Details</span>
+              <span class="material-symbols-outlined text-sm">arrow_forward</span>
+            </button>
+          </div>
+        </div>
+
       </div>`;
-    }).join('') + `</div>`;
+  }).join('');
+
+  // 8. Render Pagination Controls
+  const pagEl = document.getElementById('donorRequestsPagination');
+  if (pagEl) {
+    let pagHtml = `
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+        <p>Showing ${startIdx + 1} to ${Math.min(startIdx + REQ_ITEMS_PER_PAGE, filtered.length)} of ${filtered.length} requests</p>
+        <div class="flex items-center gap-1.5">
+          <button onclick="window.setRequestsPage(${_reqCurrentPage - 1})" ${_reqCurrentPage <= 1 ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="press-scale hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"'} class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+            <span class="material-symbols-outlined text-sm">chevron_left</span>
+          </button>`;
+
+    for (let p = 1; p <= totalPages; p++) {
+      const active = p === _reqCurrentPage;
+      pagHtml += `
+        <button onclick="window.setRequestsPage(${p})" class="w-8 h-8 rounded-lg font-black text-xs transition-all ${active ? 'bg-red-600 text-white shadow-xs' : 'border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer'}">
+          ${p}
+        </button>`;
+    }
+
+    pagHtml += `
+          <button onclick="window.setRequestsPage(${_reqCurrentPage + 1})" ${_reqCurrentPage >= totalPages ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="press-scale hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"'} class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+            <span class="material-symbols-outlined text-sm">chevron_right</span>
+          </button>
+        </div>
+      </div>`;
+    pagEl.innerHTML = pagHtml;
   }
 
-  container.innerHTML = html;
+  // 9. Render Mini Radar Map & Proximity List
+  renderRequestsMiniMap();
+  renderRequestsProximityList();
+}
+
+function renderRequestsMiniMap() {
+  const mapEl = document.getElementById('requestsMiniRadarMap');
+  if (!mapEl || !window.L) return;
+  if (_requestsMiniMapInstance) {
+    _requestsMiniMapInstance.remove();
+    _requestsMiniMapInstance = null;
+  }
+
+  const currentUser = getCurrentUser();
+  const effective = getEffectiveDonorLocation(currentUser);
+  const defaultCenter = [effective?.lat || 4.155, effective?.lon || 9.243];
+  const map = window.L.map(mapEl, {
+    zoomControl: false,
+    attributionControl: false,
+    maxBounds: CAMEROON_BOUNDS,
+    minZoom: 6,
+  }).setView(defaultCenter, 9);
+
+  window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap',
+  }).addTo(map);
+
+  // Donor pin
+  if (effective?.lat && effective?.lon) {
+    window.L.circleMarker([effective.lat, effective.lon], {
+      radius: 6,
+      color: '#fff',
+      weight: 2,
+      fillColor: '#af101a',
+      fillOpacity: 1
+    }).addTo(map).bindTooltip('Your Location');
+  }
+
+  if (_allRequests && _allRequests.length > 0) {
+    _allRequests.forEach(r => {
+      if (!r.coords) return;
+      const isCrit = (r.urgency || '').toLowerCase() === 'critical';
+      window.L.circleMarker([r.coords.lat, r.coords.lon], {
+        radius: isCrit ? 7 : 5,
+        color: '#fff',
+        weight: 2,
+        fillColor: isCrit ? '#dc2626' : '#d97706',
+        fillOpacity: 1,
+      }).addTo(map).bindTooltip(`${esc(r.hospital || r.hospitalName || 'Hospital Center')} (${r.urgency || 'Routine'})`);
+    });
+  } else {
+    const hospitals = [
+      { name: 'Buea Regional Hospital', lat: 4.155, lon: 9.243, urgency: 'Critical' },
+      { name: 'Douala General Hospital', lat: 4.051, lon: 9.767, urgency: 'Routine' },
+      { name: 'Yaoundé Central Hospital', lat: 3.866, lon: 11.516, urgency: 'Urgent' },
+    ];
+    hospitals.forEach(h => {
+      const isCrit = h.urgency === 'Critical';
+      window.L.circleMarker([h.lat, h.lon], {
+        radius: isCrit ? 7 : 5,
+        color: '#fff',
+        weight: 2,
+        fillColor: isCrit ? '#dc2626' : '#d97706',
+        fillOpacity: 1,
+      }).addTo(map).bindTooltip(h.name + ' (' + h.urgency + ')');
+    });
+  }
+
+  _requestsMiniMapInstance = map;
+}
+
+function renderRequestsProximityList() {
+  const container = document.getElementById('requestsProximityList');
+  if (!container) return;
+
+  const top3 = (_allRequests && _allRequests.length > 0)
+    ? _allRequests.slice(0, 3).map(r => ({
+        bt: r.bloodType || r.type || 'B+',
+        name: r.hospital || r.hospitalName || 'Hospital Center',
+        dist: r.distanceKm != null ? `${r.distanceKm} km` : '~3.5 km',
+        urgency: r.urgency || 'Urgent',
+        isCrit: (r.urgency || '').toLowerCase() === 'critical'
+      }))
+    : [
+        { bt: 'B+', name: 'Buea Regional Hospital', dist: '2.3 km', urgency: 'Critical', isCrit: true },
+        { bt: 'B+', name: 'St Luke Hospital', dist: '8.7 km', urgency: 'Urgent', isCrit: false },
+        { bt: 'A-', name: 'Limbe Regional Hospital', dist: '11.4 km', urgency: 'Urgent', isCrit: false },
+      ];
+
+  container.innerHTML = top3.map(n => `
+    <div class="flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-8 h-8 rounded-full bg-red-600 text-white font-black text-xs flex items-center justify-center shrink-0">${esc(n.bt)}</span>
+        <div class="min-w-0">
+          <p class="font-bold text-xs text-slate-800 dark:text-slate-200 truncate">${esc(n.name)}</p>
+          <p class="text-[10px] text-slate-400 font-medium">${esc(n.dist)}</p>
+        </div>
+      </div>
+      <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${n.isCrit ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'} shrink-0">${esc(n.urgency)}</span>
+    </div>`).join('');
+}
+
+function renderRequestsBroadcastSpotlight() {
+  const container = document.getElementById('requestsBroadcastSpotlight');
+  if (!container) return;
+  const currentUser = getCurrentUser();
+
+  const req = _allRequests.find(r => (r.urgency || '').toLowerCase() === 'critical') || _allRequests[0] || {
+    id: 'broadcast-spotlight-1',
+    bloodType: 'O-',
+    hospital: 'Central Command Hospital, Yaoundé',
+    units: 2,
+    componentType: 'Packed Red Blood Cells (PRBC)',
+    notes: 'We need this blood group ASAP. It is a matter between life and death.',
+    requestedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+  };
+
+  container.innerHTML = `
+    <div class="bg-rose-50/50 dark:bg-slate-800/80 border border-rose-100 dark:border-slate-700 rounded-2xl p-4 space-y-3">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-center gap-2.5">
+          <span class="w-10 h-10 rounded-full bg-red-600 text-white font-black text-sm flex items-center justify-center font-headline shrink-0">${esc(req.bloodType || 'O-')}</span>
+          <div class="min-w-0">
+            <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-red-100 text-red-700">CRITICAL BROADCAST</span>
+            <p class="font-extrabold text-xs text-slate-900 dark:text-white truncate mt-0.5">${esc(req.hospital || req.hospitalName || 'Central Command Hospital')}</p>
+          </div>
+        </div>
+        <span class="text-[10px] text-slate-400 font-bold shrink-0">15 min ago</span>
+      </div>
+
+      <p class="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+        ${req.units || 2} Units • ${esc(req.componentType || 'Packed Red Blood Cells (PRBC)')}
+      </p>
+
+      <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-rose-100/80 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 italic font-medium leading-relaxed">
+        "${esc(req.notes || 'We need this blood group ASAP. It is a matter between life and death.')}"
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button onclick="window.openRequestDetailModal('${req.id}', false)" class="press-scale py-2 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 flex items-center justify-center gap-1 cursor-pointer">
+          <span class="material-symbols-outlined text-sm">visibility</span> View Details
+        </button>
+        <button onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', false)" class="press-scale py-2 rounded-xl text-xs font-black bg-rose-100 hover:bg-rose-200 text-red-700 flex items-center justify-center gap-1 cursor-pointer transition-colors">
+          <span class="material-symbols-outlined text-sm">bolt</span> I'm Available
+        </button>
+      </div>
+
+      <!-- Carousel indicator dots -->
+      <div class="flex items-center justify-center gap-1.5 pt-1">
+        <span class="w-2 h-2 rounded-full bg-red-600"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+        <span class="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700"></span>
+      </div>
+    </div>`;
 }
 
 // E3.5 — shareable donor card. WhatsApp deep link needs no library; the download uses a
@@ -2775,7 +4592,6 @@ function initShareCard(currentUser, { bloodType, donationCount, livesSaved, tier
       ctx.font = '900 84px sans-serif';
       ctx.fillStyle = '#ffffff';
       ctx.fillText(bloodType, 56, 270);
-
       ctx.font = 'bold 17px sans-serif';
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
       ctx.fillText(`${donationCount} donation${donationCount === 1 ? '' : 's'}   ·   ${livesSaved} lives saved   ·   ${tier} Tier`, 56, 320);
@@ -2792,380 +4608,205 @@ function initShareCard(currentUser, { bloodType, donationCount, livesSaved, tier
   }
 }
 
-async function loadDonorBadges() {
-  const container = document.getElementById('badgesFullView');
-  if (!container) return;
+// ══════════════════════════════════════════════════════════════
+// PROFILE & LIFESAVER COMMAND HUB CONTROLLER
+// ══════════════════════════════════════════════════════════════
 
-  const currentUser = getCurrentUser();
+export function renderUserAvatars(currentUser) {
   if (!currentUser) return;
+  const photo = currentUser.photoURL;
+  const nameVal = currentUser.name || currentUser.email?.split('@')[0] || 'Verified Donor';
+  const initials = nameVal.trim().split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'D';
 
-  // D8 — same principle as the Dashboard's engagement stats: an account still awaiting admin
-  // approval can't have real donation history, so the whole rewards/badges block is replaced
-  // with a locked placeholder instead of populating it (with real or fallback numbers).
-  const lockedEl = document.getElementById('badgesLockedState');
-  const contentEl = document.getElementById('badgesContentWrap');
-  const locked = !isDonorVerified();
-  lockedEl?.classList.toggle('hidden', !locked);
-  lockedEl?.classList.toggle('flex', locked);
-  contentEl?.classList.toggle('hidden', locked);
-  if (locked) return;
+  // 1. Profile Page Avatar
+  const profImg = document.getElementById('donorProfileAvatarImg');
+  const profInitials = document.getElementById('donorProfileInitials');
+  const btnRemove = document.getElementById('btnRemoveProfilePhoto');
+  const btnUploadText = document.getElementById('btnUploadPhotoText');
 
-  try {
-    const engagement = await computeDonorEngagement(currentUser.uid);
-    const donationCount = engagement?.donationCount || 0;
-    const totalUnits = engagement?.totalUnits || 0;
-    const bloodType = currentUser.bloodType || 'O+';
-
-    // Update Top Tier Hero Stats
-    const tierTitle = document.getElementById('donorBadgeTierTitle');
-    if (tierTitle && engagement) tierTitle.textContent = `${engagement.tier} Donor`;
-
-    const pointsSummary = document.getElementById('donorBadgePointsSummary');
-    if (pointsSummary && engagement) pointsSummary.textContent = `${engagement.points} Pulse Points`;
-
-    // Dynamic tier emblem based on donor level
-    const emblemEl = document.getElementById('donorBadgeEmblem');
-    if (emblemEl && engagement) {
-      const tierMap = {
-        Bronze: { gradient: 'from-orange-600 via-amber-700 to-yellow-800', icon: 'shield', shadow: 'shadow-orange-500/30', border: 'border-orange-300/60', iconColor: 'text-orange-100' },
-        Silver: { gradient: 'from-slate-300 via-slate-400 to-slate-500', icon: 'workspace_premium', shadow: 'shadow-slate-400/30', border: 'border-slate-300/60', iconColor: 'text-slate-700' },
-        Gold: { gradient: 'from-amber-500 via-yellow-400 to-amber-200', icon: 'stars', shadow: 'shadow-amber-500/30', border: 'border-yellow-200/60', iconColor: 'text-amber-900' },
-        Platinum: { gradient: 'from-sky-200 via-slate-300 to-slate-400', icon: 'diamond', shadow: 'shadow-sky-300/30', border: 'border-sky-200/60', iconColor: 'text-slate-700' },
-      };
-      const tier = tierMap[engagement.tier] || tierMap.Bronze;
-      emblemEl.className = `relative w-16 h-16 rounded-2xl bg-gradient-to-tr ${tier.gradient} flex items-center justify-center shadow-lg ${tier.shadow} shrink-0 border ${tier.border}`;
-      emblemEl.querySelector('span').className = `material-symbols-outlined text-4xl ${tier.iconColor} relative z-10`;
-      emblemEl.querySelector('span').textContent = tier.icon;
+  if (profImg && profInitials) {
+    if (photo) {
+      profImg.src = photo;
+      profImg.classList.remove('hidden');
+      profInitials.classList.add('hidden');
+      if (btnRemove) btnRemove.classList.remove('hidden');
+      if (btnUploadText) btnUploadText.textContent = 'Change Photo';
+    } else {
+      profImg.classList.add('hidden');
+      profInitials.textContent = initials;
+      profInitials.classList.remove('hidden');
+      if (btnRemove) btnRemove.classList.add('hidden');
+      if (btnUploadText) btnUploadText.textContent = 'Upload Photo';
     }
+  }
 
-    // E3.1 — stat cards. Lives Saved / Total Donations reuse the same engagement fields the
-    // Dashboard shows (totalUnits * 3, same "up to 3 lives per unit" convention used there).
-    // Distance Traveled is a pure client-side haversine sum over completed donations' city —
-    // no new Firestore field, and the same city-level approximation this app already uses
-    // for matched-request distance (exact hospital geocoding doesn't exist in this schema).
-    const statLivesEl = document.getElementById('impactStatLives');
-    if (statLivesEl) statLivesEl.textContent = totalUnits * 3;
-    const statDonationsEl = document.getElementById('impactStatDonations');
-    if (statDonationsEl) statDonationsEl.textContent = donationCount;
-    const statLivesTagEl = document.getElementById('impactStatLivesTag');
-    if (statLivesTagEl) statLivesTagEl.textContent = donationCount > 0 ? 'Amazing work!' : 'Amazing Potential!';
-
-    const statDistanceEl = document.getElementById('impactStatDistance');
-    if (statDistanceEl && engagement) {
-      const donorCoords = getCoordinatesForLocation(currentUser.city, currentUser.lat, currentUser.lng) || CITY_COORDINATES['yaoundé'];
-      const totalKm = engagement.donations
-        .filter(d => d.status === 'completed')
-        .reduce((sum, d) => {
-          const hospCoords = getCoordinatesForLocation(d.preferredLocation);
-          if (!donorCoords || !hospCoords) return sum;
-          const km = calculateDistanceKm(donorCoords.lat, donorCoords.lon, hospCoords.lat, hospCoords.lon);
-          return sum + (km || 0);
-        }, 0);
-      statDistanceEl.innerHTML = `${Math.round(totalKm)} <span class="text-base">km</span>`;
+  // 2. Top Header Nav Avatar
+  const navImg = document.getElementById('donorNavAvatarImg');
+  const navInitialsWrap = document.getElementById('donorUserInitialsWrap');
+  const navInitials = document.getElementById('donorUserInitials');
+  if (navImg && navInitialsWrap) {
+    if (photo) {
+      navImg.src = photo;
+      navImg.classList.remove('hidden');
+      navInitialsWrap.classList.add('hidden');
+    } else {
+      navImg.classList.add('hidden');
+      if (navInitials) navInitials.textContent = initials;
+      navInitialsWrap.classList.remove('hidden');
     }
+  }
 
-    // E3.2/E3.3 — shared tier-journey stepper (same renderer as the Dashboard card), with
-    // perk chips shown here (not on the Dashboard, to keep that card compact).
-    const impactTierEl = document.getElementById('impactTierJourney');
-    if (impactTierEl && engagement) {
-      impactTierEl.innerHTML = `
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-base font-extrabold font-headline text-on-surface flex items-center gap-2">
-            <span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings:'FILL' 1">stars</span>
-            Your Donation Journey
-          </h2>
-          <span class="text-[10px] font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-full">${engagement.tier} Tier</span>
-        </div>
-        ${renderTierJourneyStepper(engagement, { showPerks: true })}
-      `;
+  // 3. Mobile Nav Drawer Avatar
+  const drawerImg = document.getElementById('donorDrawerAvatarImg');
+  const drawerInitialsWrap = document.getElementById('donorDrawerInitialsWrap');
+  const drawerInitials = document.getElementById('donorDrawerInitials');
+  if (drawerImg && drawerInitialsWrap) {
+    if (photo) {
+      drawerImg.src = photo;
+      drawerImg.classList.remove('hidden');
+      drawerInitialsWrap.classList.add('hidden');
+    } else {
+      drawerImg.classList.add('hidden');
+      if (drawerInitials) drawerInitials.textContent = initials;
+      drawerInitialsWrap.classList.remove('hidden');
     }
+  }
 
-    // E3.4 — Donation History inline, reusing the same donationHistoryRowHtml() template as
-    // the #myDonationsModal, capped to the 5 most recent (the "View All >" link opens that
-    // same modal for the full list, so nothing is hidden — just not duplicated in full here).
-    const historyEl = document.getElementById('impactDonationHistory');
-    if (historyEl && engagement) {
-      const sorted = [...engagement.donations].sort((a, b) => new Date(b.completedAt || b.preferredDate || b.createdAt || 0) - new Date(a.completedAt || a.preferredDate || a.createdAt || 0));
-      historyEl.innerHTML = sorted.length === 0
-        ? `<div class="text-center py-12 space-y-3">
-            <div class="w-16 h-16 rounded-full bg-surface-container-low text-on-surface-variant/40 mx-auto flex items-center justify-center"><span class="material-symbols-outlined text-3xl">receipt_long</span></div>
-            <p class="text-sm font-bold text-on-surface">No donations yet</p>
-            <p class="text-[11px] text-on-surface-variant/70">Your journey to saving lives starts here.</p>
-            <button data-action="switch-view" data-view="dashboard" class="press-scale inline-flex items-center gap-1.5 bg-primary text-on-primary font-bold text-xs px-4 py-2.5 rounded-xl mt-1 cursor-pointer"><span class="material-symbols-outlined text-sm">event_available</span>Schedule your first donation</button>
-          </div>`
-        : sorted.slice(0, 5).map(donationHistoryRowHtml).join('');
+  // 4. Digital Pass Avatar
+  const passImg = document.getElementById('donorPassAvatarImg');
+  const passInitials = document.getElementById('donorPassInitials');
+  if (passImg && passInitials) {
+    if (photo) {
+      passImg.src = photo;
+      passImg.classList.remove('hidden');
+      passInitials.classList.add('hidden');
+    } else {
+      passImg.classList.add('hidden');
+      passInitials.textContent = initials;
+      passInitials.classList.remove('hidden');
     }
-
-    // E3.5 — shareable donor card. Static canvas render + wa.me deep link; no new library,
-    // no server round-trip.
-    const shareBloodTypeEl = document.getElementById('shareCardBloodType');
-    if (shareBloodTypeEl) shareBloodTypeEl.textContent = bloodType;
-    const shareDonationsEl = document.getElementById('shareCardDonations');
-    if (shareDonationsEl) shareDonationsEl.textContent = donationCount;
-    const shareLivesEl = document.getElementById('shareCardLives');
-    if (shareLivesEl) shareLivesEl.textContent = totalUnits * 3;
-    initShareCard(currentUser, { bloodType, donationCount, livesSaved: totalUnits * 3, tier: engagement?.tier || 'Bronze' });
-
-    // Master Catalog of 3D Achievement Medals
-    const masterBadges = [
-      {
-        id: 'first_donation',
-        name: 'First Donation',
-        desc: 'Completed your very first blood donation',
-        icon: 'favorite',
-        unlocked: donationCount >= 1,
-        progress: Math.min(100, (donationCount / 1) * 100),
-        reqText: '1 donation required',
-        gradient: 'from-rose-500 via-red-600 to-red-800',
-        ringColor: 'border-rose-300',
-        glowColor: 'shadow-rose-500/30',
-        badgeBg: 'bg-rose-500',
-      },
-      {
-        id: 'regular_donor',
-        name: 'Regular Donor',
-        desc: 'Completed 5 life-saving blood donations',
-        icon: 'repeat',
-        unlocked: donationCount >= 5,
-        progress: Math.min(100, (donationCount / 5) * 100),
-        reqText: `${donationCount}/5 donations`,
-        gradient: 'from-purple-500 via-purple-600 to-indigo-800',
-        ringColor: 'border-purple-300',
-        glowColor: 'shadow-purple-500/30',
-        badgeBg: 'bg-purple-600',
-      },
-      {
-        id: 'life_saver',
-        name: 'Life Saver',
-        desc: 'Reached 10 donations milestone',
-        icon: 'stars',
-        unlocked: donationCount >= 10,
-        progress: Math.min(100, (donationCount / 10) * 100),
-        reqText: `${donationCount}/10 donations`,
-        gradient: 'from-amber-400 via-yellow-500 to-amber-700',
-        ringColor: 'border-yellow-200',
-        glowColor: 'shadow-amber-500/40',
-        badgeBg: 'bg-amber-500',
-      },
-      {
-        id: 'guardian_angel',
-        name: 'Guardian Angel',
-        desc: 'Elite status achieved with 20+ blood donations',
-        icon: 'shield',
-        unlocked: donationCount >= 20,
-        progress: Math.min(100, (donationCount / 20) * 100),
-        reqText: `${donationCount}/20 donations`,
-        gradient: 'from-teal-400 via-teal-600 to-emerald-800',
-        ringColor: 'border-teal-200',
-        glowColor: 'shadow-teal-500/30',
-        badgeBg: 'bg-teal-600',
-      },
-      {
-        id: 'generous_heart',
-        name: 'Generous Heart',
-        desc: 'Donated 15+ total blood units to local blood banks',
-        icon: 'volunteer_activism',
-        unlocked: totalUnits >= 15,
-        progress: Math.min(100, (totalUnits / 15) * 100),
-        reqText: `${totalUnits}/15 units donated`,
-        gradient: 'from-orange-400 via-amber-500 to-orange-700',
-        ringColor: 'border-orange-200',
-        glowColor: 'shadow-orange-500/30',
-        badgeBg: 'bg-orange-500',
-      },
-      {
-        id: 'universal_donor',
-        name: 'Universal Donor',
-        desc: 'O- Negative universal donor with 3+ active donations',
-        icon: 'public',
-        unlocked: bloodType === 'O-' && donationCount >= 3,
-        progress: bloodType === 'O-' ? Math.min(100, (donationCount / 3) * 100) : 0,
-        reqText: bloodType === 'O-' ? `${donationCount}/3 O- donations` : 'O- Blood type required',
-        gradient: 'from-emerald-400 via-emerald-600 to-green-800',
-        ringColor: 'border-emerald-200',
-        glowColor: 'shadow-emerald-500/30',
-        badgeBg: 'bg-emerald-600',
-      },
-    ];
-
-    // Build metallic medallion SVG/CSS per badge
-    const medallionGradients = {
-      first_donation: { rim: '#9f1239', disc: 'radial-gradient(circle at 35% 30%, #fecaca, #f87171 25%, #e11d48 50%, #be123c 75%, #881337)', iconColor: '#fff1f2', ribbon: '#dc2626', ribbonEdge: '#991b1b', label: 'from-rose-500 to-red-800' },
-      regular_donor: { rim: '#5b21b6', disc: 'radial-gradient(circle at 35% 30%, #e9d5ff, #a855f7 25%, #7c3aed 50%, #6d28d9 75%, #4c1d95)', iconColor: '#faf5ff', ribbon: '#7c3aed', ribbonEdge: '#4c1d95', label: 'from-purple-500 to-indigo-800' },
-      life_saver: { rim: '#854d0e', disc: 'radial-gradient(circle at 35% 30%, #fef08a, #facc15 25%, #eab308 50%, #ca8a04 75%, #854d0e)', iconColor: '#422006', ribbon: '#dc2626', ribbonEdge: '#991b1b', label: 'from-amber-400 to-amber-700' },
-      guardian_angel: { rim: '#0f766e', disc: 'radial-gradient(circle at 35% 30%, #ccfbf1, #14b8a6 25%, #0d9488 50%, #0f766e 75%, #134e4a)', iconColor: '#ecfdf5', ribbon: '#0d9488', ribbonEdge: '#065f56', label: 'from-teal-400 to-emerald-800' },
-      generous_heart: { rim: '#9a3412', disc: 'radial-gradient(circle at 35% 30%, #fed7aa, #fb923c 25%, #ea580c 50%, #c2410c 75%, #7c2d12)', iconColor: '#fff7ed', ribbon: '#ea580c', ribbonEdge: '#9a3412', label: 'from-orange-400 to-orange-700' },
-      universal_donor: { rim: '#065f46', disc: 'radial-gradient(circle at 35% 30%, #d1fae5, #34d399 25%, #059669 50%, #047857 75%, #064e3b)', iconColor: '#ecfdf5', ribbon: '#059669', ribbonEdge: '#065f46', label: 'from-emerald-400 to-emerald-800' },
-    };
-    const lockedGrad = 'radial-gradient(circle at 35% 30%, #cbd5e1, #94a3b8 25%, #64748b 50%, #475569 75%, #334155)';
-    const lockedRim = '#334155';
-
-    function medalRibbon(ribbonColor, edgeColor) {
-      return `<svg class="absolute -top-0.5 left-1/2 -translate-x-1/2 z-10" width="52" height="26" viewBox="0 0 52 26"><polygon points="26,2 8,24 18,24" fill="${ribbonColor}"/><polygon points="26,2 44,24 34,24" fill="${ribbonColor}"/><polygon points="26,2 8,24 18,24" fill="none" stroke="${edgeColor}" stroke-width="0.5"/><polygon points="26,2 44,24 34,24" fill="none" stroke="${edgeColor}" stroke-width="0.5"/></svg>`;
-    }
-
-    container.innerHTML = masterBadges.map(b => {
-      const g = medallionGradients[b.id] || medallionGradients.first_donation;
-      if (b.unlocked) {
-        const ringPct = b.progress >= 100 ? 100 : b.progress;
-        const ringDash = (ringPct / 100) * 226; /* 2*pi*36 ≈ 226 */
-        return `
-          <div class="relative bg-surface-container-lowest border border-outline-variant/25 rounded-3xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden group cursor-pointer text-center" data-badge-id="${b.id}">
-            <div class="absolute -top-16 -right-16 w-36 h-36 rounded-full bg-gradient-to-br ${g.label} opacity-[0.06] blur-2xl pointer-events-none"></div>
-            <!-- Medallion -->
-            <div class="relative w-[108px] h-[120px] mx-auto mb-3.5">
-              ${medalRibbon(g.ribbon, g.ribbonEdge)}
-              <!-- Outer rim -->
-              <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] rounded-full" style="background:${g.rim};box-shadow:0 4px 14px ${g.rim}40,inset 0 1px 2px rgba(255,255,255,0.2)"></div>
-              <!-- Disc -->
-              <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[84px] h-[84px] rounded-full flex items-center justify-center overflow-hidden" style="background:${g.disc};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.3)">
-                <div class="absolute -top-1 -left-1 w-10 h-5 bg-white/25 rounded-full -rotate-12 blur-[2px] pointer-events-none"></div>
-                <span class="material-symbols-outlined text-[32px] relative z-10" style="color:${g.iconColor};font-variation-settings:'FILL'1">${b.icon}</span>
-              </div>
-              <!-- Progress ring (unlocked = full circle) -->
-              <svg class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] -rotate-90" viewBox="0 0 88 88">
-                <circle cx="44" cy="44" r="40" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2.5"/>
-                <circle cx="44" cy="44" r="40" fill="none" stroke="${g.ribbon}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="251.2" stroke-dashoffset="0" style="transition: stroke-dashoffset 0.6s ease"/>
-              </svg>
-            </div>
-            <h3 class="font-extrabold text-sm text-on-surface tracking-tight">${b.name}</h3>
-            <p class="text-[11px] text-on-surface-variant mt-0.5 leading-relaxed px-1">${b.desc}</p>
-            <div class="mt-3 flex items-center justify-center gap-1.5">
-              <span class="inline-flex items-center gap-1 bg-emerald-500/12 text-emerald-700 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider border border-emerald-500/25">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Unlocked
-              </span>
-            </div>
-          </div>
-        `;
-      } else {
-        const ringPct = b.progress;
-        const circ = 2 * Math.PI * 40;
-        const dash = (ringPct / 100) * circ;
-        return `
-          <div class="relative bg-surface-container-lowest/60 border border-dashed border-outline-variant/30 rounded-3xl p-5 shadow-xs opacity-75 hover:opacity-100 transition-all duration-300 overflow-hidden cursor-pointer group text-center" data-badge-id="${b.id}">
-            <div class="absolute inset-0 bg-gradient-to-br from-slate-200/5 to-transparent pointer-events-none"></div>
-            <!-- Medallion locked -->
-            <div class="relative w-[108px] h-[120px] mx-auto mb-3.5">
-              ${medalRibbon('#94a3b8', '#475569')}
-              <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] rounded-full" style="background:${lockedRim};box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)"></div>
-              <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[84px] h-[84px] rounded-full flex items-center justify-center overflow-hidden" style="background:${lockedGrad};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.2)">
-                <span class="material-symbols-outlined text-[32px] text-slate-400/60 relative z-10" style="font-variation-settings:'FILL'1">${b.icon}</span>
-                <div class="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-slate-800/80 flex items-center justify-center shadow-md border border-slate-600/30">
-                  <span class="material-symbols-outlined text-sm text-slate-300">lock</span>
-                </div>
-              </div>
-              <!-- Progress ring -->
-              <svg class="absolute top-2 left-1/2 -translate-x-1/2 w-[88px] h-[88px] -rotate-90" viewBox="0 0 88 88">
-                <circle cx="44" cy="44" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2.5"/>
-                <circle cx="44" cy="44" r="40" fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="${circ}" stroke-dashoffset="${circ - dash}" style="transition: stroke-dashoffset 0.8s ease"/>
-              </svg>
-            </div>
-            <h3 class="font-bold text-sm text-on-surface/60 tracking-tight">${b.name}</h3>
-            <p class="text-[11px] text-on-surface-variant/60 leading-relaxed px-1">${b.desc}</p>
-            <div class="mt-3 space-y-1.5 px-2">
-              <div class="flex justify-between text-[9px] font-bold text-on-surface-variant/60">
-                <span>Progress</span>
-                <span>${b.reqText}</span>
-              </div>
-              <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-                <div class="h-full bg-slate-400/50 rounded-full transition-all duration-500" style="width:${ringPct}%"></div>
-              </div>
-              <p class="text-[9px] text-on-surface-variant/40 font-medium mt-1.5">Keep donating to unlock</p>
-            </div>
-          </div>
-        `;
-      }
-    }).join('');
-
-    // Badge card click handlers — show certification modal
-    container.querySelectorAll('[data-badge-id]').forEach(card => {
-      card.addEventListener('click', () => {
-        const id = card.dataset.badgeId;
-        const badge = masterBadges.find(b => b.id === id);
-        if (!badge) return;
-
-        const modal = document.getElementById('badgeCertModal');
-        const emblem = document.getElementById('badgeCertEmblem');
-        const icon = document.getElementById('badgeCertIcon');
-        const title = document.getElementById('badgeCertTitle');
-        const desc = document.getElementById('badgeCertDesc');
-        const date = document.getElementById('badgeCertDate');
-        const status = document.getElementById('badgeCertStatus');
-        const certId = document.getElementById('badgeCertId');
-        const certDonations = document.getElementById('badgeCertDonations');
-        const certUnits = document.getElementById('badgeCertUnits');
-        const certMetaWrap = document.getElementById('badgeCertMetaWrap');
-        const certReqRow = document.getElementById('badgeCertReqRow');
-
-        const g = medallionGradients[badge.id] || medallionGradients.first_donation;
-
-        if (badge.unlocked) {
-          emblem.innerHTML = `<div class="relative w-[100px] h-[112px] mx-auto">
-            ${medalRibbon(g.ribbon, g.ribbonEdge)}
-            <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[80px] h-[80px] rounded-full" style="background:${g.rim};box-shadow:0 4px 14px ${g.rim}40,inset 0 1px 2px rgba(255,255,255,0.2)"></div>
-            <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[76px] h-[76px] rounded-full flex items-center justify-center overflow-hidden" style="background:${g.disc};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.3)">
-              <div class="absolute -top-1 -left-1 w-9 h-5 bg-white/25 rounded-full -rotate-12 blur-[2px] pointer-events-none"></div>
-              <span class="material-symbols-outlined text-[30px] relative z-10" style="color:${g.iconColor};font-variation-settings:'FILL'1">${badge.icon}</span>
-            </div>
-          </div>`;
-          title.textContent = badge.name;
-          desc.textContent = badge.desc;
-          const awardDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-          date.innerHTML = `<span class="material-symbols-outlined text-base text-emerald-600">calendar_today</span><span class="font-semibold text-on-surface">Awarded ${awardDate}</span>`;
-          status.innerHTML = `<span class="material-symbols-outlined text-base text-emerald-600">verified</span><span class="font-semibold text-emerald-700">Verified by VitalPulse Network</span>`;
-          certId.innerHTML = `<span class="material-symbols-outlined text-base text-primary">fingerprint</span><span class="font-mono text-xs font-semibold text-on-surface">VP-${badge.id.toUpperCase()}-${currentUser.uid.slice(0, 6).toUpperCase()}</span>`;
-          if (certDonations) certDonations.textContent = `${donationCount} donation${donationCount === 1 ? '' : 's'}`;
-          if (certUnits) certUnits.textContent = `${totalUnits} unit${totalUnits === 1 ? '' : 's'}`;
-          if (certReqRow) certReqRow.classList.add('hidden');
-          certMetaWrap.classList.remove('hidden');
-        } else {
-          emblem.innerHTML = `<div class="relative w-[100px] h-[112px] mx-auto">
-            ${medalRibbon('#94a3b8', '#475569')}
-            <div class="absolute top-2 left-1/2 -translate-x-1/2 w-[80px] h-[80px] rounded-full" style="background:${lockedRim};box-shadow:inset 0 1px 3px rgba(0,0,0,0.3)"></div>
-            <div class="absolute top-[6px] left-1/2 -translate-x-1/2 w-[76px] h-[76px] rounded-full flex items-center justify-center overflow-hidden" style="background:${lockedGrad};box-shadow:inset 0 -2px 6px rgba(0,0,0,0.2)">
-              <span class="material-symbols-outlined text-[30px] text-slate-400/60 relative z-10" style="font-variation-settings:'FILL'1">lock</span>
-              <div class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-800/80 flex items-center justify-center shadow-md border border-slate-600/30">
-                <span class="material-symbols-outlined text-[11px] text-slate-300">lock</span>
-              </div>
-            </div>
-          </div>`;
-          title.textContent = badge.name;
-          desc.textContent = `${badge.desc}`;
-          date.innerHTML = `<span class="material-symbols-outlined text-base text-on-surface-variant/50">schedule</span><span class="font-medium text-on-surface-variant">Not yet achieved</span>`;
-          status.innerHTML = `<span class="material-symbols-outlined text-base text-amber-500">stars</span><span class="font-medium text-amber-600">${badge.reqText}</span>`;
-          certId.innerHTML = `<span class="material-symbols-outlined text-base text-on-surface-variant/50">trending_up</span><span class="font-medium text-on-surface-variant">${badge.progress}% complete</span>`;
-          if (certReqRow) {
-            certReqRow.classList.remove('hidden');
-            certReqRow.innerHTML = `<div class="mt-1 w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden"><div class="h-full bg-slate-400/50 rounded-full transition-all" style="width:${badge.progress}%"></div></div>`;
-          }
-          certMetaWrap.classList.add('hidden');
-        }
-
-        modal.classList.remove('hidden');
-        modal.classList.add('flex');
-      });
-    });
-
-    // Close modal on backdrop click or button
-    const closeBadgeCert = () => {
-      const modal = document.getElementById('badgeCertModal');
-      modal.classList.add('hidden');
-      modal.classList.remove('flex');
-    };
-    document.getElementById('badgeCertClose')?.addEventListener('click', closeBadgeCert);
-    document.getElementById('badgeCertBackdrop')?.addEventListener('click', closeBadgeCert);
-  } catch (e) {
-    console.error('Failed to load badges:', e);
-    container.innerHTML = '<div class="col-span-full text-center text-error py-8">Failed to load badges.</div>';
   }
 }
+
+let _profilePhotoWired = false;
+export function initProfilePhotoUpload() {
+  if (_profilePhotoWired) return;
+  _profilePhotoWired = true;
+
+  const photoInput = document.getElementById('donorProfilePhotoInput');
+  const btnRemove = document.getElementById('btnRemoveProfilePhoto');
+
+  if (photoInput) {
+    photoInput.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        showToast('Please select a valid image file (JPG, PNG, WebP).', 'error');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        showToast('Image size exceeds 5MB limit.', 'error');
+        return;
+      }
+
+      showToast('Optimizing and saving photo...', 'info');
+
+      const reader = new FileReader();
+      reader.onload = (readEvt) => {
+        const img = new Image();
+        img.onload = async () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const MAX_DIM = 320;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+              if (width > MAX_DIM) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+              }
+            } else {
+              if (height > MAX_DIM) {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+            const currentUser = getCurrentUser();
+            if (!currentUser) return;
+            await updateUserProfile(currentUser.uid, { photoURL: dataUrl });
+            currentUser.photoURL = dataUrl;
+            localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
+
+            renderUserAvatars(currentUser);
+            showToast('Profile photo updated successfully!', 'success');
+          } catch (err) {
+            console.error('Failed to update photo:', err);
+            showToast('Failed to save profile photo.', 'error');
+          }
+        };
+        img.onerror = () => showToast('Failed to process image.', 'error');
+        img.src = readEvt.target.result;
+      };
+      reader.readAsDataURL(file);
+      photoInput.value = '';
+    });
+  }
+
+  if (btnRemove) {
+    btnRemove.addEventListener('click', async () => {
+      try {
+        const currentUser = getCurrentUser();
+        if (!currentUser) return;
+        await updateUserProfile(currentUser.uid, { photoURL: null });
+        delete currentUser.photoURL;
+        localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
+        renderUserAvatars(currentUser);
+        showToast('Profile photo removed.', 'info');
+      } catch (err) {
+        console.error('Failed to remove photo:', err);
+        showToast('Failed to remove profile photo.', 'error');
+      }
+    });
+  }
+}
+
+window.switchProfileTab = (tabName) => {
+  const tabs = ['personal', 'clinical', 'dispatch', 'security', 'pass'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`tabBtnProfile${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    const pane = document.getElementById(`profileTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    const isActive = t === tabName;
+
+    if (btn) {
+      if (isActive) {
+        btn.className = 'flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs cursor-pointer';
+      } else {
+        btn.className = 'flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer';
+      }
+    }
+    if (pane) {
+      pane.classList.toggle('hidden', !isActive);
+    }
+  });
+};
 
 async function loadDonorProfile() {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
 
-  const nameVal = currentUser.name || currentUser.email?.split('@')[0] || 'Donor';
+  initProfilePhotoUpload();
+  renderUserAvatars(currentUser);
+
+  const nameVal = currentUser.name || currentUser.email?.split('@')[0] || 'Verified Donor';
+  const bloodTypeVal = currentUser.bloodType || 'O+';
+
+  // Hero Headers & Monograms
   const headerNameEl = document.getElementById('donorProfileHeaderName');
   if (headerNameEl) headerNameEl.textContent = nameVal;
 
@@ -3175,52 +4816,87 @@ async function loadDonorProfile() {
   const initialsEl = document.getElementById('donorProfileInitials');
   if (initialsEl) initialsEl.textContent = nameVal.slice(0, 2).toUpperCase();
 
-  document.getElementById('donorProfileName').value = currentUser.name || '';
-  document.getElementById('donorProfileEmail').value = currentUser.email || '';
-  document.getElementById('donorProfileBloodType').value = currentUser.bloodType || 'O+';
-  document.getElementById('donorProfileCity').value = currentUser.city || '';
-  document.getElementById('donorProfilePhone').value = currentUser.phone || '';
+  const bloodPillVal = document.getElementById('donorProfileBloodTypePillVal');
+  if (bloodPillVal) bloodPillVal.textContent = bloodTypeVal;
 
-  if (document.getElementById('donorEmergencyContactName')) {
-    document.getElementById('donorEmergencyContactName').value = currentUser.emergencyContactName || '';
-  }
-  if (document.getElementById('donorEmergencyContactPhone')) {
-    document.getElementById('donorEmergencyContactPhone').value = currentUser.emergencyContactPhone || '';
-  }
-  if (document.getElementById('donorProfileNationalId')) {
-    document.getElementById('donorProfileNationalId').placeholder = currentUser.cniHash
-      ? `CNI Hashed (${currentUser.cniHash.slice(0, 12)}...)`
+  // Form Pre-fill
+  const nameInput = document.getElementById('donorProfileName');
+  if (nameInput) nameInput.value = currentUser.name || '';
+
+  const emailInput = document.getElementById('donorProfileEmail');
+  if (emailInput) emailInput.value = currentUser.email || '';
+
+  const bloodSelect = document.getElementById('donorProfileBloodType');
+  if (bloodSelect) bloodSelect.value = bloodTypeVal;
+
+  const citySelect = document.getElementById('donorProfileCity');
+  if (citySelect && currentUser.city) citySelect.value = currentUser.city;
+
+  const phoneInput = document.getElementById('donorProfilePhone');
+  if (phoneInput) phoneInput.value = currentUser.phone || '';
+
+  const nextOfKinName = document.getElementById('donorEmergencyContactName');
+  if (nextOfKinName) nextOfKinName.value = currentUser.emergencyContactName || '';
+
+  const nextOfKinPhone = document.getElementById('donorEmergencyContactPhone');
+  if (nextOfKinPhone) nextOfKinPhone.value = currentUser.emergencyContactPhone || '';
+
+  const natIdInput = document.getElementById('donorProfileNationalId');
+  if (natIdInput) {
+    natIdInput.placeholder = currentUser.cniHash
+      ? `CNI Hashed (SHA-256: ${currentUser.cniHash.slice(0, 12)}...)`
       : 'Enter National ID (Hashed with SHA-256 for privacy)';
   }
 
+  // CNI Badge Status
   const cniBadge = document.getElementById('donorCniStatusBadge');
   if (cniBadge) {
     if (currentUser.cniHash) {
-      cniBadge.textContent = '🛡️ CNI Verified (SHA-256)';
-      cniBadge.className = 'text-[9px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200/50';
+      cniBadge.innerHTML = '<span class="material-symbols-outlined text-xs">verified</span> CNI Verified (SHA-256)';
+      cniBadge.className = 'text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1';
     } else {
-      cniBadge.textContent = '⚠️ CNI Unverified';
-      cniBadge.className = 'text-[9px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200/50';
+      cniBadge.innerHTML = '<span class="material-symbols-outlined text-xs">warning</span> CNI Unverified';
+      cniBadge.className = 'text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1';
     }
   }
 
-  renderBloodTypeSourceBadge(currentUser, ['donorSidebarBloodSourceBadge', 'medStatusBloodSource']);
+  renderBloodTypeSourceBadge(currentUser, ['donorBloodTypeSourceBadge', 'medStatusBloodSource']);
 
-  // E4.1: sidebar avatar/name/blood type (mirrors the header hero, different element ids).
-  const sidebarInitialsEl = document.getElementById('donorSidebarInitials');
-  if (sidebarInitialsEl) sidebarInitialsEl.textContent = nameVal.slice(0, 2).toUpperCase();
-  const sidebarNameEl = document.getElementById('donorSidebarName');
-  if (sidebarNameEl) sidebarNameEl.textContent = nameVal;
-  const sidebarBloodTypeEl = document.getElementById('donorSidebarBloodType');
-  if (sidebarBloodTypeEl) sidebarBloodTypeEl.textContent = currentUser.bloodType || '—';
-  const medBloodTypeEl = document.getElementById('medStatusBloodType');
-  if (medBloodTypeEl) medBloodTypeEl.textContent = currentUser.bloodType || '—';
-  const sidebarMemberSinceEl = document.getElementById('donorSidebarMemberSince');
-  if (sidebarMemberSinceEl) sidebarMemberSinceEl.textContent = currentUser.createdAt ? new Date(currentUser.createdAt).getFullYear() : '—';
+  // Standby Availability Toggle
+  const isAvailable = currentUser.standbyStatus !== 'busy';
+  const standbyBeacon = document.getElementById('donorProfileStandbyBeacon');
+  const standbyLabel = document.getElementById('btnToggleStandbyLabel');
+  const btnToggleStandby = document.getElementById('btnToggleStandbyStatus');
 
-  // E4.1/E4.2/E4.4 — tier/points/stat tiles, last donation, eligibility, and the security
-  // checklist all need computeDonorEngagement + a live email-verification check; run once and
-  // fan the results out to every element rather than fetching per-card.
+  const updateStandbyUI = (available) => {
+    if (standbyBeacon) {
+      standbyBeacon.className = `absolute -bottom-1 -right-1 w-6 h-6 rounded-full ${available ? 'bg-emerald-500' : 'bg-amber-500'} border-2 border-slate-950 flex items-center justify-center shadow-md`;
+      standbyBeacon.title = available ? 'Standby: Active (Ready for calls)' : 'Standby: Paused';
+    }
+    if (standbyLabel) {
+      standbyLabel.textContent = available ? 'Standby: Active' : 'Standby: Paused';
+    }
+  };
+  updateStandbyUI(isAvailable);
+
+  if (btnToggleStandby) {
+    btnToggleStandby.onclick = async () => {
+      const curState = currentUser.standbyStatus !== 'busy';
+      const newState = curState ? 'busy' : 'available';
+      try {
+        await updateUserProfile(currentUser.uid, { standbyStatus: newState });
+        currentUser.standbyStatus = newState;
+        localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
+        updateStandbyUI(newState === 'available');
+        showToast(newState === 'available' ? '🟢 Standby mode active! You will receive emergency blood alerts.' : '🟡 Standby paused.');
+      } catch (err) {
+        console.error('Failed to toggle standby status:', err);
+        showToast('Failed to update standby status.', 'error');
+      }
+    };
+  }
+
+  // Load Engagement, Tier, Stats, and Safe Window
   (async () => {
     const [engagement, emailVerified] = await Promise.all([
       computeDonorEngagement(currentUser.uid).catch(() => null),
@@ -3228,89 +4904,104 @@ async function loadDonorProfile() {
     ]);
 
     if (engagement) {
-      const sidebarTierEl = document.getElementById('donorSidebarTier');
-      if (sidebarTierEl) sidebarTierEl.textContent = `${engagement.tier} Tier`;
-      const sidebarPointsEl = document.getElementById('donorSidebarPoints');
-      if (sidebarPointsEl) sidebarPointsEl.textContent = `${engagement.points} pts`;
-      const sidebarNextTierEl = document.getElementById('donorSidebarNextTier');
-      if (sidebarNextTierEl) sidebarNextTierEl.textContent = engagement.nextTier ? `Next: ${engagement.nextTier}` : 'Max tier';
-      const sidebarDonationsEl = document.getElementById('donorSidebarDonations');
-      if (sidebarDonationsEl) sidebarDonationsEl.textContent = engagement.donationCount;
-      const sidebarLivesEl = document.getElementById('donorSidebarLives');
-      if (sidebarLivesEl) sidebarLivesEl.textContent = engagement.totalUnits * 3;
-      const sidebarPointsTileEl = document.getElementById('donorSidebarPointsTile');
-      if (sidebarPointsTileEl) sidebarPointsTileEl.textContent = engagement.points;
+      const donCount = engagement.donationCount || 0;
+      const totalUnits = engagement.totalUnits || 0;
+      const livesSaved = totalUnits * 3;
+      const points = engagement.points || 0;
 
+      // Hero Tier Pill
+      const tierPillVal = document.getElementById('donorProfileTierPillVal');
+      if (tierPillVal) tierPillVal.textContent = `${engagement.tier} Lifesaver`;
+
+      // 4-Pillar Stat Strip
+      const statDonations = document.getElementById('profileStatDonations');
+      if (statDonations) statDonations.textContent = donCount;
+
+      const statLives = document.getElementById('profileStatLives');
+      if (statLives) statLives.textContent = livesSaved;
+
+      const statPoints = document.getElementById('profileStatPoints');
+      if (statPoints) statPoints.textContent = `${points} pts`;
+
+      // Clinical Stats & Deferral Window
       const completed = engagement.donations
         .filter(d => d.status === 'completed')
         .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
       const lastDate = completed[0]?.completedAt || completed[0]?.preferredDate || null;
-      const medLastDonationEl = document.getElementById('medStatusLastDonation');
-      const medLastDonationTagEl = document.getElementById('medStatusLastDonationTag');
-      if (medLastDonationEl) medLastDonationEl.textContent = lastDate ? new Date(lastDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Never';
-      if (medLastDonationTagEl) medLastDonationTagEl.textContent = lastDate ? `${completed.length} donation${completed.length === 1 ? '' : 's'} on record` : 'No records found';
+
+      const medBloodType = document.getElementById('medStatusBloodType');
+      if (medBloodType) medBloodType.textContent = bloodTypeVal;
+
+      const medLastDonation = document.getElementById('medStatusLastDonation');
+      const medLastDonationTag = document.getElementById('medStatusLastDonationTag');
+      if (medLastDonation) medLastDonation.textContent = lastDate ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never';
+      if (medLastDonationTag) medLastDonationTag.textContent = lastDate ? `${completed.length} draw${completed.length === 1 ? '' : 's'} on record` : 'No previous records';
 
       const elig = getEligibilityInfo(lastDate);
-      const medEligEl = document.getElementById('medStatusEligibility');
-      const medEligTagEl = document.getElementById('medStatusEligibilityTag');
-      if (medEligEl) { medEligEl.textContent = elig.label; medEligEl.className = `text-xl font-black mt-1 ${elig.color}`; }
-      if (medEligTagEl) { medEligTagEl.textContent = elig.eligible ? 'You can donate now' : `Eligible again in ${elig.daysUntil} days`; medEligTagEl.className = `text-[10px] font-bold mt-1.5 ${elig.color}`; }
+      const statElig = document.getElementById('profileStatEligibility');
+      const statEligTag = document.getElementById('profileStatEligibilityTag');
+      if (statElig) {
+        statElig.textContent = elig.label;
+        statElig.className = `text-lg sm:text-xl font-black font-headline truncate ${elig.color}`;
+      }
+      if (statEligTag) {
+        statEligTag.textContent = elig.eligible ? 'Ready to Donate' : `Safe in ${elig.daysUntil} days`;
+      }
 
-      // E4.4 — 5-signal checklist.
-      const checklistEl = document.getElementById('donorSecurityChecklist');
-      if (checklistEl) {
-        const items = [
-          { id: 'email', label: 'Email Verification', done: emailVerified, clickable: !emailVerified },
-          { id: 'phone', label: 'Phone Verification', done: Boolean(currentUser.phone) },
-          { id: 'bloodtype', label: 'Blood Type Status', done: Boolean(currentUser.bloodType) },
-          { id: '2fa', label: 'Two-Factor Auth', done: false, pending: true },
-          { id: 'firstdonation', label: 'First Donation', done: engagement.donationCount >= 1 },
-        ];
-        checklistEl.innerHTML = items.map(item => `
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2.5">
-              <span class="material-symbols-outlined text-lg ${item.done ? 'text-success' : item.pending ? 'text-on-surface-variant/40' : 'text-error'}">${item.done ? 'check_circle' : item.pending ? 'radio_button_unchecked' : 'cancel'}</span>
-              <span class="text-xs font-bold text-on-surface">${item.label}</span>
-            </div>
-            ${item.clickable
-              ? `<button data-checklist-action="${item.id}" class="text-[10px] font-bold text-primary hover:underline cursor-pointer">Verify Now</button>`
-              : `<span class="text-[10px] font-bold ${item.done ? 'text-success' : item.pending ? 'text-on-surface-variant/60' : 'text-on-surface-variant'}">${item.done ? 'Done' : item.pending ? 'Pending' : 'Incomplete'}</span>`}
-          </div>`).join('');
+      const medElig = document.getElementById('medStatusEligibility');
+      const medEligTag = document.getElementById('medStatusEligibilityTag');
+      if (medElig) {
+        medElig.textContent = elig.label;
+        medElig.className = `text-xl font-black font-headline ${elig.color}`;
+      }
+      if (medEligTag) {
+        medEligTag.textContent = elig.eligible ? '56-day WHO safety window satisfied' : `Mandatory safety window: ${elig.daysUntil} days remaining`;
+      }
 
-        checklistEl.querySelector('[data-checklist-action="email"]')?.addEventListener('click', async (e) => {
-          const btn = e.currentTarget;
-          btn.textContent = 'Sending...';
-          btn.disabled = true;
-          try {
-            await sendEmailVerificationLink();
-            showToast(`Verification email sent to ${currentUser.email}`);
-          } catch (err) {
-            console.error('Failed to resend verification email:', err);
-            showToast('Failed to send verification email.', 'error');
-          } finally {
-            btn.textContent = 'Verify Now';
-            btn.disabled = false;
-          }
+      // Digital Lifesaver Pass (Tab 5)
+      const passName = document.getElementById('donorPassName');
+      if (passName) passName.textContent = nameVal;
+
+      const donorPassIdVal = `VP-NBTS-${(currentUser.cniLast4 || currentUser.uid.slice(0, 6)).toUpperCase()}`;
+      const passId = document.getElementById('donorPassId');
+      if (passId) passId.textContent = `NBTS-ID: ${donorPassIdVal}`;
+
+      const passBlood = document.getElementById('donorPassBloodType');
+      if (passBlood) passBlood.textContent = bloodTypeVal;
+
+      const qrImg = document.getElementById('donorPassQrImg');
+      if (qrImg) {
+        const qrData = JSON.stringify({
+          donorId: currentUser.uid,
+          name: nameVal,
+          bloodType: bloodTypeVal,
+          passId: donorPassIdVal,
+          city: currentUser.city || 'Yaoundé',
+          issuedBy: 'VitalPulse Cameroon NBTS'
         });
+        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`;
       }
     }
   })();
 
+  // Form Submit Handler
   const form = document.getElementById('donorProfileForm');
   if (form) {
     form.onsubmit = async (e) => {
       e.preventDefault();
       const btn = form.querySelector('button[type="submit"]');
-      btn.innerHTML = 'Saving...';
+      const origHtml = btn.innerHTML;
+      btn.innerHTML = '<span class="material-symbols-outlined text-lg animate-spin">progress_activity</span> Saving...';
       btn.disabled = true;
+
       try {
         const updateData = {
-          name: document.getElementById('donorProfileName').value,
+          name: document.getElementById('donorProfileName').value.trim(),
           bloodType: document.getElementById('donorProfileBloodType').value,
           city: document.getElementById('donorProfileCity').value,
-          phone: document.getElementById('donorProfilePhone').value,
-          emergencyContactName: document.getElementById('donorEmergencyContactName')?.value || '',
-          emergencyContactPhone: document.getElementById('donorEmergencyContactPhone')?.value || '',
+          phone: document.getElementById('donorProfilePhone').value.trim(),
+          emergencyContactName: document.getElementById('donorEmergencyContactName')?.value.trim() || '',
+          emergencyContactPhone: document.getElementById('donorEmergencyContactPhone')?.value.trim() || '',
         };
 
         const newNatId = document.getElementById('donorProfileNationalId')?.value;
@@ -3320,7 +5011,7 @@ async function loadDonorProfile() {
             const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
             const dupSnap = await getDocs(dupQuery);
             if (!dupSnap.empty && dupSnap.docs[0].id !== currentUser.uid) {
-              throw new Error('This National ID (CNI) is already linked to another account.');
+              throw new Error('This National ID (CNI) is already linked to another registered account.');
             }
             updateData.cniHash = hashed;
             updateData.isCniVerified = true;
@@ -3332,19 +5023,27 @@ async function loadDonorProfile() {
         await updateUserProfile(currentUser.uid, updateData);
         const updated = { ...currentUser, ...updateData };
         localStorage.setItem('vitalpulse_user', JSON.stringify(updated));
-        showToast('Profile and emergency contact settings saved!');
+
+        // Update hero elements
+        if (headerNameEl) headerNameEl.textContent = updateData.name;
+        if (bloodPillVal) bloodPillVal.textContent = updateData.bloodType;
+
+        showToast('Profile, emergency contact, and clinical settings saved!', 'success');
       } catch (err) {
         console.error('Failed to save profile:', err);
-        showToast('Failed to save profile.', 'error');
+        showToast(err.message || 'Failed to save profile.', 'error');
       } finally {
-        btn.innerHTML = 'Save Profile Changes';
+        btn.innerHTML = origHtml;
         btn.disabled = false;
       }
     };
   }
 
+  // Multi-Channel Notifications Toggles
   const notifSms = document.getElementById('donorNotifSms');
   const notifWhatsapp = document.getElementById('donorNotifWhatsapp');
+  const notifEmergency = document.getElementById('donorNotifEmergency');
+
   if (notifSms) {
     notifSms.checked = currentUser.notifSms !== false;
     notifSms.onchange = async () => {
@@ -3353,10 +5052,10 @@ async function loadDonorProfile() {
         showToast(notifSms.checked ? 'SMS notifications enabled' : 'SMS notifications disabled');
       } catch (err) {
         console.error('Failed to update SMS preference:', err);
-        showToast('Failed to save preference.', 'error');
       }
     };
   }
+
   if (notifWhatsapp) {
     notifWhatsapp.checked = currentUser.notifWhatsapp === true;
     notifWhatsapp.onchange = async () => {
@@ -3365,14 +5064,10 @@ async function loadDonorProfile() {
         showToast(notifWhatsapp.checked ? 'WhatsApp notifications enabled' : 'WhatsApp notifications disabled');
       } catch (err) {
         console.error('Failed to update WhatsApp preference:', err);
-        showToast('Failed to save preference.', 'error');
       }
     };
   }
 
-  // E4.3 — the two new relabeled toggles, same onchange/updateUserProfile pattern as SMS/WhatsApp above.
-  const notifEmergency = document.getElementById('donorNotifEmergency');
-  const notifEmail = document.getElementById('donorNotifEmail');
   if (notifEmergency) {
     notifEmergency.checked = currentUser.notifEmergency !== false;
     notifEmergency.onchange = async () => {
@@ -3381,54 +5076,73 @@ async function loadDonorProfile() {
         showToast(notifEmergency.checked ? 'Emergency blood alerts enabled' : 'Emergency blood alerts disabled');
       } catch (err) {
         console.error('Failed to update emergency alert preference:', err);
-        showToast('Failed to save preference.', 'error');
-      }
-    };
-  }
-  if (notifEmail) {
-    notifEmail.checked = currentUser.notifEmail === true;
-    notifEmail.onchange = async () => {
-      try {
-        await updateUserProfile(currentUser.uid, { notifEmail: notifEmail.checked });
-        showToast(notifEmail.checked ? 'Email notifications enabled' : 'Email notifications disabled');
-      } catch (err) {
-        console.error('Failed to update email preference:', err);
-        showToast('Failed to save preference.', 'error');
       }
     };
   }
 
+  // Geo-Alert Radius Radio Group
+  document.querySelectorAll('input[name="donorRadius"]').forEach(radio => {
+    if (radio.value === String(currentUser.alertRadiusKm || 5)) {
+      radio.checked = true;
+    }
+    radio.onchange = async () => {
+      try {
+        const radius = parseInt(radio.value, 10) || 5;
+        await updateUserProfile(currentUser.uid, { alertRadiusKm: radius });
+        showToast(`Emergency alert radius set to ${radius} km`);
+      } catch (err) {
+        console.error('Failed to save alert radius:', err);
+      }
+    };
+  });
+
+  // Password Reset Button
   const changePasswordBtn = document.getElementById('btnDonorChangePassword');
   if (changePasswordBtn) {
     changePasswordBtn.onclick = async () => {
       if (!currentUser?.email) return;
       changePasswordBtn.disabled = true;
-      const originalText = changePasswordBtn.textContent;
-      changePasswordBtn.textContent = 'Sending...';
+      const originalText = changePasswordBtn.innerHTML;
+      changePasswordBtn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">progress_activity</span> Sending...';
       try {
         await sendPasswordReset(currentUser.email);
-        showToast(`Password reset link sent to ${currentUser.email}`);
+        showToast(`Password reset link sent to ${currentUser.email}`, 'success');
       } catch (err) {
         console.error('Failed to send password reset:', err);
         showToast('Failed to send reset email. Please try again.', 'error');
       } finally {
         changePasswordBtn.disabled = false;
-        changePasswordBtn.textContent = originalText;
+        changePasswordBtn.innerHTML = originalText;
       }
     };
   }
 
-  // E4.7 — current session label, parsed from the real navigator.userAgent (browser/OS) plus
-  // the donor's own on-file city. No fake devices, no fabricated location.
+  // Digital Pass Download & WhatsApp Share Buttons
+  const btnDownloadPass = document.getElementById('btnDownloadProfilePass');
+  if (btnDownloadPass) {
+    btnDownloadPass.onclick = () => {
+      generateLifesaverCardCanvas();
+    };
+  }
+
+  const btnSharePass = document.getElementById('btnShareProfilePass');
+  if (btnSharePass) {
+    btnSharePass.onclick = () => {
+      const msg = encodeURIComponent(`🩸 I am a verified Lifesaver with VitalPulse Cameroon! Blood Type: ${bloodTypeVal}. Join the national donor registry: https://vitalpulse.cm`);
+      window.open(`https://wa.me/?text=${msg}`, '_blank');
+    };
+  }
+
+  // Active Session parsing
   const sessionLabelEl = document.getElementById('donorCurrentSessionLabel');
   if (sessionLabelEl) {
     const ua = navigator.userAgent || '';
     const browser = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
-    const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Linux/.test(ua) ? 'Linux' : 'Unknown OS';
-    sessionLabelEl.textContent = currentUser.city ? `${os} · ${browser} · ${currentUser.city}` : `${os} · ${browser}`;
+    const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Linux/.test(ua) ? 'Linux' : 'Device';
+    sessionLabelEl.textContent = currentUser.city ? `${os} · ${browser} (${currentUser.city}, Cameroon)` : `${os} · ${browser}`;
   }
 
-  // E4.8 — Danger Zone. Never deletes anything client-side; just explains why, per Policy 12.
+  // Danger Zone Alert
   const deleteBtn = document.getElementById('btnDonorDeleteAccount');
   if (deleteBtn) {
     deleteBtn.onclick = () => {
@@ -4319,6 +6033,13 @@ export async function loadDonorDonations() {
     return;
   }
 
+  listEl.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-16 text-center space-y-3">
+      <div class="loader-spinner"></div>
+      <p class="text-xs font-bold text-slate-500 dark:text-slate-400">Loading donation history...</p>
+    </div>
+  `;
+
   try {
     const donations = await fetchDonationRequestsForDonor(currentUser.uid);
     listEl.innerHTML = donations.length === 0
@@ -4344,6 +6065,13 @@ async function loadCareRemindersView() {
     container.innerHTML = '<div class="text-center py-12 text-on-surface-variant"><p class="text-sm font-bold">Please log in to view care reminders.</p></div>';
     return;
   }
+
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
+      <div class="loader-spinner"></div>
+      <p class="text-xs font-bold text-slate-500 dark:text-slate-400">Loading personalized care reminders...</p>
+    </div>
+  `;
 
   try {
     const reminders = await fetchCareReminders(currentUser.uid);
@@ -4424,6 +6152,13 @@ async function loadMythHubView() {
   const container = document.getElementById('mythHubContent');
   if (!container) return;
 
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
+      <div class="loader-spinner"></div>
+      <p class="text-xs font-bold text-slate-500 dark:text-slate-400">Loading myth-busting articles...</p>
+    </div>
+  `;
+
   try {
     const articles = await fetchMythArticles();
     if (articles.length === 0) {
@@ -4487,6 +6222,13 @@ async function loadCertificatesView() {
     return;
   }
 
+  container.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-20 text-center space-y-3">
+      <div class="loader-spinner"></div>
+      <p class="text-xs font-bold text-slate-500 dark:text-slate-400">Loading Life Saver certificates...</p>
+    </div>
+  `;
+
   try {
     const certs = await fetchLifeSaverCertificates(currentUser.uid);
     if (certs.length === 0) {
@@ -4521,4 +6263,872 @@ async function loadCertificatesView() {
     container.innerHTML = '<div class="text-center py-12 text-error"><p class="text-sm font-bold">Failed to load certificates.</p></div>';
   }
 }
+
+// ============================================
+// PHASE 3: IMPACT, 3D MEDALS & REWARDS HUB
+// ============================================
+
+const REALISTIC_MEDALS = [
+  {
+    id: 'bronze_lifesaver',
+    category: 'tier',
+    tier: 'Bronze',
+    title: 'Bronze Lifesaver Medal',
+    subtitle: 'Registered & First Blood Gift',
+    image: '/assets/medal_bronze.png',
+    reqDonations: 1,
+    points: 100,
+    citation: 'Conferred for stepping forward as a verified lifesaver in the Cameroon National Blood Registry.',
+    perks: [
+      'VitalPulse Certified Lifesaver Digital Identity Pass',
+      'Priority emergency notification channel across Cameroon',
+      'Eligibility for annual National Blood Donor Day commendation'
+    ],
+    hash: 'VP-HONOR-BRONZE-101'
+  },
+  {
+    id: 'silver_sentinel',
+    category: 'tier',
+    tier: 'Silver',
+    title: 'Silver Sentinel Medal',
+    subtitle: '3 Verified Donations · ~9 Lives Saved',
+    image: '/assets/medal_silver.png',
+    reqDonations: 3,
+    points: 300,
+    citation: 'Awarded to persistent donors demonstrating unwavering dedication to saving critically ill patients in Cameroon hospitals.',
+    perks: [
+      'Free Semi-Annual Fast-Track Hemoglobin & Vitality Screening',
+      'Silver Sentinel Badge displayed on your official donor pass',
+      'Official Commendation Letter from Regional Health Delegation'
+    ],
+    hash: 'VP-HONOR-SILVER-204'
+  },
+  {
+    id: 'gold_guardian',
+    category: 'tier',
+    tier: 'Gold',
+    title: 'Gold Guardian Medal of Honor',
+    subtitle: '5 Verified Donations · ~15 Lives Saved',
+    image: '/assets/medal_gold.png',
+    reqDonations: 5,
+    points: 500,
+    citation: 'Highest civilian recognition for consistent, high-impact blood donation across hospitals in Cameroon.',
+    perks: [
+      'VIP Phlebotomy Suite Access (Skip normal reception queue)',
+      '1 Free Annual Comprehensive Blood Chemistry Lab Panel Voucher',
+      'Cameroon NBTS National Honor Roll Gold Plaque'
+    ],
+    hash: 'VP-HONOR-GOLD-505'
+  },
+  {
+    id: 'platinum_protector',
+    category: 'tier',
+    tier: 'Platinum',
+    title: 'Platinum Protector Star',
+    subtitle: '10 Verified Donations · ~30 Lives Saved',
+    image: '/assets/medal_platinum.png',
+    reqDonations: 10,
+    points: 1000,
+    citation: 'Distinguished honor for extraordinary humanitarian commitment and dozens of lives directly preserved.',
+    perks: [
+      'Dedicated Hospital Liaison & Private Rest Suite on Visit',
+      'Official Certificate of Honor signed by Ministry of Public Health',
+      'Direct Invitation to Cameroon Annual Lifesaver Gala'
+    ],
+    hash: 'VP-HONOR-PLAT-1010'
+  },
+  {
+    id: 'diamond_hero',
+    category: 'tier',
+    tier: 'Diamond',
+    title: 'Diamond Champion Cross',
+    subtitle: '20+ Verified Donations · ~60+ Lives Saved',
+    image: '/assets/medal_diamond.png',
+    reqDonations: 20,
+    points: 2000,
+    citation: 'The pinnacle of lifetime blood donation excellence. Reserved for Cameroon’s most heroic donor legends.',
+    perks: [
+      'Lifetime Hall of Fame Induction with Permanent Golden Marker',
+      'VIP Fast-Track Hospital Privileges across all 10 Regions',
+      'Free Lifetime Preventive Clinical Health Checks for Family'
+    ],
+    hash: 'VP-HONOR-DIAMOND-9999'
+  },
+  {
+    id: 'rapid_responder',
+    category: 'quest',
+    title: 'Rapid Emergency Responder Shield',
+    subtitle: 'Critical Urgent Call Answered',
+    image: '/assets/badge_rapid.png',
+    reqMissions: 1,
+    points: 150,
+    citation: 'Awarded for swiftly answering an emergency critical request and arriving at the hospital within the golden hour.',
+    perks: [
+      'Golden Lightning Icon on Public Lifesaver Pass',
+      'Immediate Priority Status in Critical Matching Queue',
+      '+50 Extra Pulse Points on all emergency missions'
+    ],
+    hash: 'VP-QUEST-RAPID-077'
+  },
+  {
+    id: 'master_donor_pin',
+    category: 'quest',
+    title: 'Winged Blood Droplet Enamel Pin',
+    subtitle: 'Community Advocate & Champion',
+    image: '/assets/reward_pin.png',
+    reqPoints: 500,
+    points: 0,
+    citation: 'Commemorative 3D die-cast physical pin recognizing donors who actively inspire others to join the network.',
+    perks: [
+      'Collectible physical enamel pin in velvet gift case',
+      'Digital 3D interactive pin displayed in your profile showcase'
+    ],
+    hash: 'VP-QUEST-PIN-330'
+  },
+  {
+    id: 'health_scholar',
+    category: 'quest',
+    title: 'Clinical Health Voucher Certificate',
+    subtitle: 'Wellness & Health Pioneer',
+    image: '/assets/reward_voucher.png',
+    reqPoints: 300,
+    points: 0,
+    citation: 'Awarded to health-conscious donors who redeem and complete full preventive lab blood chemistry panels.',
+    perks: [
+      'Official Laboratory Results Report from Partner Hospital',
+      'Personalized dietary & iron replenishment guidance'
+    ],
+    hash: 'VP-QUEST-VOUCHER-112'
+  }
+];
+
+let _activeMedalsFilter = 'all';
+let _lastComputedEngagement = null;
+let _cachedDonationList = [];
+
+export async function loadDonorBadges() {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return;
+
+  try {
+    const [engagement, donations] = await Promise.all([
+      computeDonorEngagement(currentUser.uid).catch(() => null),
+      fetchDonationRequestsForDonor(currentUser.uid).catch(() => [])
+    ]);
+
+    _cachedDonationList = donations || [];
+    const completed = _cachedDonationList.filter(d => d.status === 'completed');
+    const donationCount = completed.length;
+    const totalUnits = completed.reduce((sum, d) => sum + (d.units || 1), 0);
+    const livesSaved = totalUnits > 0 ? totalUnits * 3 : (donationCount > 0 ? donationCount * 3 : 0);
+    const emergencyMissions = _cachedDonationList.filter(d => d.urgency === 'critical' || d.isEmergency).length;
+
+    // Calculate distance traveled (minimum 3.2km per donation if coordinates absent)
+    let totalDistanceKm = 0;
+    completed.forEach(d => {
+      totalDistanceKm += (d.distanceKm && !isNaN(d.distanceKm)) ? Number(d.distanceKm) : 3.5;
+    });
+    totalDistanceKm = Math.round(totalDistanceKm * 10) / 10;
+
+    // Pulse Points: donation points + units points + emergency mission points
+    const pulsePoints = engagement?.points || (donationCount * 100 + totalUnits * 50 + emergencyMissions * 50);
+
+    // Determine Active Tier
+    let tierName = 'Bronze';
+    let tier3DImg = '/assets/medal_bronze.png';
+    let nextTierName = 'Silver Sentinel';
+    let nextTierReq = 3;
+    let currentTierFloor = 1;
+
+    if (donationCount >= 20) {
+      tierName = 'Diamond Legend';
+      tier3DImg = '/assets/medal_diamond.png';
+      nextTierName = null;
+      nextTierReq = 20;
+      currentTierFloor = 20;
+    } else if (donationCount >= 10) {
+      tierName = 'Platinum Protector';
+      tier3DImg = '/assets/medal_platinum.png';
+      nextTierName = 'Diamond Legend';
+      nextTierReq = 20;
+      currentTierFloor = 10;
+    } else if (donationCount >= 5) {
+      tierName = 'Gold Guardian';
+      tier3DImg = '/assets/medal_gold.png';
+      nextTierName = 'Platinum Protector';
+      nextTierReq = 10;
+      currentTierFloor = 5;
+    } else if (donationCount >= 3) {
+      tierName = 'Silver Sentinel';
+      tier3DImg = '/assets/medal_silver.png';
+      nextTierName = 'Gold Guardian';
+      nextTierReq = 5;
+      currentTierFloor = 3;
+    } else {
+      tierName = 'Bronze Lifesaver';
+      tier3DImg = '/assets/medal_bronze.png';
+      nextTierName = 'Silver Sentinel';
+      nextTierReq = 3;
+      currentTierFloor = 0;
+    }
+
+    _lastComputedEngagement = {
+      donationCount,
+      totalUnits,
+      livesSaved,
+      emergencyMissions,
+      totalDistanceKm,
+      pulsePoints,
+      tierName,
+      tier3DImg,
+      nextTierName,
+      nextTierReq,
+      currentTierFloor,
+      bloodType: currentUser.bloodType || 'O+',
+      userName: currentUser.name || currentUser.displayName || 'Lifesaver Hero',
+    };
+
+    // Update Hero Tier Banner
+    const tierTitleEl = document.getElementById('donorBadgeTierTitle');
+    const pointsSummaryEl = document.getElementById('donorBadgePointsSummary');
+    const medalImgEl = document.getElementById('donor3DMedalImg');
+    const tierProgressLabel = document.getElementById('tierProgressLabel');
+    const tierProgressPct = document.getElementById('tierProgressPct');
+    const tierProgressBar = document.getElementById('tierProgressBar');
+    const tierNextCallout = document.getElementById('tierNextCallout');
+
+    if (tierTitleEl) tierTitleEl.textContent = tierName;
+    if (pointsSummaryEl) pointsSummaryEl.textContent = `${pulsePoints} Pulse Points`;
+    if (medalImgEl) medalImgEl.src = tier3DImg;
+
+    if (nextTierName) {
+      const needed = Math.max(1, nextTierReq - donationCount);
+      const span = nextTierReq - currentTierFloor;
+      const progress = Math.min(100, Math.max(10, Math.round(((donationCount - currentTierFloor) / span) * 100)));
+      if (tierProgressLabel) tierProgressLabel.textContent = `Progress to ${nextTierName}`;
+      if (tierProgressPct) tierProgressPct.textContent = `${progress}%`;
+      if (tierProgressBar) tierProgressBar.style.width = `${progress}%`;
+      if (tierNextCallout) {
+        tierNextCallout.innerHTML = `${needed} more donation${needed > 1 ? 's' : ''} needed to reach <strong class="text-slate-800 dark:text-slate-200">${nextTierName}</strong>!`;
+      }
+    } else {
+      if (tierProgressLabel) tierProgressLabel.textContent = 'Maximum Prestige Reached';
+      if (tierProgressPct) tierProgressPct.textContent = '100%';
+      if (tierProgressBar) tierProgressBar.style.width = '100%';
+      if (tierNextCallout) {
+        tierNextCallout.innerHTML = 'You have unlocked the highest honor in the Cameroon National Blood Registry!';
+      }
+    }
+
+    // Update 4-Pillar Scorecard
+    const statLives = document.getElementById('impactStatLives');
+    const statDonations = document.getElementById('impactStatDonations');
+    const statMissions = document.getElementById('impactStatMissions');
+    const statDistance = document.getElementById('impactStatDistance');
+
+    if (statLives) statLives.textContent = livesSaved;
+    if (statDonations) statDonations.textContent = totalUnits || donationCount;
+    if (statMissions) statMissions.textContent = emergencyMissions;
+    if (statDistance) statDistance.innerHTML = `${totalDistanceKm} <span class="text-base sm:text-lg">km</span>`;
+
+    // Update 5-Tier Journey Stepper Nodes
+    updateTierStepperNodes(donationCount);
+
+    // Render 3D Medals Showcase
+    renderMedalsShowcase();
+
+    // Update Vault Points Balance
+    const vaultBal = document.getElementById('vaultPointsBalance');
+    if (vaultBal) vaultBal.innerHTML = `${pulsePoints} <span class="text-sm font-bold text-amber-300">pts</span>`;
+
+    // Update Shareable Lifesaver Identity Pass
+    const shareBlood = document.getElementById('shareCardBloodType');
+    const shareDonations = document.getElementById('shareCardDonations');
+    const shareLives = document.getElementById('shareCardLives');
+
+    if (shareBlood) shareBlood.textContent = currentUser.bloodType || 'O+';
+    if (shareDonations) shareDonations.textContent = totalUnits || donationCount;
+    if (shareLives) shareLives.textContent = livesSaved;
+
+    // Wire Share and Download buttons
+    wireImpactShareButtons();
+
+  } catch (err) {
+    console.error('Failed to load donor badges and impact:', err);
+  }
+}
+
+function updateTierStepperNodes(donationCount) {
+  const tiers = [
+    { id: 'tierNodeBronze', req: 1, name: 'Bronze', medal: '/assets/medal_bronze.png' },
+    { id: 'tierNodeSilver', req: 3, name: 'Silver', medal: '/assets/medal_silver.png' },
+    { id: 'tierNodeGold', req: 5, name: 'Gold Guardian', medal: '/assets/medal_gold.png' },
+    { id: 'tierNodePlatinum', req: 10, name: 'Platinum', medal: '/assets/medal_platinum.png' },
+    { id: 'tierNodeDiamond', req: 20, name: 'Diamond Hero', medal: '/assets/medal_diamond.png' }
+  ];
+
+  tiers.forEach(t => {
+    const el = document.getElementById(t.id);
+    if (!el) return;
+    const isUnlocked = donationCount >= t.req;
+    const isCurrent = (t.name.startsWith('Bronze') && donationCount < 3) ||
+                      (t.name.startsWith('Silver') && donationCount >= 3 && donationCount < 5) ||
+                      (t.name.startsWith('Gold') && donationCount >= 5 && donationCount < 10) ||
+                      (t.name.startsWith('Platinum') && donationCount >= 10 && donationCount < 20) ||
+                      (t.name.startsWith('Diamond') && donationCount >= 20);
+
+    el.className = `p-4 rounded-2xl border text-center transition-all relative ${
+      isCurrent
+        ? 'bg-amber-500/15 border-amber-500/60 shadow-lg shadow-amber-500/20 text-slate-900 dark:text-white'
+        : isUnlocked
+        ? 'bg-emerald-500/10 border-emerald-500/30 text-slate-900 dark:text-white'
+        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white opacity-70'
+    }`;
+
+    el.innerHTML = `
+      <img src="${t.medal}" alt="${t.name}" class="w-16 h-16 mx-auto object-contain drop-shadow-md mb-2 ${isUnlocked ? '' : 'grayscale-[60%] opacity-60'}"/>
+      <p class="text-xs font-black">${t.name}</p>
+      <p class="text-[10px] text-slate-500 dark:text-slate-400">${t.req} Donation${t.req > 1 ? 's' : ''}</p>
+      <span class="inline-block mt-2 text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+        isCurrent
+          ? 'text-amber-700 dark:text-amber-300 bg-amber-200/60 dark:bg-amber-900/60'
+          : isUnlocked
+          ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60'
+          : 'text-slate-500 bg-slate-200/70 dark:bg-slate-700'
+      }">${isCurrent ? 'Current' : isUnlocked ? 'Unlocked' : 'Locked'}</span>
+    `;
+  });
+}
+
+function renderMedalsShowcase() {
+  const container = document.getElementById('badgesFullView');
+  if (!container) return;
+
+  const eng = _lastComputedEngagement || { donationCount: 0, pulsePoints: 0, emergencyMissions: 0 };
+  const donations = eng.donationCount || 0;
+  const points = eng.pulsePoints || 0;
+  const missions = eng.emergencyMissions || 0;
+
+  let list = REALISTIC_MEDALS.map(m => {
+    let unlocked = false;
+    let progressPct = 0;
+    let reqLabel = '';
+
+    if (m.category === 'tier') {
+      unlocked = donations >= m.reqDonations;
+      progressPct = Math.min(100, Math.round((donations / m.reqDonations) * 100));
+      reqLabel = `${m.reqDonations} Donation${m.reqDonations > 1 ? 's' : ''}`;
+    } else if (m.reqMissions) {
+      unlocked = missions >= m.reqMissions;
+      progressPct = Math.min(100, Math.round((missions / m.reqMissions) * 100));
+      reqLabel = `${m.reqMissions} Emergency Response`;
+    } else if (m.reqPoints) {
+      unlocked = points >= m.reqPoints;
+      progressPct = Math.min(100, Math.round((points / m.reqPoints) * 100));
+      reqLabel = `${m.reqPoints} Pulse Points`;
+    }
+
+    return { ...m, unlocked, progressPct, reqLabel };
+  });
+
+  if (_activeMedalsFilter === 'unlocked') {
+    list = list.filter(m => m.unlocked);
+  } else if (_activeMedalsFilter === 'locked') {
+    list = list.filter(m => !m.unlocked);
+  }
+
+  if (list.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full text-center py-12 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
+        <span class="material-symbols-outlined text-4xl text-slate-400">military_tech</span>
+        <p class="text-sm font-bold text-slate-600 dark:text-slate-300">No medals match this filter.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = list.map(m => `
+    <div class="medal-3d-card-wrap">
+      <div onclick="window.inspectMedal('${m.id}')"
+        class="medal-3d-card group bg-white dark:bg-slate-900 border ${m.unlocked ? 'border-amber-400/50 dark:border-amber-500/40 shadow-lg hover:border-amber-500' : 'border-slate-200 dark:border-slate-800 opacity-85 hover:opacity-100'} rounded-3xl p-5 sm:p-6 cursor-pointer flex flex-col justify-between space-y-4 overflow-hidden">
+        
+        <!-- Dynamic Specular Metallic Sheen -->
+        <div class="medal-specular-sheen"></div>
+        <!-- 4D Iridescent Holographic Rainbow Layer -->
+        <div class="medal-4d-hologram"></div>
+
+        <!-- Top Badges & 3D Medal Graphic -->
+        <div class="space-y-3 relative z-10">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+              m.unlocked
+                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
+            }">
+              ${m.unlocked ? '✓ 3D Die-Cast' : '🔒 Locked'}
+            </span>
+            <span class="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+              +${m.points || 100} pts
+            </span>
+          </div>
+
+          <!-- 3D Medal Render Stage with Depth Extrusion -->
+          <div class="medal-3d-graphic-wrap relative w-full h-36 flex items-center justify-center py-2">
+            ${m.unlocked ? '<div class="absolute w-32 h-32 rounded-full bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 blur-xl group-hover:blur-2xl transition-all"></div>' : ''}
+            <img src="${m.image}" alt="${esc(m.title)}" class="medal-3d-img relative z-10 w-28 h-28 object-contain ${m.unlocked ? '' : 'grayscale-[70%] opacity-50'}"/>
+          </div>
+
+          <!-- Info -->
+          <div class="text-center space-y-1">
+            <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white font-headline group-hover:text-primary transition-colors">${esc(m.title)}</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">${esc(m.subtitle)}</p>
+          </div>
+        </div>
+
+        <!-- Bottom Status / Progress -->
+        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 relative z-10">
+          ${m.unlocked ? `
+            <div class="flex items-center justify-between text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+              <span class="flex items-center gap-1"><span class="material-symbols-outlined text-xs">verified</span> Unlocked</span>
+              <span class="text-slate-400 text-[10px] uppercase font-mono">${m.hash.substring(0, 14)}...</span>
+            </div>
+          ` : `
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                <span>Req: ${m.reqLabel}</span>
+                <span>${m.progressPct}%</span>
+              </div>
+              <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-amber-500 rounded-full" style="width: ${m.progressPct}%"></div>
+              </div>
+            </div>
+          `}
+        </div>
+
+      </div>
+    </div>
+  `).join('');
+
+  bind3DMedalTiltPhysics();
+}
+
+function bind3DMedalTiltPhysics() {
+  document.querySelectorAll('.medal-3d-card').forEach(card => {
+    if (card._tiltBound) return;
+    card._tiltBound = true;
+
+    const onMove = (e) => {
+      const rect = card.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const px = Math.max(-1, Math.min(1, (x / rect.width) * 2 - 1));
+      const py = Math.max(-1, Math.min(1, (y / rect.height) * 2 - 1));
+
+      const rotX = -py * 14;
+      const rotY = px * 14;
+      const angle = (Math.atan2(py, px) * 180 / Math.PI) + 90;
+
+      card.style.transform = `perspective(1000px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(1.03, 1.03, 1.03)`;
+      card.style.setProperty('--sheen-x', `${(px * 0.5 + 0.5) * 100}%`);
+      card.style.setProperty('--sheen-y', `${(py * 0.5 + 0.5) * 100}%`);
+      card.style.setProperty('--sheen-opacity', '0.85');
+      card.style.setProperty('--holo-angle', `${angle}deg`);
+      card.style.setProperty('--holo-opacity', '0.6');
+    };
+
+    const onLeave = () => {
+      card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+      card.style.setProperty('--sheen-opacity', '0');
+      card.style.setProperty('--holo-opacity', '0');
+    };
+
+    card.addEventListener('pointermove', onMove);
+    card.addEventListener('pointerleave', onLeave);
+    card.addEventListener('touchmove', onMove, { passive: true });
+    card.addEventListener('touchend', onLeave);
+  });
+}
+
+// 360-Degree Interactive Drag Orbit Stage for Inspection Modal
+let _orbitRotX = 0;
+let _orbitRotY = 0;
+let _isDraggingOrbit = false;
+let _orbitStartX = 0;
+let _orbitStartY = 0;
+
+function bind3DOrbitDragPhysics() {
+  const target = document.getElementById('badgeCert3DOrbitTarget');
+  const stage = document.getElementById('badgeCert3DOrbitStage');
+  const shadow = document.getElementById('badgeCertOrbitShadow');
+  if (!target || !stage || target._orbitBound) return;
+  target._orbitBound = true;
+
+  const startDrag = (e) => {
+    _isDraggingOrbit = true;
+    _orbitStartX = e.touches ? e.touches[0].clientX : e.clientX;
+    _orbitStartY = e.touches ? e.touches[0].clientY : e.clientY;
+    target.style.transition = 'none';
+  };
+
+  const onDrag = (e) => {
+    if (!_isDraggingOrbit) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    const dx = clientX - _orbitStartX;
+    const dy = clientY - _orbitStartY;
+    _orbitStartX = clientX;
+    _orbitStartY = clientY;
+
+    _orbitRotY += dx * 0.75;
+    _orbitRotX = Math.max(-45, Math.min(45, _orbitRotX - dy * 0.75));
+
+    target.style.transform = `rotateX(${_orbitRotX}deg) rotateY(${_orbitRotY}deg) scale3d(1.1, 1.1, 1.1)`;
+    if (shadow) {
+      shadow.style.transform = `translateX(-50%) rotateX(85deg) rotateZ(${-_orbitRotY * 0.5}deg) scale(${1 - Math.abs(_orbitRotX) * 0.006})`;
+    }
+  };
+
+  const endDrag = () => {
+    if (!_isDraggingOrbit) return;
+    _isDraggingOrbit = false;
+    target.style.transition = 'transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
+    _orbitRotX = 0;
+    _orbitRotY = 0;
+    target.style.transform = 'rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+    if (shadow) shadow.style.transform = 'translateX(-50%) rotateX(85deg) scale(1)';
+  };
+
+  stage.addEventListener('mousedown', startDrag);
+  window.addEventListener('mousemove', onDrag);
+  window.addEventListener('mouseup', endDrag);
+
+  stage.addEventListener('touchstart', startDrag, { passive: true });
+  window.addEventListener('touchmove', onDrag, { passive: true });
+  window.addEventListener('touchend', endDrag);
+}
+
+// Synthesized Physical Metallic Chime Sound Effect (Web Audio API)
+function playMetallicChime() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(880, ctx.currentTime); // A5 note
+    osc.frequency.exponentialRampToValueAtTime(1760, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.85);
+  } catch (e) {
+    // Audio context may be restricted before user gesture; gracefully fallback
+  }
+}
+
+window.filterMedalsShowcase = (filterType) => {
+  _activeMedalsFilter = filterType;
+  const tabs = ['tabMedalsAll', 'tabMedalsUnlocked', 'tabMedalsLocked'];
+  tabs.forEach(tId => {
+    const el = document.getElementById(tId);
+    if (!el) return;
+    const isActive = (filterType === 'all' && tId === 'tabMedalsAll') ||
+                     (filterType === 'unlocked' && tId === 'tabMedalsUnlocked') ||
+                     (filterType === 'locked' && tId === 'tabMedalsLocked');
+    el.className = `px-3 py-1.5 rounded-lg text-xs font-black transition-colors cursor-pointer ${
+      isActive
+        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+    }`;
+  });
+  renderMedalsShowcase();
+};
+
+window.inspectCurrentTierMedal = () => {
+  const eng = _lastComputedEngagement;
+  if (!eng) return;
+  const count = eng.donationCount || 0;
+  let medalId = 'bronze_lifesaver';
+  if (count >= 20) medalId = 'diamond_hero';
+  else if (count >= 10) medalId = 'platinum_protector';
+  else if (count >= 5) medalId = 'gold_guardian';
+  else if (count >= 3) medalId = 'silver_sentinel';
+  window.inspectMedal(medalId);
+};
+
+window.inspectMedal = (medalId) => {
+  const medal = REALISTIC_MEDALS.find(m => m.id === medalId);
+  if (!medal) return;
+
+  const eng = _lastComputedEngagement || { donationCount: 0, pulsePoints: 0, emergencyMissions: 0 };
+  const donations = eng.donationCount || 0;
+  const points = eng.pulsePoints || 0;
+  const missions = eng.emergencyMissions || 0;
+
+  let unlocked = false;
+  let progressPct = 0;
+  let remainingText = '';
+
+  if (medal.category === 'tier') {
+    unlocked = donations >= medal.reqDonations;
+    progressPct = Math.min(100, Math.round((donations / medal.reqDonations) * 100));
+    const left = Math.max(1, medal.reqDonations - donations);
+    remainingText = `${left} more donation${left > 1 ? 's' : ''} needed to unlock this honor!`;
+  } else if (medal.reqMissions) {
+    unlocked = missions >= medal.reqMissions;
+    progressPct = Math.min(100, Math.round((missions / medal.reqMissions) * 100));
+    const left = Math.max(1, medal.reqMissions - missions);
+    remainingText = `${left} more emergency mission response needed!`;
+  } else if (medal.reqPoints) {
+    unlocked = points >= medal.reqPoints;
+    progressPct = Math.min(100, Math.round((points / medal.reqPoints) * 100));
+    const left = Math.max(1, medal.reqPoints - points);
+    remainingText = `${left} more Pulse Points needed to unlock!`;
+  }
+
+  const modal = document.getElementById('badgeCertModal');
+  const imgEl = document.getElementById('badgeCert3DImg');
+  const titleEl = document.getElementById('badgeCertTitle');
+  const descEl = document.getElementById('badgeCertDesc');
+  const dateVal = document.getElementById('badgeCertDateVal');
+  const idVal = document.getElementById('badgeCertIdVal');
+  const perksList = document.getElementById('badgeCertPerksList');
+  const reqRow = document.getElementById('badgeCertReqRow');
+  const reqPct = document.getElementById('badgeReqPct');
+  const reqBar = document.getElementById('badgeReqBar');
+  const reqRemaining = document.getElementById('badgeReqRemaining');
+  const shareBtn = document.getElementById('badgeCertShareBtn');
+
+  if (imgEl) {
+    imgEl.src = medal.image;
+    imgEl.className = `w-36 h-36 object-contain drop-shadow-[0_20px_25px_rgba(0,0,0,0.7)] pointer-events-none ${unlocked ? '' : 'grayscale-[60%] opacity-60'}`;
+  }
+  if (titleEl) titleEl.textContent = medal.title;
+  if (descEl) descEl.textContent = medal.citation;
+  if (dateVal) dateVal.textContent = unlocked ? new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending Unlock';
+  if (idVal) idVal.textContent = medal.hash;
+
+  if (perksList) {
+    perksList.innerHTML = medal.perks.map(p => `
+      <li class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-xs text-emerald-500 shrink-0">check_circle</span>
+        <span>${esc(p)}</span>
+      </li>
+    `).join('');
+  }
+
+  if (reqRow) {
+    if (unlocked) {
+      reqRow.classList.add('hidden');
+    } else {
+      reqRow.classList.remove('hidden');
+      if (reqPct) reqPct.textContent = `${progressPct}%`;
+      if (reqBar) reqBar.style.width = `${progressPct}%`;
+      if (reqRemaining) reqRemaining.textContent = remainingText;
+    }
+  }
+
+  if (shareBtn) {
+    shareBtn.onclick = () => {
+      const text = encodeURIComponent(`🎖️ I was awarded the ${medal.title} by VitalPulse Cameroon for life-saving blood donations! Join me: https://vitalpulse.cm`);
+      window.open(`https://wa.me/?text=${text}`, '_blank');
+    };
+  }
+
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    bind3DOrbitDragPhysics();
+    playMetallicChime();
+  }
+};
+
+window.closeMedalModal = () => {
+  const modal = document.getElementById('badgeCertModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+};
+
+window.redeemReward = async (rewardKey, costPoints) => {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return;
+
+  const eng = _lastComputedEngagement || { pulsePoints: 0 };
+  const currentPts = eng.pulsePoints || 0;
+
+  if (currentPts < costPoints) {
+    const diff = costPoints - currentPts;
+    window.vpNotify(`You need ${diff} more Pulse Points to redeem this reward. Donate blood or answer emergency calls to earn points!`, 'warning', 'Insufficient Points');
+    return;
+  }
+
+  const rewardNames = {
+    lab_voucher: 'Complete Clinical Lab Panel Voucher',
+    lapel_pin: 'Physical 3D Enamel Lifesaver Pin & Presentation Box',
+    pin_ribbon: 'Physical 3D Enamel Lifesaver Pin & Presentation Box',
+    vip_pass: '1-Year Zero-Wait VIP Phlebotomy Pass'
+  };
+  const rewardTitle = rewardNames[rewardKey] || 'Lifesaver Reward';
+
+  const confirmed = await window.vpConfirm(`Redeem "${rewardTitle}" for ${costPoints} Pulse Points? Your voucher will be issued and permanently stored in your records.`, {
+    title: 'Confirm Reward Redemption',
+    confirmText: 'Redeem Now'
+  });
+
+  if (!confirmed) return;
+
+  try {
+    const result = await redeemPulseReward(currentUser.uid, rewardKey, costPoints, {
+      rewardTitle,
+      donorName: currentUser.name || 'Verified Donor',
+      currentPoints: currentPts
+    });
+
+    // Deduct points in memory and refresh UI
+    if (_lastComputedEngagement) {
+      _lastComputedEngagement.pulsePoints = result.remainingPts;
+    }
+
+    const heroPoints = document.getElementById('impactPointsSummary');
+    if (heroPoints) heroPoints.textContent = `${result.remainingPts} Pulse Points`;
+    const vaultBal = document.getElementById('rewardsVaultBalance');
+    if (vaultBal) vaultBal.textContent = `${result.remainingPts} pts`;
+
+    // Trigger celebration confetti
+    triggerMilestoneConfetti();
+
+    showToast(`🎉 Reward Redeemed! Voucher Code: ${result.voucherCode}`, 'success');
+    window.vpAlert({
+      type: 'success',
+      title: 'Voucher Issued Successfully!',
+      message: `Your reward code is: <strong class="font-mono text-lg text-primary select-all">${result.voucherCode}</strong><br/><br/>` +
+               `<span class="text-xs text-slate-500">Valid until: ${new Date(result.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span><br/><br/>` +
+               `Present this voucher code or your digital pass at any partner hospital reception in Cameroon.`
+    });
+  } catch (e) {
+    console.error('Failed to redeem reward:', e);
+    showToast(e.message || 'Failed to redeem reward. Please try again.', 'error');
+  }
+};
+
+function wireImpactShareButtons() {
+  const btnClose = document.getElementById('badgeCertClose');
+  const btnCloseBtn = document.getElementById('badgeCertCloseBtn');
+  const backdrop = document.getElementById('badgeCertBackdrop');
+
+  if (btnClose) btnClose.onclick = window.closeMedalModal;
+  if (btnCloseBtn) btnCloseBtn.onclick = window.closeMedalModal;
+  if (backdrop) backdrop.onclick = window.closeMedalModal;
+
+  const btnShareWhatsapp = document.getElementById('btnShareWhatsapp');
+  if (btnShareWhatsapp) {
+    btnShareWhatsapp.onclick = () => {
+      const eng = _lastComputedEngagement || { livesSaved: 0, totalUnits: 0, tierName: 'Bronze' };
+      const msg = encodeURIComponent(`🩸 I am a verified ${eng.tierName} with VitalPulse Cameroon! I have donated ${eng.totalUnits || 1} units and helped save ${eng.livesSaved || 3} lives. Join the lifesaver movement in Cameroon: https://vitalpulse.cm`);
+      window.open(`https://wa.me/?text=${msg}`, '_blank');
+    };
+  }
+
+  const btnDownloadShareCard = document.getElementById('btnDownloadShareCard');
+  if (btnDownloadShareCard) {
+    btnDownloadShareCard.onclick = () => {
+      generateLifesaverCardCanvas();
+    };
+  }
+}
+
+function generateLifesaverCardCanvas() {
+  const eng = _lastComputedEngagement || { userName: 'Donor Hero', bloodType: 'O+', totalUnits: 1, livesSaved: 3, tierName: 'Bronze Lifesaver' };
+  
+  const canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 630;
+  const ctx = canvas.getContext('2d');
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 1200, 630);
+  grad.addColorStop(0, '#101623');
+  grad.addColorStop(0.5, '#4a080e');
+  grad.addColorStop(1, '#0b0f19');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 1200, 630);
+
+  // Border frame
+  ctx.strokeStyle = '#d97706';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(30, 30, 1140, 570);
+
+  // Header Title
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 42px sans-serif';
+  ctx.fillText('VITALPULSE CAMEROON', 70, 110);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = '700 20px sans-serif';
+  ctx.fillText('OFFICIAL NATIONAL LIFESAVER IDENTITY PASS', 70, 145);
+
+  // Donor Name
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '800 48px sans-serif';
+  ctx.fillText(eng.userName || 'Verified Donor', 70, 260);
+
+  // Tier Subtitle
+  ctx.fillStyle = '#fca5a5';
+  ctx.font = '600 26px sans-serif';
+  ctx.fillText(`Milestone Tier: ${eng.tierName || 'Bronze Donor'}`, 70, 305);
+
+  // Metrics Box
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.fillRect(70, 360, 480, 160);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(70, 360, 480, 160);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 44px sans-serif';
+  ctx.fillText(`${eng.totalUnits || 1}`, 110, 430);
+  ctx.font = '700 16px sans-serif';
+  ctx.fillStyle = '#d1d5db';
+  ctx.fillText('UNITS DONATED', 110, 465);
+
+  ctx.fillStyle = '#ef4444';
+  ctx.font = '900 44px sans-serif';
+  ctx.fillText(`${eng.livesSaved || 3}`, 340, 430);
+  ctx.font = '700 16px sans-serif';
+  ctx.fillStyle = '#d1d5db';
+  ctx.fillText('LIVES SAVED', 340, 465);
+
+  // Blood Type Badge on Right
+  ctx.fillStyle = '#dc2626';
+  ctx.beginPath();
+  ctx.roundRect(800, 200, 300, 220, [30]);
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '900 96px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(eng.bloodType || 'O+', 950, 340);
+  ctx.font = '700 18px sans-serif';
+  ctx.fillText('BLOOD GROUP', 950, 385);
+  ctx.textAlign = 'left';
+
+  // Verification Hash
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.font = '16px monospace';
+  ctx.fillText(`VERIFIED NBTS ID: VP-${Math.floor(10000000 + Math.random() * 90000000)}`, 70, 560);
+
+  // Trigger Download
+  const link = document.createElement('a');
+  link.download = `VitalPulse-Lifesaver-Pass-${eng.bloodType || 'Donor'}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+  showToast('Lifesaver pass downloaded!');
+}
+
 

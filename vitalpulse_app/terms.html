@@ -39,41 +39,93 @@
 <body class="bg-surface selection:bg-primary selection:text-white overflow-x-hidden">
 <div id="global-loader"><div class="loader-spinner"></div></div>
 
-<!-- NAV -->
-<header id="siteHeader" class="fixed top-0 left-0 w-full z-50 transition-all duration-500">
-<div class="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-<a href="/" class="flex items-center gap-3 group">
-<img src="/favicon.png" alt="VitalPulse" class="w-10 h-10 rounded-2xl shadow-lg shadow-primary/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 object-contain"/>
-<span class="text-xl font-black text-primary tracking-tighter">Vital<span class="text-on-surface">Pulse</span></span>
+<!-- ===== TOP EMERGENCY ANNOUNCEMENT BANNER ===== -->
+<div class="bg-gradient-to-r from-red-700 via-primary to-rose-700 text-white text-[11px] sm:text-xs py-1.5 px-4 font-semibold text-center flex items-center justify-center gap-2 relative z-50">
+  <span class="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+    <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span> Donor Coordination
+  </span>
+  <span class="hidden sm:inline">VitalPulse Community &amp; Coordinator Desk: <strong>+237 652 73 09 80</strong> / WhatsApp: <strong>+237 674 92 20 15</strong></span>
+  <span class="sm:hidden">Need donor coordination?</span>
+  <a href="/public-request.html" class="underline font-bold text-white hover:text-red-100 flex items-center gap-0.5 ml-1">
+    Request Dispatch &rarr;
+  </a>
+</div>
+
+<!-- ===== NAV (CLEAN LIGHT FROSTED THEME & WORLD-CLASS MOBILE DRAWER) ===== -->
+<header id="siteHeader" class="sticky top-0 left-0 w-full z-40 transition-all duration-300 bg-white/90 backdrop-blur-xl border-b border-slate-200/80 shadow-xs">
+<div class="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3.5">
+<a href="/" class="flex items-center group overflow-visible">
+<img src="/vitalpulse-logo.png" alt="VitalPulse" class="h-14 sm:h-18 md:h-20 w-auto max-w-[200px] sm:max-w-[260px] object-contain group-hover:scale-105 transition-transform -my-2"/>
 </a>
 <nav class="hidden md:flex items-center gap-8">
-<a href="/" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">Home</a>
-<a href="/about.html" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">About</a>
-<a href="/index.html#campaigns" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">Campaigns</a>
-</nav>
-<div class="flex items-center gap-3">
-<a href="/login.html" class="hidden md:inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-primary transition-colors px-4 py-2.5 rounded-xl hover:bg-primary/5">Sign In</a>
-<a href="/signup.html" class="hidden md:inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
-Join Free
-<span class="material-symbols-outlined text-lg">arrow_forward</span>
+<a href="/" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">Home</a>
+<a href="/about.html" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">About</a>
+<a href="/index.html#campaigns" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">Outreach</a>
+<a href="/public-request.html" class="text-sm font-semibold text-red-600 hover:text-red-700 transition-colors flex items-center gap-1.5">
+  <span class="material-symbols-outlined text-sm text-red-600" style="font-variation-settings:'FILL' 1">emergency</span>Emergency
 </a>
-<button id="mobileMenuBtn" class="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors ml-2">
-<span class="material-symbols-outlined">menu</span>
+</nav>
+<div class="flex items-center gap-2 sm:gap-3">
+<!-- Language Switcher Pill -->
+<div class="hidden sm:inline-flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
+  <button class="px-2 py-1 rounded-lg bg-white text-slate-900 shadow-xs font-black">EN</button>
+  <button class="px-2 py-1 rounded-lg text-slate-500 hover:text-slate-900">FR</button>
+</div>
+<a href="/login.html" class="hidden md:inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-primary transition-colors px-3.5 py-2 rounded-xl hover:bg-slate-100">Sign In</a>
+<a href="/signup.html" class="hidden md:inline-flex items-center gap-2 bg-primary hover:bg-[#8f0d15] text-white px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-primary/20 hover:shadow-primary/35 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
+Join Free
+<span class="material-symbols-outlined text-base">arrow_forward</span>
+</a>
+<!-- Mobile Menu Button -->
+<button id="mobileMenuBtn" class="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors ml-1" aria-label="Toggle Menu">
+<span class="material-symbols-outlined text-2xl">menu</span>
 </button>
 </div>
 </div>
-<div id="mobileMenu" class="absolute top-full left-0 w-full bg-surface border-b border-slate-100 shadow-2xl hidden flex-col px-6 py-6 gap-5 md:hidden">
-  <a href="/" class="text-base font-semibold text-slate-600 flex items-center gap-2"><span class="material-symbols-outlined text-sm">home</span>Home</a>
-  <a href="/about.html" class="text-base font-semibold text-slate-600 flex items-center gap-2"><span class="material-symbols-outlined text-sm">info</span>About</a>
-  <a href="/index.html#campaigns" class="text-base font-semibold text-slate-600 flex items-center gap-2"><span class="material-symbols-outlined text-sm">campaign</span>Campaigns</a>
-  <div class="h-px w-full bg-slate-100 my-2"></div>
-  <div class="flex flex-col gap-3">
-    <a href="/login.html" class="text-base font-bold text-slate-600 flex items-center justify-center py-3 rounded-xl border-2 border-slate-100 hover:bg-slate-50 transition-colors">
-      <span class="material-symbols-outlined text-lg mr-2">login</span> Sign In
+
+<!-- Mobile Nav Dropdown (World-Class Light Floating Drawer) -->
+<div id="mobileMenu" class="absolute top-full left-0 w-full bg-white/98 backdrop-blur-2xl border-b border-slate-200 shadow-2xl hidden flex-col px-5 py-6 gap-4 md:hidden text-slate-800 transition-all duration-300">
+  
+  <!-- Mobile Language Switcher Row -->
+  <div class="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs font-bold">
+    <span class="text-slate-500 text-[11px] uppercase tracking-wider ml-1">Language / Langue</span>
+    <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+      <button class="px-3 py-1 rounded-lg bg-primary text-white font-black text-xs">EN</button>
+      <button class="px-3 py-1 rounded-lg text-slate-600 hover:text-slate-900 font-bold text-xs">FR</button>
+    </div>
+  </div>
+
+  <!-- Navigation Links with Rich Visual Hierarchy -->
+  <div class="flex flex-col gap-1">
+    <a href="/" class="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">home</span>Home</span>
+      <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
     </a>
-    <a href="/signup.html" class="flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl text-base font-bold shadow-lg shadow-primary/25">
-      Join Free
-      <span class="material-symbols-outlined text-lg">arrow_forward</span>
+    <a href="/about.html" class="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">info</span>About Initiative</span>
+      <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
+    </a>
+    <a href="/index.html#campaigns" class="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">campaign</span>Community Outreach</span>
+      <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
+    </a>
+    <a href="/public-request.html" class="text-sm font-bold text-red-600 flex items-center justify-between p-3 rounded-xl bg-red-50/30 hover:bg-red-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-red-600" style="font-variation-settings:'FILL' 1">emergency</span>Emergency Blood Request</span>
+      <span class="material-symbols-outlined text-base text-red-600">chevron_right</span>
+    </a>
+  </div>
+
+  <div class="h-px w-full bg-slate-100 my-1"></div>
+
+  <!-- Dual Action Buttons -->
+  <div class="flex flex-col gap-2.5">
+    <a href="/signup.html" class="flex items-center justify-center gap-2 bg-primary hover:bg-[#8f0d15] text-white py-3.5 rounded-2xl text-sm font-bold shadow-lg shadow-primary/25 transition-all">
+      <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+      Join Free Donor Network
+      <span class="material-symbols-outlined text-base">arrow_forward</span>
+    </a>
+    <a href="/login.html" class="text-sm font-bold text-slate-700 flex items-center justify-center py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-colors">
+      <span class="material-symbols-outlined text-base mr-2 text-slate-500">key</span> Hospital Staff Portal Sign In
     </a>
   </div>
 </div>
@@ -140,45 +192,53 @@ Join Free
       </section>
       <section>
         <h2 class="text-xl font-bold text-on-surface mb-3">8. Contact</h2>
-        <p>Questions about these terms: <a href="mailto:contact@vitalpulse.cm" class="text-primary font-bold">contact@vitalpulse.cm</a></p>
+        <p>Questions about these terms: <a href="mailto:info@vitalpulse237.com" class="text-primary font-bold">info@vitalpulse237.com</a></p>
       </section>
     </div>
   </div>
 </main>
 
 <!-- ===== FOOTER ===== -->
-<footer class="bg-on-surface pt-20 pb-6 px-6">
+<footer class="bg-slate-950 text-white pt-20 pb-8 px-6 border-t border-slate-900">
   <div class="max-w-7xl mx-auto">
     <div class="grid grid-cols-1 md:grid-cols-3 gap-10 mb-16">
       <div>
-        <div class="flex items-center gap-3 mb-6">
-          <img src="/favicon.png" alt="VitalPulse" class="w-10 h-10 rounded-2xl shadow-lg shadow-primary/30 object-contain"/>
-          <span class="text-xl font-black text-white tracking-tighter">Vital<span class="text-white/50">Pulse</span></span>
-        </div>
-        <p class="text-slate-500 text-sm leading-relaxed max-w-xs mb-8">The heartbeat of Cameroon's medical infrastructure. Secure, rapid, and life-saving blood coordination.</p>
+        <a href="/" class="inline-block mb-4 group overflow-visible">
+          <img src="/vitalpulse-logo.png" alt="VitalPulse" class="h-20 sm:h-24 w-auto max-w-[280px] object-contain group-hover:scale-105 transition-transform brightness-0 invert opacity-95 -my-2"/>
+        </a>
+        <p class="text-slate-400 text-sm leading-relaxed max-w-xs mb-8">The heartbeat of Cameroon's medical infrastructure. Secure, rapid, and life-saving blood coordination.</p>
       </div>
       <div>
-        <h5 class="font-bold text-sm text-white mb-4 uppercase tracking-wider">Company</h5>
+        <h5 class="font-bold text-sm text-white mb-4 uppercase tracking-wider">Navigation</h5>
         <div class="flex flex-col gap-2.5">
-          <a href="/about.html" class="text-sm text-slate-400 hover:text-white transition-colors">About</a>
+          <a href="/" class="text-sm text-slate-400 hover:text-white transition-colors">Home</a>
+          <a href="/about.html" class="text-sm text-slate-400 hover:text-white transition-colors">About Us</a>
+          <a href="/public-request.html" class="text-sm text-slate-400 hover:text-white transition-colors">Emergency Blood Request</a>
           <a href="/privacy.html" class="text-sm text-slate-400 hover:text-white transition-colors">Privacy Policy</a>
           <a href="/terms.html" class="text-sm text-slate-400 hover:text-white transition-colors">Terms of Service</a>
-          <a href="mailto:contact@vitalpulse.cm" class="text-sm text-slate-400 hover:text-white transition-colors">Contact Us</a>
         </div>
       </div>
       <div class="bg-white/5 rounded-2xl p-6 border border-white/10">
-        <span class="material-symbols-outlined text-primary block mb-3">emergency</span>
-        <h5 class="font-bold text-sm text-white mb-1 uppercase tracking-wider">Emergency Line</h5>
-        <p class="text-2xl font-black text-white mb-1">+237 800-PULSE</p>
-        <p class="text-xs text-slate-500">24/7 Rapid Response Coordination</p>
+        <span class="material-symbols-outlined text-primary block mb-2" style="font-variation-settings:'FILL' 1">headset_mic</span>
+        <h5 class="font-bold text-sm text-white mb-1 uppercase tracking-wider">VitalPulse Coordinator Desk</h5>
+        <p class="text-xs text-slate-400 mb-3 leading-relaxed">Community donor mobilization &amp; facility inquiries:</p>
+        <p class="text-xl sm:text-2xl font-black text-white mb-0.5">
+          <a href="tel:+237652730980" class="hover:text-red-400 transition-colors">+237 652 73 09 80</a>
+        </p>
+        <p class="text-xs text-slate-300 mb-3">
+          WhatsApp Desk: <a href="https://wa.me/237674922015" target="_blank" rel="noopener noreferrer" class="text-emerald-400 hover:underline">+237 674 92 20 15</a>
+        </p>
+        <div class="text-xs text-slate-400 pt-2 border-t border-white/10">
+          Email: <a href="mailto:info@vitalpulse237.com" class="text-slate-200 underline">info@vitalpulse237.com</a>
+        </div>
       </div>
     </div>
     <div class="border-t border-white/10 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
-      <p class="text-slate-600 text-xs">&copy; 2026 VitalPulse Cameroon. A health-tech initiative.</p>
+      <p class="text-slate-500 text-xs">&copy; 2026 VitalPulse Cameroon. A health-tech initiative.</p>
       <div class="flex items-center gap-5">
-        <a href="/privacy.html" class="text-slate-600 hover:text-slate-300 text-xs transition-colors">Privacy</a>
-        <a href="/terms.html" class="text-slate-600 hover:text-slate-300 text-xs transition-colors">Terms</a>
-        <a href="mailto:contact@vitalpulse.cm" class="text-slate-600 hover:text-slate-300 text-xs transition-colors">Contact</a>
+        <a href="/privacy.html" class="text-slate-500 hover:text-slate-300 text-xs transition-colors">Privacy</a>
+        <a href="/terms.html" class="text-slate-500 hover:text-slate-300 text-xs transition-colors">Terms</a>
+        <a href="mailto:info@vitalpulse237.com" class="text-slate-500 hover:text-slate-300 text-xs transition-colors">Contact</a>
       </div>
     </div>
   </div>

@@ -107,6 +107,8 @@ export function isLegacyAccount(user) {
     return true;
 }
 
+import { resetWorkstationTimer, stopWorkstationTimer } from './inactivityLock.js';
+
 /**
  * Sets the active staff session after a successful PIN verification.
  * Stored in sessionStorage so it clears when the tab/browser closes.
@@ -121,6 +123,7 @@ export function setActiveStaffSession(staffMember) {
             roles: staffMember.roles,
             switchedAt: new Date().toISOString(),
         }));
+        resetWorkstationTimer();
     } catch (e) {
         console.warn('Failed to set staff session in sessionStorage:', e);
     }
@@ -145,6 +148,7 @@ export function getActiveStaffSession() {
 export function clearActiveStaffSession() {
     try {
         sessionStorage.removeItem(STAFF_SESSION_KEY);
+        stopWorkstationTimer();
     } catch (e) { /* ignore */ }
 }
 

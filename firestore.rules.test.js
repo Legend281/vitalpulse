@@ -98,6 +98,8 @@ beforeEach(async () => {
 
     await setDoc(doc(db, 'issuance_log/I1'), { hospitalId: 'H1', hospital: 'Hospital One', bloodType: 'O-', units: 1, patientName: 'P' });
 
+    await setDoc(doc(db, 'patient_transfusions/PT1'), { hospitalId: 'H1', hospitalName: 'Hospital One', patientName: 'P', bloodType: 'O-', bloodBagBarcode: 'BAG1', status: 'Transfusing' });
+
     await setDoc(doc(db, 'campaigns/C1'), { title: 'Drive', participants: [], participantCount: 0 });
     await setDoc(doc(db, 'system_settings/config'), { autoMatchDonors: true });
   });
@@ -188,6 +190,18 @@ describe('requests', () => {
     assertSucceeds(setDoc(doc(ctx('sysAdmin'), 'requests/R5'), {
       hospital: 'Central Command', bloodType: 'O-',
       status: 'Open', isEmergency: true, requestedAt: 'now',
+    })));
+
+  it('hospital_staff creates a clinical patient request with Pending Crossmatch', async () =>
+    assertSucceeds(setDoc(doc(ctx('staffH1'), 'requests/R_CLINICAL'), {
+      hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-',
+      status: 'Pending Crossmatch', urgency: 'Routine', requestedAt: 'now',
+    })));
+
+  it('hospital_staff creates a Track A Emergency Dispatch clinical request', async () =>
+    assertSucceeds(setDoc(doc(ctx('staffH1'), 'requests/R_TRACK_A'), {
+      hospital: 'Hospital One', hospitalId: 'H1', bloodType: 'O-',
+      status: 'Emergency Dispatch', urgency: 'Emergency', isEmergency: true, requestedAt: 'now',
     })));
 
   it('donor reads an Open request to consider accepting', async () =>
@@ -723,6 +737,32 @@ describe('system_settings', () => {
 
   it('HOSTILE: only system_admin can write settings', async () =>
     assertFails(setDoc(doc(ctx('hAdminH1'), 'system_settings/config'), { autoMatchDonors: false }, { merge: true })));
+});
+
+describe('patient_transfusions', () => {
+  it('hospital_staff of H1 reads their own hospital\'s transfusion record', async () =>
+    assertSucceeds(getDoc(doc(ctx('staffH1'), 'patient_transfusions/PT1'))));
+
+  it('HOSTILE: hospital_staff of H2 cannot read H1\'s transfusion record', async () =>
+    assertFails(getDoc(doc(ctx('staffH2'), 'patient_transfusions/PT1'))));
+
+  it('HOSTILE: donor cannot read transfusion records', async () =>
+    assertFails(getDoc(doc(ctx('donorA'), 'patient_transfusions/PT1'))));
+
+  it('hospital_staff of H1 can create a patient transfusion record', async () =>
+    assertSucceeds(setDoc(doc(ctx('staffH1'), 'patient_transfusions/PT2'), {
+      hospitalId: 'H1', hospitalName: 'Hospital One', patientName: 'Patient B', bloodType: 'A+', bloodBagBarcode: 'BAG2', status: 'Transfusing'
+    })));
+
+  it('HOSTILE: hospital_staff of H2 cannot create a transfusion record claiming H1', async () =>
+    assertFails(setDoc(doc(ctx('staffH2'), 'patient_transfusions/PT3'), {
+      hospitalId: 'H1', hospitalName: 'Hospital One', patientName: 'Patient C', bloodType: 'A+', bloodBagBarcode: 'BAG3', status: 'Transfusing'
+    })));
+
+  it('hospital_staff of H1 can update vitals / status on their transfusion record', async () =>
+    assertSucceeds(updateDoc(doc(ctx('staffH1'), 'patient_transfusions/PT1'), {
+      status: 'Completed', updatedAt: 'now'
+    })));
 });
 
 // ---------------------------------------------------------------------------

@@ -42,16 +42,11 @@
 <aside class="hidden md:flex flex-col h-screen w-64 bg-white sticky top-0 shrink-0 z-40 border-r border-slate-200/80 shadow-xs">
   <div class="flex flex-col h-full">
     <!-- Brand Section -->
-    <div class="px-5 pt-6 pb-5 shrink-0">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-red-600 via-rose-600 to-red-500 flex items-center justify-center shadow-md shadow-red-500/20 brand-heartbeat shrink-0">
-          <span class="material-symbols-outlined text-white text-xl" style="font-variation-settings:'FILL' 1">bloodtype</span>
-        </div>
-        <div>
-          <div class="font-manrope font-black text-xl tracking-tight leading-none"><span class="text-red-600">Vital</span><span class="text-slate-900">Pulse</span></div>
-          <div class="text-[9px] uppercase tracking-[0.2em] text-slate-400 font-bold mt-1">Hospital Portal</div>
-        </div>
-      </div>
+    <div class="px-4 pt-4 pb-2 shrink-0 overflow-visible">
+      <a href="/hospital.html" class="flex flex-col items-start gap-1 group">
+        <img src="/vitalpulse-logo.png" alt="VitalPulse" class="w-full max-w-[240px] h-20 object-contain object-left group-hover:scale-105 transition-transform -my-2"/>
+        <span class="text-[9px] uppercase tracking-[0.22em] text-slate-400 font-extrabold pl-1">Hospital Portal</span>
+      </a>
     </div>
 
     <!-- Divider -->
@@ -147,14 +142,9 @@
 <aside id="mobileDrawer" class="md:hidden fixed top-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-white shadow-2xl -translate-x-full transition-transform duration-300 ease-out flex flex-col">
   <!-- Drawer Header -->
   <div class="flex items-center justify-between px-5 pt-6 pb-4 border-b border-slate-100">
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-rose-500 flex items-center justify-center shadow-md shadow-red-200/40 shrink-0">
-        <span class="material-symbols-outlined text-white text-lg" style="font-variation-settings:'FILL' 1">bloodtype</span>
-      </div>
-      <div>
-        <div class="font-manrope font-black text-lg tracking-tight"><span class="text-red-600">Vital</span><span class="text-slate-900">Pulse</span></div>
-        <div class="text-[8px] uppercase tracking-[0.2em] text-slate-400 font-extrabold">Hospital Portal</div>
-      </div>
+    <div class="flex flex-col items-start gap-1 min-w-0">
+      <img src="/vitalpulse-logo.png" alt="VitalPulse" class="w-full max-w-[220px] h-18 object-contain object-left -my-2"/>
+      <span class="text-[8px] uppercase tracking-[0.22em] text-slate-400 font-extrabold pl-1">Hospital Portal</span>
     </div>
     <button id="mobileDrawerClose" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors" aria-label="Close menu">
       <span class="material-symbols-outlined text-lg">close</span>
