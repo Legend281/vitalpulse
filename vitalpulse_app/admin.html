@@ -1311,13 +1311,13 @@ Urgent Request
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingWhatsAppWebhook">WhatsApp Bot Webhook URL (Optional)</label>
                         <input type="url" id="settingWhatsAppWebhook" placeholder="https://api.callmebot.com/whatsapp.php or custom webhook" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-emerald-400 focus:ring-3 focus:ring-emerald-500/10 transition-all font-mono" />
-                        <p class="text-[10px] text-slate-400 mt-1.5">Endpoint for automated background WhatsApp message delivery.</p>
+                        <p class="text-[10px] text-slate-400 mt-1.5">Optional endpoint for automated background WhatsApp message delivery.</p>
                     </div>
 
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingEmailWebhook">Email Relay (Resend API Key or Webhook URL)</label>
-                        <input type="text" id="settingEmailWebhook" placeholder="re_xxxxxxxxxxxx (Resend API Key) or https://formspree.io/f/xxx" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/10 transition-all font-mono" />
-                        <p class="text-[10px] text-slate-400 mt-1.5">Enter your Resend API Key (re_...) or Formspree endpoint for automated email delivery.</p>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingEmailWebhook">External Notification Webhook (Optional)</label>
+                        <input type="url" id="settingEmailWebhook" placeholder="https://formspree.io/f/xxx or https://webhook.site/..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/10 transition-all font-mono" />
+                        <p class="text-[10px] text-slate-400 mt-1.5">Optional relay webhook. Core email delivery is handled securely by the backend via Firebase Secrets.</p>
                     </div>
                 </div>
 
