@@ -218,13 +218,18 @@ export async function dispatchAdminAlert({
     try {
       const hookRes = await fetch(config.emailWebhook.trim(), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({
+          name: name || 'VitalPulse System',
+          _replyto: email || config.adminEmail,
           to: config.adminEmail,
           subject: `[VitalPulse Alert] ${title} - ${name || city || 'Immediate Action Required'}`,
           message: formattedText,
           eventType: type,
-          details,
+          details: details || null,
           actionUrl,
           timestamp: new Date().toISOString()
         })
@@ -232,6 +237,9 @@ export async function dispatchAdminAlert({
       if (hookRes.ok) {
         emailDeliveryResult = { success: true, channel: 'webhook' };
         console.log('[AdminNotificationService] Email fallback webhook dispatched successfully.');
+      } else {
+        const errText = await hookRes.text().catch(() => '');
+        console.warn(`[AdminNotificationService] Webhook returned error (${hookRes.status}):`, errText);
       }
     } catch (e) {
       console.warn('[AdminNotificationService] Email fallback webhook failed:', e);
