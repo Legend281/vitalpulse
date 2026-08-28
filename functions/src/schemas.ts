@@ -307,3 +307,22 @@ export const confirmPasswordResetSchema = z
   .strict();
 
 export type ConfirmPasswordResetInput = z.infer<typeof confirmPasswordResetSchema>;
+
+export const adminEmailAlertSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    name: z.string().trim().max(200).optional().nullable(),
+    bloodType: z.string().trim().max(50).optional().nullable(),
+    city: z.string().trim().max(100).optional().nullable(),
+    phone: z.string().trim().max(50).optional().nullable(),
+    email: z.string().trim().max(150).optional().nullable(),
+    urgency: z.string().trim().max(50).optional().nullable(),
+    details: z.string().trim().max(2000).optional().nullable(),
+    actionUrl: z.string().trim().url().optional().nullable(),
+    eventType: z.string().trim().max(100).optional().nullable(),
+    toEmail: z.string().trim().email().optional().nullable(),
+    customApiKey: z.string().trim().max(200).optional().nullable()
+  })
+  .strict();
+
+export type AdminEmailAlertInput = z.infer<typeof adminEmailAlertSchema>;

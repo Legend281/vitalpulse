@@ -9,6 +9,7 @@
 // =========================================================================
 
 import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { db } from './firebase';
 
 export const DEFAULT_ADMIN_ALERT_CONFIG = {
@@ -98,7 +99,7 @@ export async function dispatchAdminAlert({
   if (type === 'PUBLIC_REQUEST' && !config.notifyPublicRequest) return null;
   if (type === 'DONOR_REGISTRATION' && !config.notifyDonorReg) return null;
 
-  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://vitalpulse.cm';
+  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://vitalpulse237.com';
   const actionUrl = `${origin}/admin.html#${dashboardView}`;
 
   const formattedText = formatWhatsAppMessage({
@@ -185,56 +186,55 @@ export async function dispatchAdminAlert({
     }
   }
 
-  // 3. Automated Email Dispatch (Resend API, Formspree, EmailJS, or Generic Webhook)
-  if (config.emailWebhook) {
+  // 3. Automated Server-Side Email Dispatch via Cloud Functions (Resend API) + Webhook Fallback
+  let emailDeliveryResult = null;
+  try {
+    const sendEmailFn = httpsCallable(getFunctions(), 'sendAdminNotificationEmail');
+    const emailRes = await sendEmailFn({
+      title,
+      name: name || null,
+      bloodType: bloodType || null,
+      city: city || null,
+      phone: phone || null,
+      email: email || null,
+      urgency,
+      details: details || null,
+      actionUrl,
+      eventType: type,
+      toEmail: config.adminEmail,
+      customApiKey: config.emailWebhook && config.emailWebhook.startsWith('re_') ? config.emailWebhook : null
+    });
+    emailDeliveryResult = emailRes.data;
+    if (emailDeliveryResult?.success) {
+      console.log('[AdminNotificationService] Email automated delivery dispatched successfully via Cloud Function:', emailDeliveryResult);
+    }
+  } catch (err) {
+    console.warn('[AdminNotificationService] Server-side email callable error:', err?.message || err);
+    emailDeliveryResult = { success: false, error: err?.message || String(err) };
+  }
+
+  // Fallback webhook if server callable wasn't used or returned false, and a public webhook URL is configured
+  if (!emailDeliveryResult?.success && config.emailWebhook && config.emailWebhook.startsWith('http')) {
     try {
-      const emailEndpoint = config.emailWebhook.trim();
-      if (emailEndpoint.startsWith('re_')) {
-        // Direct Resend API key provided (e.g. re_123456789)
-        await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${emailEndpoint}`
-          },
-          body: JSON.stringify({
-            from: 'VitalPulse Alert <onboarding@resend.dev>',
-            to: [config.adminEmail],
-            subject: `[VitalPulse Alert] ${title} - ${name || city || 'Immediate Action Required'}`,
-            text: formattedText
-          })
-        });
-      } else if (emailEndpoint.includes('resend.com')) {
-        // Resend API URL with Bearer token or proxy
-        await fetch(emailEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            from: 'VitalPulse Alert <onboarding@resend.dev>',
-            to: [config.adminEmail],
-            subject: `[VitalPulse Alert] ${title} - ${name || city || 'Immediate Action Required'}`,
-            text: formattedText
-          })
-        });
-      } else {
-        // Standard Webhook (Formspree, Zapier, EmailJS, or Custom Relay)
-        await fetch(emailEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: config.adminEmail,
-            subject: `[VitalPulse Alert] ${title} - ${name || city || 'Immediate Action Required'}`,
-            message: formattedText,
-            eventType: type,
-            details,
-            actionUrl,
-            timestamp: new Date().toISOString()
-          })
-        });
+      const hookRes = await fetch(config.emailWebhook.trim(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: config.adminEmail,
+          subject: `[VitalPulse Alert] ${title} - ${name || city || 'Immediate Action Required'}`,
+          message: formattedText,
+          eventType: type,
+          details,
+          actionUrl,
+          timestamp: new Date().toISOString()
+        })
+      });
+      if (hookRes.ok) {
+        emailDeliveryResult = { success: true, channel: 'webhook' };
+        console.log('[AdminNotificationService] Email fallback webhook dispatched successfully.');
       }
-      console.log('[AdminNotificationService] Email automated delivery dispatched successfully.');
-    } catch (err) {
-      console.warn('[AdminNotificationService] Email automated dispatch failed:', err);
+    } catch (e) {
+      console.warn('[AdminNotificationService] Email fallback webhook failed:', e);
     }
   }
 
@@ -243,7 +243,8 @@ export async function dispatchAdminAlert({
     formattedText,
     whatsappUrl,
     adminEmail: config.adminEmail,
-    adminPhone: config.adminPhone
+    adminPhone: config.adminPhone,
+    emailResult: emailDeliveryResult
   };
 }
 

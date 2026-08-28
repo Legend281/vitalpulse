@@ -6602,6 +6602,19 @@ async function loadSettingsDashboard() {
                 const originalHtml = testWaBtn.innerHTML;
                 testWaBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span> Sending...';
                 try {
+                    const currentPhoneInput = document.getElementById('settingAdminNotificationPhone')?.value?.trim();
+                    const currentWaWebhookInput = document.getElementById('settingWhatsAppWebhook')?.value?.trim();
+                    if (currentPhoneInput || currentWaWebhookInput) {
+                        try {
+                            await updateSystemSettings({
+                                adminNotificationPhone: currentPhoneInput || settings.adminNotificationPhone || '+237674922015',
+                                adminWhatsAppWebhook: currentWaWebhookInput !== undefined ? currentWaWebhookInput : (settings.adminWhatsAppWebhook || '')
+                            });
+                        } catch (e) {
+                            console.warn('Could not auto-save input settings before test:', e);
+                        }
+                    }
+
                     const res = await sendTestAdminAlert();
                     showToast('WhatsApp alert generated! Opening preview...');
                     if (res?.whatsappUrl) {
@@ -6623,8 +6636,28 @@ async function loadSettingsDashboard() {
                 const originalHtml = testEmailBtn.innerHTML;
                 testEmailBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span> Sending...';
                 try {
-                    await sendTestAdminAlert();
-                    showToast('Test Email alert recorded and dispatched to admin feed!');
+                    const currentEmailInput = document.getElementById('settingAdminNotificationEmail')?.value?.trim();
+                    const currentKeyInput = document.getElementById('settingEmailWebhook')?.value?.trim();
+                    if (currentEmailInput || currentKeyInput) {
+                        try {
+                            await updateSystemSettings({
+                                adminNotificationEmail: currentEmailInput || settings.adminNotificationEmail || 'info@vitalpulse237.com',
+                                adminEmailWebhook: currentKeyInput !== undefined ? currentKeyInput : (settings.adminEmailWebhook || '')
+                            });
+                        } catch (e) {
+                            console.warn('Could not auto-save input settings before test:', e);
+                        }
+                    }
+
+                    const res = await sendTestAdminAlert();
+                    const emailRes = res?.emailResult;
+                    if (emailRes?.success) {
+                        showToast(`✅ Email alert delivered to ${res.adminEmail || 'admin'}! Please check your inbox (and spam folder).`);
+                    } else if (emailRes?.error) {
+                        showToast(`Email notice: ${emailRes.error}`, 'warning');
+                    } else {
+                        showToast(`Test alert generated for ${res.adminEmail || 'admin'}.`);
+                    }
                 } catch (err) {
                     showToast('Failed to trigger test Email alert: ' + (err.message || err), 'error');
                 } finally {

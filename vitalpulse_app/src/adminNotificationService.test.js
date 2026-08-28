@@ -25,6 +25,11 @@ vi.mock('firebase/firestore', () => ({
   }))
 }));
 
+vi.mock('firebase/functions', () => ({
+  getFunctions: vi.fn(() => ({})),
+  httpsCallable: vi.fn(() => vi.fn(async () => ({ data: { success: true, channel: 'resend', messageId: 'mock_msg_123' } })))
+}));
+
 vi.mock('./firebase', () => ({ db: {} }));
 
 describe('formatWhatsAppMessage', () => {
