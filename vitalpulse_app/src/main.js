@@ -1461,14 +1461,14 @@ async function initHospitalVerificationGuard() {
         const licenseActionEl = document.getElementById('gateLicenseAction');
         if (licenseActionEl) {
             if (licenseUrl) {
-                licenseActionEl.innerHTML = `<a href="${safeUrl(licenseUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white rounded-lg text-xs font-bold transition-all border border-white/20">
+                licenseActionEl.innerHTML = `<a href="${safeUrl(licenseUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/20 shadow-xs cursor-pointer">
                     <span class="material-symbols-outlined text-sm">visibility</span>
                     View License
                 </a>`;
             } else {
-                licenseActionEl.innerHTML = `<span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">
-                    <span class="material-symbols-outlined text-sm">check_circle</span>
-                    License Attached
+                licenseActionEl.innerHTML = `<span class="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-300 bg-emerald-500/20 px-3.5 py-2 rounded-xl border border-emerald-500/30">
+                    <span class="material-symbols-outlined text-sm">verified</span>
+                    Verified Upload
                 </span>`;
             }
         }
@@ -1484,12 +1484,15 @@ async function initHospitalVerificationGuard() {
         const step2Title = document.getElementById('gateTimelineStep2Title');
         const step2Subtitle = document.getElementById('gateTimelineStep2Subtitle');
 
+        const globalTitle = document.getElementById('globalHeaderTitle');
+
         if (verification.status === 'verified') {
             if (gateEl) gateEl.classList.add('hidden');
             if (badgeEl) {
                 badgeEl.classList.remove('hidden');
                 badgeEl.classList.add('inline-flex');
             }
+            if (globalTitle) globalTitle.textContent = 'Dashboard';
             return true;
         }
 
@@ -1499,6 +1502,8 @@ async function initHospitalVerificationGuard() {
             badgeEl.classList.remove('inline-flex');
         }
 
+        if (globalTitle) globalTitle.textContent = 'Accreditation Review';
+
         // Hide all operational views
         const allViews = document.querySelectorAll('[id^="view-"]');
         allViews.forEach(v => v.classList.add('hidden'));
@@ -1506,51 +1511,51 @@ async function initHospitalVerificationGuard() {
         if (gateEl) gateEl.classList.remove('hidden');
 
         if (verification.status === 'rejected') {
-            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-rose-950 p-6 sm:p-8 md:p-10 text-white shadow-2xl border border-rose-500/30';
-            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300 shrink-0 shadow-inner';
+            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-white border border-rose-200 p-6 sm:p-8 md:p-9 shadow-sm transition-all';
+            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0 shadow-sm';
             if (iconEl) iconEl.textContent = 'gpp_bad';
             if (statusBadge) {
-                statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/30';
-                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400"></span> Accreditation Declined';
+                statusBadge.className = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-rose-50 text-rose-800 border border-rose-200 shadow-xs';
+                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-600"></span> Accreditation Declined';
             }
             if (titleEl) titleEl.textContent = 'Accreditation Request Declined';
-            if (subtitleEl) subtitleEl.textContent = 'Your hospital registration could not be accredited at this time. Please contact the National Coordination Desk for guidance on submitting required compliance documentation.';
+            if (subtitleEl) subtitleEl.textContent = 'The national coordination desk was unable to verify your facility credentials at this time. Please review the compliance notice below or reach out to the coordinator desk.';
             if (rejectionBox) rejectionBox.classList.remove('hidden');
             if (step2Icon) {
-                step2Icon.className = 'w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold shrink-0 mt-0.5';
-                step2Icon.innerHTML = '<span class="material-symbols-outlined text-sm">close</span>';
+                step2Icon.className = 'w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs';
+                step2Icon.innerHTML = '<span class="material-symbols-outlined text-lg">close</span>';
             }
-            if (step2Title) step2Title.textContent = 'Application Declined';
-            if (step2Subtitle) step2Subtitle.textContent = 'Contact desk for re-application';
+            if (step2Title) step2Title.textContent = '2. Accreditation Declined';
+            if (step2Subtitle) step2Subtitle.textContent = 'Action required with coordinator desk';
         } else if (verification.status === 'deactivated') {
-            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 sm:p-8 md:p-10 text-white shadow-2xl border border-slate-700';
-            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-700/50 border border-slate-600 flex items-center justify-center text-slate-300 shrink-0 shadow-inner';
+            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-white border border-slate-300 p-6 sm:p-8 md:p-9 shadow-sm transition-all';
+            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 shrink-0 shadow-sm';
             if (iconEl) iconEl.textContent = 'lock';
             if (statusBadge) {
-                statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700';
-                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-400"></span> Facility Access Deactivated';
+                statusBadge.className = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 shadow-xs';
+                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-500"></span> Facility Access Deactivated';
             }
             if (titleEl) titleEl.textContent = 'Hospital Access Suspended';
-            if (subtitleEl) subtitleEl.textContent = 'Your hospital account has been temporarily deactivated by VitalPulse Administration.';
+            if (subtitleEl) subtitleEl.textContent = 'Your facility account is temporarily on administrative hold. Please contact the VitalPulse coordination team.';
             if (rejectionBox) rejectionBox.classList.add('hidden');
         } else {
             // Pending
-            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950 p-6 sm:p-8 md:p-10 text-white shadow-2xl border border-amber-500/30';
-            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0 shadow-inner';
+            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-8 md:p-9 shadow-sm transition-all';
+            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-slate-900/10';
             if (iconEl) iconEl.textContent = 'verified_user';
             if (statusBadge) {
-                statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30';
-                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> MINSANTE Accreditation Pending';
+                statusBadge.className = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 shadow-xs';
+                statusBadge.innerHTML = '<span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span></span> MINSANTE Accreditation Review';
             }
             if (titleEl) titleEl.textContent = 'Facility Accreditation Under Review';
-            if (subtitleEl) subtitleEl.textContent = 'Your hospital operating credentials have been submitted and are currently awaiting verification by the VitalPulse National Coordination Desk.';
+            if (subtitleEl) subtitleEl.textContent = 'Your hospital operating credentials and clinical license have been securely transmitted to the MINSANTE National Coordination Registry. Your portal is actively synchronized with administration channels.';
             if (rejectionBox) rejectionBox.classList.add('hidden');
             if (step2Icon) {
-                step2Icon.className = 'w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0 mt-0.5 animate-pulse';
-                step2Icon.innerHTML = '<span class="material-symbols-outlined text-sm">hourglass_top</span>';
+                step2Icon.className = 'w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs animate-pulse';
+                step2Icon.innerHTML = '<span class="material-symbols-outlined text-lg">hourglass_top</span>';
             }
-            if (step2Title) step2Title.textContent = 'MINSANTE Verification';
-            if (step2Subtitle) step2Subtitle.textContent = 'Administrator checking facility registry';
+            if (step2Title) step2Title.textContent = '2. MINSANTE Registry Audit';
+            if (step2Subtitle) step2Subtitle.textContent = 'National desk reviewing facility compliance';
         }
 
         return false;
