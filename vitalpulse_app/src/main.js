@@ -100,7 +100,7 @@ function renderUnscopedHospitalState(el, what = 'data') {
         <p class="text-xs mt-1 max-w-sm">We can't load ${esc(what)} until an administrator links this staff account to its hospital. Please contact your Hospital Admin.</p>
     </div>`;
 }
-import { getActiveRoles, hasAnyRole, isLegacyAccount, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession, canAccessView, getFirstAccessibleView } from './roleGating';
+import { getActiveRoles, hasAnyRole, isLegacyAccount, setActiveStaffSession, getActiveStaffSession, clearActiveStaffSession, canAccessView, getFirstAccessibleView, getHospitalVerificationStatus } from './roleGating';
 import { readLoginFailureState, recordLoginFailure, clearLoginFailures, isLockedOut, shouldShowAttemptsWarning, lockoutSecondsRemaining, recordAttemptedIdentifier, hasAttemptedIdentifier } from './loginAttempts';
 import { evaluatePasswordCriteria, passwordStrengthScore, isPasswordValid, suggestStrongPassword } from './passwordPolicy';
 import { normalizeCameroonPhone, formatCameroonNationalNumber } from './phone';
@@ -736,6 +736,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         ? 'Account created! Verification setup is still finishing — you can complete identity verification from your profile shortly.'
                         : 'Account created! Let\'s verify your identity.');
                     setTimeout(() => { window.location.href = '/donor.html#kyc'; }, 1200);
+                } else if (role === 'hospital') {
+                    showToast('Hospital registered! Dossier submitted for MINSANTE accreditation verification.');
+                    setTimeout(() => {
+                        window.location.href = '/hospital.html';
+                    }, 1400);
                 } else {
                     showToast('Account created! A verification email has been sent.');
                     setTimeout(() => {
@@ -1055,11 +1060,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.loadDonorDonations = loadDonorDonations;
                 window.markOnboardingComplete = markOnboardingComplete;
             } else if (path.includes('hospital.html')) {
-                initHospitalNavigation();
-                loadHospitalDashboard();
-                initHospitalNotifications();
-                window.markOnboardingComplete = markOnboardingComplete;
-                if (shouldShowOnboarding()) startOnboarding('hospital');
+                initHospitalVerificationGuard();
             } else if (path.includes('admin.html')) {
                 // Authoritative admin guard: localStorage can be stale or tampered with, so
                 // verify the role straight from the users collection before loading anything.
@@ -1406,6 +1407,228 @@ function cleanupHospitalLiveFeed() {
     }
 }
 
+let _hospitalVerificationUnsubscribe = null;
+
+async function initHospitalVerificationGuard() {
+    let fbUser;
+    try {
+        fbUser = await waitForAuthUser();
+    } catch (e) {
+        fbUser = null;
+    }
+    if (!fbUser) {
+        window.location.href = '/login.html';
+        return;
+    }
+
+    const hospitalScopeIdVal = hospitalScopeId() || fbUser.uid;
+    const gateEl = document.getElementById('hospitalVerificationGate');
+    const badgeEl = document.getElementById('hospitalAccreditationBadge');
+
+    const renderVerificationState = (hospitalData) => {
+        const verification = getHospitalVerificationStatus(hospitalData);
+        const currentUser = getCurrentUser() || {};
+        const hospitalName = hospitalData?.name || currentUser.name || 'Hospital Facility';
+        const hospitalCity = hospitalData?.city || currentUser.city || 'Cameroon';
+        const hospitalType = hospitalData?.hospitalType || currentUser.hospitalType || 'Private Clinic';
+        const licenseFileName = hospitalData?.licenseFileName || 'Operating_License.pdf';
+        const licenseUrl = hospitalData?.licenseUrl || null;
+        const refId = `VP-HOSP-${hospitalScopeIdVal.slice(0, 8).toUpperCase()}`;
+        const rawDate = hospitalData?.registeredAt || hospitalData?.createdAt;
+        const submissionDate = rawDate
+            ? new Date(rawDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+            : 'Submitted recently';
+
+        // Populate dossier
+        const nameEl = document.getElementById('gateHospitalName');
+        if (nameEl) nameEl.textContent = hospitalName;
+
+        const cityEl = document.getElementById('gateHospitalCity');
+        if (cityEl) cityEl.textContent = `${hospitalCity}, Cameroon`;
+
+        const typeEl = document.getElementById('gateHospitalType');
+        if (typeEl) typeEl.textContent = hospitalType === 'public' ? 'Public Hospital' : 'Private Healthcare Facility';
+
+        const dateEl = document.getElementById('gateSubmissionDate');
+        if (dateEl) dateEl.textContent = submissionDate;
+
+        const refEl = document.getElementById('gateRefCode');
+        if (refEl) refEl.textContent = refId;
+
+        const licenseNameEl = document.getElementById('gateLicenseName');
+        if (licenseNameEl) licenseNameEl.textContent = licenseFileName;
+
+        const licenseActionEl = document.getElementById('gateLicenseAction');
+        if (licenseActionEl) {
+            if (licenseUrl) {
+                licenseActionEl.innerHTML = `<a href="${safeUrl(licenseUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white rounded-lg text-xs font-bold transition-all border border-white/20">
+                    <span class="material-symbols-outlined text-sm">visibility</span>
+                    View License
+                </a>`;
+            } else {
+                licenseActionEl.innerHTML = `<span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">
+                    <span class="material-symbols-outlined text-sm">check_circle</span>
+                    License Attached
+                </span>`;
+            }
+        }
+
+        const rejectionBox = document.getElementById('gateRejectionBox');
+        const heroBanner = document.getElementById('gateHeroBanner');
+        const iconContainer = document.getElementById('gateIconContainer');
+        const iconEl = document.getElementById('gateIcon');
+        const statusBadge = document.getElementById('gateStatusBadge');
+        const titleEl = document.getElementById('gateTitle');
+        const subtitleEl = document.getElementById('gateSubtitle');
+        const step2Icon = document.getElementById('gateTimelineStep2Icon');
+        const step2Title = document.getElementById('gateTimelineStep2Title');
+        const step2Subtitle = document.getElementById('gateTimelineStep2Subtitle');
+
+        if (verification.status === 'verified') {
+            if (gateEl) gateEl.classList.add('hidden');
+            if (badgeEl) {
+                badgeEl.classList.remove('hidden');
+                badgeEl.classList.add('inline-flex');
+            }
+            return true;
+        }
+
+        // If not verified, hide badge and display gate
+        if (badgeEl) {
+            badgeEl.classList.add('hidden');
+            badgeEl.classList.remove('inline-flex');
+        }
+
+        // Hide all operational views
+        const allViews = document.querySelectorAll('[id^="view-"]');
+        allViews.forEach(v => v.classList.add('hidden'));
+
+        if (gateEl) gateEl.classList.remove('hidden');
+
+        if (verification.status === 'rejected') {
+            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-rose-950 p-6 sm:p-8 md:p-10 text-white shadow-2xl border border-rose-500/30';
+            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-rose-500/20 border border-rose-400/30 flex items-center justify-center text-rose-300 shrink-0 shadow-inner';
+            if (iconEl) iconEl.textContent = 'gpp_bad';
+            if (statusBadge) {
+                statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/30';
+                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400"></span> Accreditation Declined';
+            }
+            if (titleEl) titleEl.textContent = 'Accreditation Request Declined';
+            if (subtitleEl) subtitleEl.textContent = 'Your hospital registration could not be accredited at this time. Please contact the National Coordination Desk for guidance on submitting required compliance documentation.';
+            if (rejectionBox) rejectionBox.classList.remove('hidden');
+            if (step2Icon) {
+                step2Icon.className = 'w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center font-bold shrink-0 mt-0.5';
+                step2Icon.innerHTML = '<span class="material-symbols-outlined text-sm">close</span>';
+            }
+            if (step2Title) step2Title.textContent = 'Application Declined';
+            if (step2Subtitle) step2Subtitle.textContent = 'Contact desk for re-application';
+        } else if (verification.status === 'deactivated') {
+            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 p-6 sm:p-8 md:p-10 text-white shadow-2xl border border-slate-700';
+            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-700/50 border border-slate-600 flex items-center justify-center text-slate-300 shrink-0 shadow-inner';
+            if (iconEl) iconEl.textContent = 'lock';
+            if (statusBadge) {
+                statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700';
+                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-slate-400"></span> Facility Access Deactivated';
+            }
+            if (titleEl) titleEl.textContent = 'Hospital Access Suspended';
+            if (subtitleEl) subtitleEl.textContent = 'Your hospital account has been temporarily deactivated by VitalPulse Administration.';
+            if (rejectionBox) rejectionBox.classList.add('hidden');
+        } else {
+            // Pending
+            if (heroBanner) heroBanner.className = 'relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950 p-6 sm:p-8 md:p-10 text-white shadow-2xl border border-amber-500/30';
+            if (iconContainer) iconContainer.className = 'w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-amber-500/20 border border-amber-400/30 flex items-center justify-center text-amber-300 shrink-0 shadow-inner';
+            if (iconEl) iconEl.textContent = 'verified_user';
+            if (statusBadge) {
+                statusBadge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30';
+                statusBadge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> MINSANTE Accreditation Pending';
+            }
+            if (titleEl) titleEl.textContent = 'Facility Accreditation Under Review';
+            if (subtitleEl) subtitleEl.textContent = 'Your hospital operating credentials have been submitted and are currently awaiting verification by the VitalPulse National Coordination Desk.';
+            if (rejectionBox) rejectionBox.classList.add('hidden');
+            if (step2Icon) {
+                step2Icon.className = 'w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0 mt-0.5 animate-pulse';
+                step2Icon.innerHTML = '<span class="material-symbols-outlined text-sm">hourglass_top</span>';
+            }
+            if (step2Title) step2Title.textContent = 'MINSANTE Verification';
+            if (step2Subtitle) step2Subtitle.textContent = 'Administrator checking facility registry';
+        }
+
+        return false;
+    };
+
+    // Wire check status button
+    const btnCheckStatus = document.getElementById('btnGateCheckStatus');
+    if (btnCheckStatus) {
+        btnCheckStatus.onclick = async () => {
+            btnCheckStatus.disabled = true;
+            const originalHtml = btnCheckStatus.innerHTML;
+            btnCheckStatus.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">sync</span><span>Checking...</span>';
+            try {
+                const freshSnap = await getDoc(doc(db, 'users', hospitalScopeIdVal));
+                if (freshSnap.exists()) {
+                    const freshData = freshSnap.data();
+                    const isApproved = renderVerificationState(freshData);
+                    if (isApproved) {
+                        showToast('🎉 Accreditation Verified! Full access unlocked.');
+                        initHospitalNavigation();
+                        loadHospitalDashboard();
+                        initHospitalNotifications();
+                    } else {
+                        showToast('Verification in progress. Still awaiting admin review.', 'warning');
+                    }
+                }
+            } catch (err) {
+                showToast('Failed to check verification status.', 'error');
+            } finally {
+                btnCheckStatus.disabled = false;
+                btnCheckStatus.innerHTML = originalHtml;
+            }
+        };
+    }
+
+    let isDashboardInitialized = false;
+
+    // Initial Fetch
+    try {
+        const snap = await getDoc(doc(db, 'users', hospitalScopeIdVal));
+        if (snap.exists()) {
+            const data = snap.data();
+            const isApproved = renderVerificationState(data);
+            if (isApproved) {
+                isDashboardInitialized = true;
+                initHospitalNavigation();
+                loadHospitalDashboard();
+                initHospitalNotifications();
+                window.markOnboardingComplete = markOnboardingComplete;
+                if (shouldShowOnboarding()) startOnboarding('hospital');
+            }
+        }
+    } catch (e) {
+        console.warn('Initial hospital verification check failed:', e);
+    }
+
+    // Real-time listener: automatically unlock UI if admin approves while page is open!
+    if (_hospitalVerificationUnsubscribe) {
+        _hospitalVerificationUnsubscribe();
+    }
+    _hospitalVerificationUnsubscribe = onSnapshot(doc(db, 'users', hospitalScopeIdVal), (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const wasUnlocked = isDashboardInitialized;
+        const isNowVerified = renderVerificationState(data);
+
+        if (isNowVerified && !wasUnlocked) {
+            isDashboardInitialized = true;
+            showToast('🎉 Accreditation Approved! Welcome to the VitalPulse Network.');
+            initHospitalNavigation();
+            loadHospitalDashboard();
+            initHospitalNotifications();
+        }
+    }, (err) => {
+        console.warn('Hospital verification onSnapshot error:', err);
+    });
+}
+
 function initHospitalNavigation() {
     hydrateSessionIdentity();
     updateHospitalNavVisibility();
@@ -1439,6 +1662,12 @@ function initHospitalNavigation() {
     const inactiveClass = 'text-slate-500 hover:bg-red-50 hover:text-red-700';
 
     const switchView = (target) => {
+        const gateEl = document.getElementById('hospitalVerificationGate');
+        if (gateEl && !gateEl.classList.contains('hidden')) {
+            // Keep user on the verification gate if unverified
+            return;
+        }
+
         const currentUser = getCurrentUser();
         if (target !== 'dashboard') {
             cleanupHospitalLiveFeed();
