@@ -2,19 +2,22 @@
 <html class="light" lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>About Us | VitalPulse Cameroon</title>
-<meta name="description" content="Learn how VitalPulse coordinates hospitals and blood donors across Cameroon to close the gap between blood supply and urgent patient need."/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=5.0" name="viewport"/>
+<title>About VitalPulse | Cameroon Emergency Blood Coordination</title>
+<meta name="description" content="Learn about VitalPulse — Cameroon's digital health initiative eliminating fatal delays in emergency blood coordination between hospitals and voluntary donors."/>
+
+<!-- Social share preview -->
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="VitalPulse"/>
-<meta property="og:title" content="About VitalPulse"/>
-<meta property="og:description" content="How VitalPulse coordinates hospitals and blood donors across Cameroon."/>
-<meta property="og:image" content="/logo-full.png"/>
+<meta property="og:title" content="About VitalPulse | Cameroon Blood Coordination Initiative"/>
+<meta property="og:description" content="Connecting hospital triage wards and voluntary blood donors across Cameroon in real time."/>
+<meta property="og:image" content="/vitalpulse-logo.png"/>
 <meta property="og:url" content="/about.html"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="About VitalPulse"/>
-<meta name="twitter:description" content="How VitalPulse coordinates hospitals and blood donors across Cameroon."/>
-<meta name="twitter:image" content="/logo-full.png"/>
+<meta name="twitter:title" content="About VitalPulse | Cameroon Blood Coordination Initiative"/>
+<meta name="twitter:description" content="Connecting hospital triage wards and voluntary blood donors across Cameroon in real time."/>
+<meta name="twitter:image" content="/vitalpulse-logo.png"/>
+
 <link rel="icon" type="image/png" href="/favicon.png"/>
 <link rel="apple-touch-icon" href="/favicon.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -27,397 +30,759 @@
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background-color: #f8fafc;
+    background-color: #ffffff;
     display: flex;
     justify-content: center;
     align-items: center;
     transition: opacity 0.4s ease;
   }
   .loader-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(220, 38, 38, 0.2);
+    width: 42px;
+    height: 42px;
+    border: 3.5px solid rgba(220, 38, 38, 0.15);
     border-top-color: #dc2626;
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 0.9s cubic-bezier(0.5, 0, 0.5, 1) infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
+  
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.75s cubic-bezier(0.16, 1, 0.3, 1), transform 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal.revealed {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .nav-scrolled {
+    background: rgba(255, 255, 255, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    -webkit-backdrop-filter: blur(20px) !important;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
+    box-shadow: 0 4px 25px rgba(0,0,0,0.06) !important;
+  }
 </style>
 </head>
-<body class="bg-surface selection:bg-primary selection:text-white overflow-x-hidden">
+<body class="bg-slate-50 selection:bg-primary selection:text-white overflow-x-hidden text-slate-700 font-sans antialiased">
 <div id="global-loader"><div class="loader-spinner"></div></div>
 
+<!-- ===== TOP EMERGENCY ANNOUNCEMENT BANNER ===== -->
+<div class="bg-gradient-to-r from-red-700 via-primary to-rose-700 text-white text-[11px] sm:text-xs py-1.5 px-4 font-semibold text-center flex items-center justify-center gap-2 relative z-50">
+  <span class="inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+    <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span> Donor Coordination
+  </span>
+  <span class="hidden sm:inline">VitalPulse Community &amp; Coordinator Desk: <strong>+237 652 73 09 80</strong> / WhatsApp: <strong>+237 674 92 20 15</strong></span>
+  <span class="sm:hidden">Need donor coordination?</span>
+  <a href="/public-request.html" class="underline font-bold text-white hover:text-red-100 flex items-center gap-0.5 ml-1">
+    Request Dispatch &rarr;
+  </a>
+</div>
 
-<!-- NAV -->
-<header id="siteHeader" class="fixed top-0 left-0 w-full z-50 transition-all duration-500">
-<div class="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
-<a href="/" class="flex items-center gap-3 group">
-<img src="/favicon.png" alt="VitalPulse" class="w-10 h-10 rounded-2xl shadow-lg shadow-primary/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 object-contain"/>
-<span class="text-xl font-black text-primary tracking-tighter">Vital<span class="text-on-surface">Pulse</span></span>
+<!-- ===== NAV (CLEAN LIGHT FROSTED THEME & WORLD-CLASS MOBILE DRAWER) ===== -->
+<header id="siteHeader" class="sticky top-0 left-0 w-full z-40 transition-all duration-300 bg-white/90 backdrop-blur-xl border-b border-slate-200/80 shadow-xs">
+<div class="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3.5">
+<a href="/" class="flex items-center group overflow-visible">
+<img src="/vitalpulse-logo.png" alt="VitalPulse" class="h-14 sm:h-18 md:h-20 w-auto max-w-[200px] sm:max-w-[260px] object-contain group-hover:scale-105 transition-transform -my-2"/>
 </a>
 <nav class="hidden md:flex items-center gap-8">
-<a href="/" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">Home</a>
-<a href="/about.html" class="text-sm font-semibold text-primary relative after:absolute after:-bottom-1 after:left-0 after:w-full after:h-0.5 after:bg-primary after:rounded-full">About</a>
-<a href="/index.html#campaigns" class="text-sm font-semibold text-slate-400 hover:text-on-surface transition-colors nav-link">Campaigns</a>
+<a href="/" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">Home</a>
+<a href="/about.html" class="text-sm font-bold text-primary relative after:absolute after:-bottom-1 after:left-0 after:w-full after:h-0.5 after:bg-primary after:rounded-full">About</a>
+<a href="/index.html#campaigns" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">Outreach</a>
+<a href="/public-request.html" class="text-sm font-semibold text-red-600 hover:text-red-700 transition-colors flex items-center gap-1.5">
+  <span class="material-symbols-outlined text-sm text-red-600" style="font-variation-settings:'FILL' 1">emergency</span>Emergency
+</a>
 </nav>
-<div class="flex items-center gap-3">
-<a href="/login.html" class="hidden md:inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-primary transition-colors px-4 py-2.5 rounded-xl hover:bg-primary/5">Sign In</a>
-<a href="/signup.html" class="hidden md:inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
+<div class="flex items-center gap-2 sm:gap-3">
+<!-- Language Switcher Pill -->
+<div class="hidden sm:inline-flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold">
+  <button id="lang-en" class="px-2 py-1 rounded-lg bg-white text-slate-900 shadow-xs font-black transition-all">EN</button>
+  <button id="lang-fr" class="px-2 py-1 rounded-lg text-slate-500 hover:text-slate-900 transition-all">FR</button>
+</div>
+<a href="/login.html" class="hidden md:inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-primary transition-colors px-3.5 py-2 rounded-xl hover:bg-slate-100">Sign In</a>
+<a href="/signup.html" class="hidden md:inline-flex items-center gap-2 bg-primary hover:bg-[#8f0d15] text-white px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-primary/20 hover:shadow-primary/35 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
 Join Free
-<span class="material-symbols-outlined text-lg">arrow_forward</span>
+<span class="material-symbols-outlined text-base">arrow_forward</span>
 </a>
 <!-- Mobile Menu Button -->
-<button id="mobileMenuBtn" class="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors ml-2">
-<span class="material-symbols-outlined">menu</span>
+<button id="mobileMenuBtn" class="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors ml-1" aria-label="Toggle Menu">
+<span class="material-symbols-outlined text-2xl">menu</span>
 </button>
 </div>
 </div>
-<!-- Mobile Nav Dropdown -->
-<div id="mobileMenu" class="absolute top-full left-0 w-full bg-surface border-b border-slate-100 shadow-2xl hidden flex-col px-6 py-6 gap-5 md:hidden">
-  <a href="/" class="text-base font-semibold text-slate-600 flex items-center gap-2"><span class="material-symbols-outlined text-sm">home</span>Home</a>
-  <a href="/about.html" class="text-base font-bold text-primary flex items-center gap-2"><span class="material-symbols-outlined text-sm">info</span>About</a>
-  <a href="/index.html#campaigns" class="text-base font-semibold text-slate-600 flex items-center gap-2"><span class="material-symbols-outlined text-sm">campaign</span>Campaigns</a>
-  <div class="h-px w-full bg-slate-100 my-2"></div>
-  <div class="flex flex-col gap-3">
-    <a href="/login.html" class="text-base font-bold text-slate-600 flex items-center justify-center py-3 rounded-xl border-2 border-slate-100 hover:bg-slate-50 transition-colors">
-      <span class="material-symbols-outlined text-lg mr-2">login</span> Sign In
+
+<!-- Mobile Nav Dropdown (World-Class Light Floating Drawer) -->
+<div id="mobileMenu" class="absolute top-full left-0 w-full bg-white/98 backdrop-blur-2xl border-b border-slate-200 shadow-2xl hidden flex-col px-5 py-6 gap-4 md:hidden text-slate-800 transition-all duration-300">
+  
+  <!-- Mobile Language Switcher Row -->
+  <div class="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs font-bold">
+    <span class="text-slate-500 text-[11px] uppercase tracking-wider ml-1">Language / Langue</span>
+    <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200">
+      <button class="px-3 py-1 rounded-lg bg-primary text-white font-black text-xs">EN</button>
+      <button class="px-3 py-1 rounded-lg text-slate-600 hover:text-slate-900 font-bold text-xs">FR</button>
+    </div>
+  </div>
+
+  <!-- Navigation Links with Rich Visual Hierarchy -->
+  <div class="flex flex-col gap-1">
+    <a href="/" class="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">home</span>Home</span>
+      <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
     </a>
-    <a href="/signup.html" class="flex items-center justify-center gap-2 bg-primary text-white py-3 rounded-xl text-base font-bold shadow-lg shadow-primary/25">
-      Join Free
-      <span class="material-symbols-outlined text-lg">arrow_forward</span>
+    <a href="/about.html" class="text-sm font-bold text-primary flex items-center justify-between p-3 rounded-xl bg-red-50/60 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">info</span>About Initiative</span>
+      <span class="material-symbols-outlined text-base text-primary">chevron_right</span>
+    </a>
+    <a href="/index.html#campaigns" class="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">campaign</span>Community Outreach</span>
+      <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
+    </a>
+    <a href="/public-request.html" class="text-sm font-bold text-red-600 flex items-center justify-between p-3 rounded-xl bg-red-50/30 hover:bg-red-50 transition-colors">
+      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-red-600" style="font-variation-settings:'FILL' 1">emergency</span>Emergency Blood Request</span>
+      <span class="material-symbols-outlined text-base text-red-600">chevron_right</span>
+    </a>
+  </div>
+
+  <div class="h-px w-full bg-slate-100 my-1"></div>
+
+  <!-- Dual Action Buttons -->
+  <div class="flex flex-col gap-2.5">
+    <a href="/signup.html" class="flex items-center justify-center gap-2 bg-primary hover:bg-[#8f0d15] text-white py-3.5 rounded-2xl text-sm font-bold shadow-lg shadow-primary/25 transition-all">
+      <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+      Join Free Donor Network
+      <span class="material-symbols-outlined text-base">arrow_forward</span>
+    </a>
+    <a href="/login.html" class="text-sm font-bold text-slate-700 flex items-center justify-center py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-colors">
+      <span class="material-symbols-outlined text-base mr-2 text-slate-500">key</span> Hospital Staff Portal Sign In
     </a>
   </div>
 </div>
 </header>
 
 <main>
-<!-- ===== HERO ===== -->
-<section class="relative min-h-[70vh] flex items-center pt-28 pb-20 overflow-hidden">
-  <div class="absolute inset-0 bg-gradient-to-b from-primary/[0.04] via-surface to-surface pointer-events-none"></div>
-  <div class="absolute top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
-  <div class="absolute bottom-0 right-1/4 w-80 h-80 bg-tertiary/10 rounded-full blur-[140px] pointer-events-none"></div>
-
-  <div class="relative max-w-5xl mx-auto px-6 text-center reveal">
-    <div class="inline-flex items-center gap-2.5 px-4 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-8 border border-primary/20">
-      About VitalPulse
-    </div>
-    <h1 class="text-5xl sm:text-6xl lg:text-7xl xl:text-8xl font-black leading-[0.95] tracking-tighter text-on-surface mb-6">
-      We exist to <br/><span class="text-pulse-gradient">save lives.</span>
-    </h1>
-    <p class="text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed font-medium">
-      VitalPulse is Cameroon's first real-time blood donation coordination network — connecting verified hospitals with nearby donors in seconds. We believe no one should die waiting for blood.
-    </p>
+<!-- ===== HERO SECTION (SPLIT LAYOUT WITH MEDICAL BACKDROP) ===== -->
+<section class="relative min-h-[85vh] flex items-center pt-20 sm:pt-28 pb-16 sm:pb-24 overflow-hidden text-slate-900 bg-slate-50">
+  
+  <!-- Full-Bleed Background Image (African Clinical Team & Hospital Setting) -->
+  <div class="absolute inset-0 z-0 overflow-hidden">
+    <img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?q=80&w=2000&auto=format&fit=crop" 
+         alt="Cameroon clinical doctor and healthcare emergency staff" 
+         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out opacity-35"/>
+    <div class="absolute inset-0 bg-gradient-to-r from-slate-50/95 via-slate-50/85 to-slate-50/65"></div>
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-50 via-transparent to-slate-50/50"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(175,16,26,0.1),transparent_70%)] pointer-events-none"></div>
   </div>
-</section>
 
-<!-- ===== MISSION & VISION ===== -->
-<section class="py-20 md:py-28 bg-surface-container-low overflow-hidden">
-  <div class="max-w-7xl mx-auto px-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-      <div class="bg-surface-container-lowest rounded-3xl p-10 md:p-12 border border-slate-100 hover:shadow-xl transition-all duration-300 reveal">
-        <div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-8">
-          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">visibility</span>
+  <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center">
+      
+      <!-- Left Hero Column (7 Cols) -->
+      <div class="lg:col-span-6 xl:col-span-7 reveal">
+        <div class="inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-red-100/90 border border-red-200 text-red-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-5 sm:mb-6 shadow-xs">
+          <span class="material-symbols-outlined text-sm text-red-600" style="font-variation-settings:'FILL'1">health_and_safety</span>
+          Cameroon Healthcare Technology Initiative
         </div>
-        <h3 class="text-3xl font-black text-on-surface mb-4">Our Mission</h3>
-        <p class="text-slate-500 leading-relaxed text-base">To eliminate blood shortage deaths in Cameroon by building a technology-driven ecosystem that connects every hospital, donor, and emergency in real time.</p>
-      </div>
-      <div class="bg-surface-container-lowest rounded-3xl p-10 md:p-12 border border-slate-100 hover:shadow-xl transition-all duration-300 reveal" style="transition-delay:0.1s">
-        <div class="w-16 h-16 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary mb-8">
-          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">explore</span>
+
+        <h1 class="font-headline text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.08] tracking-tight text-slate-950 mb-4 sm:mb-6">
+          <span class="block">Eliminating fatal delays in</span>
+          <span class="block bg-gradient-to-r from-red-600 via-primary to-rose-600 bg-clip-text text-transparent">emergency blood coordination.</span>
+        </h1>
+
+        <p class="text-sm sm:text-base md:text-lg text-slate-600 leading-relaxed mb-6 sm:mb-8 max-w-xl font-normal">
+          VitalPulse is Cameroon's dedicated digital health coordination platform. We bridge the critical gap between emergency hospital triage wards and eligible voluntary blood donors to save lives when seconds matter most.
+        </p>
+
+        <!-- CTAs -->
+        <div class="flex flex-col sm:flex-row gap-3 sm:gap-3.5 mb-8 sm:mb-10">
+          <a href="/signup.html" class="group relative inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base overflow-hidden shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
+            <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">favorite</span>
+            Become a Voluntary Donor
+            <span class="material-symbols-outlined text-base group-hover:translate-x-1 transition-transform">arrow_forward</span>
+          </a>
+          <a href="/login.html" class="inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-800 px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base border border-slate-200/90 shadow-sm transition-all duration-200">
+            <span class="material-symbols-outlined text-primary text-lg">local_hospital</span>
+            Hospital Staff Portal
+          </a>
         </div>
-        <h3 class="text-3xl font-black text-on-surface mb-4">Our Vision</h3>
-        <p class="text-slate-500 leading-relaxed text-base">A Cameroon where every patient in need of blood receives it within minutes — not hours. A decentralized, community-powered network that never sleeps.</p>
+
+        <!-- Trust bar -->
+        <div class="flex flex-wrap items-center gap-4 sm:gap-6 pt-4 border-t border-slate-200/80">
+          <div class="flex items-center text-xs">
+            <span class="font-black text-slate-900 text-sm">100% Free</span>
+            <span class="text-slate-500 ml-1.5 font-medium">&bull; Altruistic Voluntary Donation</span>
+          </div>
+          <div class="hidden sm:block w-px h-5 bg-slate-200"></div>
+          <div class="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+            <span class="material-symbols-outlined text-emerald-600 text-base" style="font-variation-settings:'FILL'1">verified_user</span>
+            Strict Role-Gated Clinical Security
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-</section>
 
-<!-- ===== STORY / TIMELINE ===== -->
-<section class="py-28 md:py-36 overflow-hidden">
-  <div class="max-w-5xl mx-auto px-6">
-    <div class="text-center max-w-2xl mx-auto mb-20 reveal">
-      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Our Story</span>
-      <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-4">Built for Cameroon, <br/><span class="text-pulse-gradient">by Cameroonians.</span></h2>
-      <p class="text-slate-400 text-lg">The journey from an urgent problem to a national solution.</p>
-    </div>
+      <!-- Right Hero Column (5 Cols) — The Response Gap Comparison Card -->
+      <div class="lg:col-span-6 xl:col-span-5 reveal" style="animation-delay:0.15s">
+        <div class="relative bg-white/95 backdrop-blur-2xl rounded-3xl p-5 sm:p-7 border border-slate-200/90 shadow-2xl shadow-slate-300/40 overflow-hidden text-slate-800">
+          
+          <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Emergency Protocol Analysis</span>
+            <span class="px-2.5 py-0.5 rounded-lg bg-red-100 text-red-700 text-[10px] font-mono font-bold">Cameroon Context</span>
+          </div>
 
-    <div class="relative">
-      <!-- Center line -->
-      <div class="absolute left-8 md:left-1/2 top-0 bottom-0 w-0.5 bg-slate-200 -translate-x-1/2 hidden md:block"></div>
+          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-4">
+            Closing the 4-Hour Response Gap
+          </h3>
 
-      <!-- Item 1 -->
-      <div class="relative mb-16 md:mb-20 reveal">
-        <div class="flex flex-col md:flex-row items-start gap-6 md:gap-12">
-          <div class="md:w-1/2 md:text-right md:pr-12">
-            <div class="md:pr-6">
-              <span class="text-sm font-bold text-primary uppercase tracking-wider">2024 — The Problem</span>
-              <h3 class="text-2xl font-black text-on-surface mt-2 mb-3">A critical gap exposed</h3>
-              <p class="text-slate-500 text-sm leading-relaxed">Cameroon faces a chronic blood shortage. With only 7 donated units per 1,000 people (vs. 30+ in developed nations), hospitals routinely turn away patients. The existing system relied on phone trees and word-of-mouth. We knew technology could do better.</p>
+          <div class="space-y-3.5 mb-5">
+            <!-- Problem state -->
+            <div class="p-3.5 rounded-2xl bg-red-50/60 border border-red-200/70">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-black uppercase tracking-wider text-red-700 flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm">cancel</span> Traditional Manual Process
+                </span>
+                <span class="text-[10px] font-mono font-bold text-red-600">2 — 6 Hours Delay</span>
+              </div>
+              <p class="text-[11px] text-slate-600 leading-relaxed">
+                Families frantically calling relatives, uncoordinated social media posts, and hospital phone trees during urgent hemorrhages and surgeries.
+              </p>
+            </div>
+
+            <!-- VitalPulse solution -->
+            <div class="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-sm text-emerald-600" style="font-variation-settings:'FILL'1">check_circle</span> VitalPulse Digital Architecture
+                </span>
+                <span class="text-[10px] font-mono font-bold text-emerald-700">&lt; 30 Seconds Match</span>
+              </div>
+              <p class="text-[11px] text-slate-700 leading-relaxed">
+                Automated spatial geohash calculation routes alert directly to verified nearby compatible donors with multi-channel SMS and facility guidance.
+              </p>
             </div>
           </div>
-          <div class="hidden md:flex w-12 h-12 shrink-0 rounded-full bg-primary shadow-lg shadow-primary/20 items-center justify-center text-white relative z-10 -translate-x-1/2 left-1/2">
-            <span class="material-symbols-outlined">warning</span>
+
+          <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <span>Standardized clinical triage flow</span>
+            <a href="/public-request.html" class="text-primary font-bold hover:underline flex items-center gap-1">
+              Test Request Flow &rarr;
+            </a>
           </div>
-          <div class="md:w-1/2 md:pl-12 md:invisible">
-            <div class="bg-surface-container-low rounded-2xl p-6 aspect-video flex items-center justify-center">
-              <span class="text-slate-300 text-sm font-medium">Timeline visual placeholder</span>
-            </div>
-          </div>
+
         </div>
       </div>
 
-      <!-- Item 2 -->
-      <div class="relative mb-16 md:mb-20 reveal" style="transition-delay:0.1s">
-        <div class="flex flex-col md:flex-row items-start gap-6 md:gap-12">
-          <div class="hidden md:block md:w-1/2 md:text-right md:pr-12 md:invisible"></div>
-          <div class="hidden md:flex w-12 h-12 shrink-0 rounded-full bg-tertiary shadow-lg shadow-tertiary/20 items-center justify-center text-white relative z-10 -translate-x-1/2 left-1/2">
-            <span class="material-symbols-outlined">lightbulb</span>
-          </div>
-          <div class="md:w-1/2 md:pl-12">
-            <div class="md:pl-6">
-              <span class="text-sm font-bold text-tertiary uppercase tracking-wider">2025 — The Idea</span>
-              <h3 class="text-2xl font-black text-on-surface mt-2 mb-3">An idea takes shape</h3>
-              <p class="text-slate-500 text-sm leading-relaxed">A team of Cameroonian healthcare professionals and software engineers came together. The insight was simple: every hospital has blood requests, every city has eligible donors — the missing piece was real-time coordination.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Item 3 -->
-      <div class="relative mb-16 md:mb-20 reveal" style="transition-delay:0.2s">
-        <div class="flex flex-col md:flex-row items-start gap-6 md:gap-12">
-          <div class="md:w-1/2 md:text-right md:pr-12">
-            <div class="md:pr-6">
-              <span class="text-sm font-bold text-secondary uppercase tracking-wider">2025 — The Build</span>
-              <h3 class="text-2xl font-black text-on-surface mt-2 mb-3">Building the Pulse Engine</h3>
-              <p class="text-slate-500 text-sm leading-relaxed">Over 8 months, we developed the platform from the ground up — a real-time matching engine, multi-channel notification system (SMS, WhatsApp, in-app), hospital inventory management, donor engagement tiers, and a full admin control center.</p>
-            </div>
-          </div>
-          <div class="hidden md:flex w-12 h-12 shrink-0 rounded-full bg-secondary shadow-lg shadow-secondary/20 items-center justify-center text-white relative z-10 -translate-x-1/2 left-1/2">
-            <span class="material-symbols-outlined">construction</span>
-          </div>
-          <div class="md:w-1/2 md:pl-12 md:invisible"></div>
-        </div>
-      </div>
-
-      <!-- Item 4 -->
-      <div class="relative reveal" style="transition-delay:0.3s">
-        <div class="flex flex-col md:flex-row items-start gap-6 md:gap-12">
-          <div class="hidden md:block md:w-1/2 md:text-right md:pr-12 md:invisible"></div>
-          <div class="hidden md:flex w-12 h-12 shrink-0 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/20 items-center justify-center text-white relative z-10 -translate-x-1/2 left-1/2">
-            <span class="material-symbols-outlined">rocket_launch</span>
-          </div>
-          <div class="md:w-1/2 md:pl-12">
-            <div class="md:pl-6">
-              <span class="text-sm font-bold text-emerald-600 uppercase tracking-wider">2026 — Live & Growing</span>
-              <h3 class="text-2xl font-black text-on-surface mt-2 mb-3">A national network takes flight</h3>
-              <p class="text-slate-500 text-sm leading-relaxed">Today, VitalPulse serves 128+ verified hospitals across 7 regions with 15,400+ registered donors. Our average match time is under 30 seconds. And we're just getting started.</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </section>
 
-<!-- ===== IMPACT COUNTERS ===== -->
-<section class="relative py-24 md:py-32 overflow-hidden bg-on-surface">
-  <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(175,16,26,0.12),transparent_60%)] pointer-events-none"></div>
-  <div class="relative max-w-7xl mx-auto px-6">
-    <div class="text-center max-w-2xl mx-auto mb-16 reveal">
-      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-wider border border-white/10 mb-5">Our Impact</span>
-      <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-white mb-4">By the numbers</h2>
+<!-- ===== SECTION 2: THE 3 CRITICAL CLINICAL EMERGENCY DRIVERS ===== -->
+<section class="py-20 sm:py-28 bg-white border-t border-slate-200/80">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    
+    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
+        <span class="material-symbols-outlined text-sm">medical_services</span> Clinical Realities
+      </span>
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
+        Why Rapid Blood Dispatch Matters in Cameroon
+      </h2>
+      <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+        Blood cannot be manufactured. In Cameroon's public and regional health centers, three critical medical conditions account for the vast majority of urgent blood requisitions.
+      </p>
     </div>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 reveal">
-      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center">
-        <div class="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center text-primary mb-5 mx-auto">
-          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">local_hospital</span>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
+      
+      <!-- Driver 1: Maternal Hemorrhage -->
+      <div class="bg-slate-50 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal flex flex-col justify-between">
+        <div>
+          <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center mb-5">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">pregnant_woman</span>
+          </div>
+          <span class="text-[10px] font-black uppercase tracking-widest text-rose-700 block mb-1">Maternal Health</span>
+          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Postpartum Hemorrhage (PPH)</h3>
+          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
+            Postpartum hemorrhage remains the leading direct cause of maternal mortality in Sub-Saharan Africa. Having matched blood available within minutes turns fatal delivery complications into manageable deliveries.
+          </p>
         </div>
-        <div class="counter-value text-5xl font-black text-white" data-target="128">0</div>
-        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Hospitals</p>
-      </div>
-      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center">
-        <div class="w-14 h-14 rounded-2xl bg-tertiary/20 flex items-center justify-center text-tertiary mb-5 mx-auto">
-          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">groups</span>
+        <div class="pt-4 border-t border-slate-200/60 text-xs font-bold text-slate-700 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span> Priority Triage Requisition
         </div>
-        <div class="counter-value text-5xl font-black text-white" data-target="15400">0</div>
-        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Donors</p>
       </div>
-      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center">
-        <div class="w-14 h-14 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 mb-5 mx-auto">
-          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">favorite</span>
+
+      <!-- Driver 2: Road Trauma & Surgeries -->
+      <div class="bg-slate-50 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal flex flex-col justify-between" style="animation-delay: 0.1s">
+        <div>
+          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mb-5">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">car_crash</span>
+          </div>
+          <span class="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1">Trauma &amp; Surgery</span>
+          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Accident &amp; Surgical Trauma</h3>
+          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
+            Along major transit corridors (Yaoundé-Douala, West, and Northern corridors), severe road traffic injuries require immediate whole blood and red cell units to stabilize hemorrhagic shock before emergency surgery.
+          </p>
         </div>
-        <div class="counter-value text-5xl font-black text-white" data-target="8902">0</div>
-        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Lives Saved</p>
-      </div>
-      <div class="bg-white/5 rounded-3xl p-8 border border-white/10 hover:bg-white/[0.07] hover:border-white/20 transition-all duration-300 text-center">
-        <div class="w-14 h-14 rounded-2xl bg-amber-500/20 flex items-center justify-center text-amber-400 mb-5 mx-auto">
-          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL'1">speed</span>
+        <div class="pt-4 border-t border-slate-200/60 text-xs font-bold text-slate-700 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span> Trauma Corridor Protocol
         </div>
-        <div class="text-5xl font-black text-white">&lt;30<span class="text-3xl text-white/40">s</span></div>
-        <p class="text-white/40 font-semibold uppercase tracking-widest text-[10px] mt-2">Avg Match Time</p>
       </div>
+
+      <!-- Driver 3: Pediatric Anemia & Sickle Cell -->
+      <div class="bg-slate-50 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal flex flex-col justify-between" style="animation-delay: 0.2s">
+        <div>
+          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mb-5">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">child_care</span>
+          </div>
+          <span class="text-[10px] font-black uppercase tracking-widest text-blue-700 block mb-1">Pediatric Care</span>
+          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Severe Anemia &amp; Sickle Cell</h3>
+          <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
+            Children suffering from severe malarial anemia and sickle cell disease patients require frequent, safe, pathogen-screened blood transfusions across regional referral and district hospitals.
+          </p>
+        </div>
+        <div class="pt-4 border-t border-slate-200/60 text-xs font-bold text-slate-700 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span> Chronic Transfusion Support
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- ===== SECTION 3: THE 4 CORE ENGINEERING & ETHICAL PILLARS ===== -->
+<section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 border-t border-slate-200/80">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    
+    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
+        <span class="material-symbols-outlined text-sm">tune</span> System Architecture
+      </span>
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
+        Engineered for Reliability and Trust
+      </h2>
+      <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+        VitalPulse is built from the ground up for low-bandwidth African mobile networks, strict clinical verification, and altruistic voluntary donation.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
+      
+      <!-- Pillar 1 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">near_me</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 01</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Spatial Proximity Geohashing</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          When an emergency requisition is logged, the engine calculates geographic coordinates and dispatches alerts strictly to eligible donors within the facility's reachable travel radius.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-red-700">
+          <span class="material-symbols-outlined text-base">timer</span> Instant spatial matchmaking in &lt; 30 seconds
+        </div>
+      </div>
+
+      <!-- Pillar 2 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.1s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">signal_cellular_alt</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 02</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Low-Bandwidth 3G &amp; SMS Failover</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          Designed specifically for Cameroon's mobile environment. The platform functions seamlessly on 3G connections and utilizes automated SMS broadcast failover when mobile data is unavailable.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-blue-700">
+          <span class="material-symbols-outlined text-base">sms</span> Works across all regional mobile networks
+        </div>
+      </div>
+
+      <!-- Pillar 3 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.2s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">lock</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 03</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Role-Gated Clinical Security</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          Hospital access is strictly partitioned by clinical role — reception, ward nurses, phlebotomists, and lab technicians operate with authenticated PIN credentials with immutable audit logs.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-emerald-700">
+          <span class="material-symbols-outlined text-base">history_edu</span> Complete end-to-end transfusion traceability
+        </div>
+      </div>
+
+      <!-- Pillar 4 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.3s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 04</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">100% Voluntary &amp; Non-Commercial</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          VitalPulse operates strictly as a public health coordination service. We strictly prohibit any commercialization or sale of donated blood, upholding WHO and national voluntary donation standards.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-amber-800">
+          <span class="material-symbols-outlined text-base">favorite</span> 100% Free for donors and healthcare facilities
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- ===== SECTION 4: HONEST SYSTEM ARCHITECTURE SPECIFICATIONS ===== -->
+<section class="py-16 sm:py-24 bg-white border-t border-slate-200/80">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 reveal">
+      
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">&lt; 30 sec</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-red-700 block mb-1">Dispatch Latency</span>
+        <p class="text-[11px] text-slate-500">Multi-channel SMS &amp; instant notifications</p>
+      </div>
+
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">10 Regions</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-blue-700 block mb-1">National Scope</span>
+        <p class="text-[11px] text-slate-500">Architected for nationwide facility integration</p>
+      </div>
+
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">100% Free</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-emerald-700 block mb-1">Voluntary Donors</span>
+        <p class="text-[11px] text-slate-500">Altruistic non-remunerated donation ethics</p>
+      </div>
+
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">Zero Cost</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-purple-700 block mb-1">Hospital Software</span>
+        <p class="text-[11px] text-slate-500">Free open workstation access for all wards</p>
+      </div>
+
     </div>
   </div>
 </section>
 
-<!-- ===== VALUES ===== -->
-<section class="py-28 md:py-36 overflow-hidden">
-  <div class="max-w-7xl mx-auto px-6">
-    <div class="text-center max-w-2xl mx-auto mb-16 reveal">
-      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Our Values</span>
-      <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-4">What drives us every day</h2>
+<!-- ===== SECTION 5: HOW WE PARTNER WITH HEALTHCARE FACILITIES ===== -->
+<section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 border-t border-slate-200/80">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    
+    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
+        <span class="material-symbols-outlined text-sm">local_hospital</span> Facility Integration
+      </span>
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
+        How Healthcare Facilities Onboard
+      </h2>
+      <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+        A seamless 3-step setup enabling public referral centers, regional hospitals, and district clinics to coordinate blood emergency requisitions.
+      </p>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 reveal">
-      <div class="group bg-surface-container-lowest rounded-3xl p-10 border border-slate-100 hover:border-primary/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500">
-        <div class="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary mb-6 group-hover:scale-110 group-hover:bg-primary group-hover:text-white transition-all duration-300">
-          <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">bolt</span>
-        </div>
-        <h3 class="text-xl font-bold text-on-surface mb-3">Speed</h3>
-        <p class="text-slate-500 text-sm leading-relaxed">Minutes matter in emergency medicine. Our entire infrastructure is optimized for speed — from matching to notification to donor arrival.</p>
-      </div>
-      <div class="group bg-surface-container-lowest rounded-3xl p-10 border border-slate-100 hover:border-tertiary/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500" style="transition-delay:0.1s">
-        <div class="w-14 h-14 rounded-2xl bg-tertiary/10 flex items-center justify-center text-tertiary mb-6 group-hover:scale-110 group-hover:bg-tertiary group-hover:text-white transition-all duration-300">
-          <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">verified</span>
-        </div>
-        <h3 class="text-xl font-bold text-on-surface mb-3">Trust</h3>
-        <p class="text-slate-500 text-sm leading-relaxed">Every hospital is license-verified. Every donor is identity-checked. Every transaction leaves an audit trail. Trust is our currency.</p>
-      </div>
-      <div class="group bg-surface-container-lowest rounded-3xl p-10 border border-slate-100 hover:border-emerald-500/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-500" style="transition-delay:0.2s">
-        <div class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-600 mb-6 group-hover:scale-110 group-hover:bg-emerald-600 group-hover:text-white transition-all duration-300">
-          <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">diversity_3</span>
-        </div>
-        <h3 class="text-xl font-bold text-on-surface mb-3">Community</h3>
-        <p class="text-slate-500 text-sm leading-relaxed">Built for Cameroon, by Cameroonians. We're a decentralized network powered by everyday heroes — not a centralized bureaucracy.</p>
-      </div>
-    </div>
-  </div>
-</section>
 
-<!-- ===== TEAM ===== -->
-<section class="py-28 bg-surface-container-low overflow-hidden">
-  <div class="max-w-7xl mx-auto px-6">
-    <div class="text-center max-w-2xl mx-auto mb-16 reveal">
-      <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Leadership</span>
-      <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-4">The team behind VitalPulse</h2>
-      <p class="text-slate-400 text-lg">Healthcare professionals, engineers, and operators united by a single mission.</p>
-    </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 reveal">
-      <!-- 1 -->
-      <div class="group bg-surface-container-lowest rounded-3xl p-6 border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-center">
-        <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 mx-auto mb-5 flex items-center justify-center overflow-hidden">
-          <span class="text-3xl font-black text-primary">DE</span>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
+      
+      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal">
+        <div class="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-headline font-black text-base flex items-center justify-center mb-5">
+          01
         </div>
-        <h4 class="font-bold text-on-surface text-base">Dr. David Ekane</h4>
-        <p class="text-xs text-slate-400 mb-4">Founder & CEO</p>
-        <p class="text-xs text-slate-500 leading-relaxed">Former head of emergency medicine at CHU Yaoundé. Witnessed the blood shortage crisis firsthand.</p>
+        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Facility Technical Verification</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Authorized hospital administrators verify facility identity, regional health tier, and emergency contact endpoints.
+        </p>
       </div>
-      <!-- 2 -->
-      <div class="group bg-surface-container-lowest rounded-3xl p-6 border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-center">
-        <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-tertiary/20 to-tertiary/5 mx-auto mb-5 flex items-center justify-center">
-          <span class="text-3xl font-black text-tertiary">FN</span>
-        </div>
-        <h4 class="font-bold text-on-surface text-base">Fatima Ngo</h4>
-        <p class="text-xs text-slate-400 mb-4">CTO</p>
-        <p class="text-xs text-slate-500 leading-relaxed">Full-stack engineer with 12 years building health-tech platforms across Africa.</p>
-      </div>
-      <!-- 3 -->
-      <div class="group bg-surface-container-lowest rounded-3xl p-6 border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-center">
-        <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-500/5 mx-auto mb-5 flex items-center justify-center">
-          <span class="text-3xl font-black text-emerald-600">PM</span>
-        </div>
-        <h4 class="font-bold text-on-surface text-base">Paul Mbarga</h4>
-        <p class="text-xs text-slate-400 mb-4">Head of Operations</p>
-        <p class="text-xs text-slate-500 leading-relaxed">Former regional health director. Oversees hospital partnerships and donor outreach.</p>
-      </div>
-      <!-- 4 -->
-      <div class="group bg-surface-container-lowest rounded-3xl p-6 border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 text-center">
-        <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-500/5 mx-auto mb-5 flex items-center justify-center">
-          <span class="text-3xl font-black text-amber-600">AT</span>
-        </div>
-        <h4 class="font-bold text-on-surface text-base">Amara Tchinda</h4>
-        <p class="text-xs text-slate-400 mb-4">Head of Product</p>
-        <p class="text-xs text-slate-500 leading-relaxed">UX designer passionate about making life-saving tools accessible to every Cameroonian.</p>
-      </div>
-    </div>
-  </div>
-</section>
 
-<!-- ===== WHY VITALPULSE ===== -->
-<section class="py-28 md:py-36 overflow-hidden">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center reveal">
+      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.1s">
+        <div class="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 font-headline font-black text-base flex items-center justify-center mb-5">
+          02
+        </div>
+        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Staff Workstation Setup</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Triage doctors, maternity staff, and phlebotomy labs receive role-gated PIN credentials for authorized terminal access.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.2s">
+        <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 font-headline font-black text-base flex items-center justify-center mb-5">
+          03
+        </div>
+        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Instant Emergency Requisitions</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Staff log urgent blood group requirements and immediately trigger spatial broadcasts to verified local voluntary donors.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Hospital Onboarding Callout -->
+    <div class="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-md flex flex-col md:flex-row items-center justify-between gap-6 reveal">
       <div>
-        <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider mb-5">Why VitalPulse</span>
-        <h2 class="text-4xl sm:text-5xl font-black tracking-tight text-on-surface mb-6">A platform built for <span class="text-pulse-gradient">real emergencies</span></h2>
-        <p class="text-slate-500 leading-relaxed mb-8">Unlike general health apps, VitalPulse was designed from day one for the intensity of emergency medicine. Every feature is purpose-built for speed, reliability, and trust.</p>
-        <ul class="space-y-5">
-          <li class="flex items-start gap-4">
-            <span class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
-              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
-            </span>
-            <div>
-              <p class="font-bold text-sm text-on-surface">Built for low-bandwidth environments</p>
-              <p class="text-xs text-slate-400 mt-0.5">Optimized for Cameroon's mobile networks — works on 3G.</p>
-            </div>
-          </li>
-          <li class="flex items-start gap-4">
-            <span class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
-              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
-            </span>
-            <div>
-              <p class="font-bold text-sm text-on-surface">Multi-channel alerts</p>
-              <p class="text-xs text-slate-400 mt-0.5">SMS, WhatsApp, and in-app — donors never miss an alert.</p>
-            </div>
-          </li>
-          <li class="flex items-start gap-4">
-            <span class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
-              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
-            </span>
-            <div>
-              <p class="font-bold text-sm text-on-surface">End-to-end audit trail</p>
-              <p class="text-xs text-slate-400 mt-0.5">Every request, match, and donation is logged and traceable.</p>
-            </div>
-          </li>
-          <li class="flex items-start gap-4">
-            <span class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0 mt-0.5">
-              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL'1">check</span>
-            </span>
-            <div>
-              <p class="font-bold text-sm text-on-surface">100% free for hospitals & donors</p>
-              <p class="text-xs text-slate-400 mt-0.5">No subscription. No hidden fees. A public health infrastructure.</p>
-            </div>
-          </li>
-        </ul>
+        <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-1.5">
+          Are you a hospital director or blood bank coordinator?
+        </h3>
+        <p class="text-xs sm:text-sm text-slate-600">
+          Onboard your medical facility or schedule a technical demonstration with our clinical integration team.
+        </p>
       </div>
-      <div class="relative reveal" style="animation-delay:0.1s">
-        <div class="relative rounded-3xl overflow-hidden shadow-xl aspect-square">
-          <img alt="Cameroon medical team" class="w-full h-full object-cover hover:scale-105 transition-transform duration-700" src="https://images.unsplash.com/photo-1631217868264-e5b90bb7e133?q=80&w=800&auto=format&fit=crop" loading="lazy"/>
-          <div class="absolute inset-0 bg-gradient-to-t from-primary/30 to-transparent"></div>
+      <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20onboard%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
+          <span class="material-symbols-outlined text-sm">chat</span> WhatsApp Facility Team
+        </a>
+        <a href="/login.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
+          <span class="material-symbols-outlined text-sm">key</span> Staff PIN Portal
+        </a>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ===== SECTION 6: FINAL HIGH-CONVERSION CTA ===== -->
+<section class="relative py-24 sm:py-32 lg:py-36 overflow-hidden text-white">
+  
+  <!-- Full-Bleed Background Image Canvas -->
+  <div class="absolute inset-0 z-0 overflow-hidden">
+    <img src="https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?q=80&w=2000&auto=format&fit=crop" 
+         alt="Doctor holding patient hands in solidarity and emergency care" 
+         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out"/>
+    <div class="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/75 to-slate-950/60"></div>
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/70"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(175,16,26,0.35),transparent_70%)]"></div>
+  </div>
+
+  <div class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center reveal">
+    <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/20 mb-5">
+      Join the Cameroon Life-Saving Network
+    </span>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          When an emergency requisition is logged, the engine calculates geographic coordinates and dispatches alerts strictly to eligible donors within the facility's reachable travel radius.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-red-700">
+          <span class="material-symbols-outlined text-base">timer</span> Instant spatial matchmaking in &lt; 30 seconds
         </div>
       </div>
+
+      <!-- Pillar 2 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.1s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">signal_cellular_alt</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 02</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Low-Bandwidth 3G &amp; SMS Failover</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          Designed specifically for Cameroon's mobile environment. The platform functions seamlessly on 3G connections and utilizes automated SMS broadcast failover when mobile data is unavailable.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-blue-700">
+          <span class="material-symbols-outlined text-base">sms</span> Works across all regional mobile networks
+        </div>
+      </div>
+
+      <!-- Pillar 3 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.2s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">lock</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 03</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Role-Gated Clinical Security</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          Hospital access is strictly partitioned by clinical role — reception, ward nurses, phlebotomists, and lab technicians operate with authenticated PIN credentials with immutable audit logs.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-emerald-700">
+          <span class="material-symbols-outlined text-base">history_edu</span> Complete end-to-end transfusion traceability
+        </div>
+      </div>
+
+      <!-- Pillar 4 -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.3s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 04</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">100% Voluntary &amp; Non-Commercial</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          VitalPulse operates strictly as a public health coordination service. We strictly prohibit any commercialization or sale of donated blood, upholding WHO and national voluntary donation standards.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-amber-800">
+          <span class="material-symbols-outlined text-base">favorite</span> 100% Free for donors and healthcare facilities
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</section>
+
+<!-- ===== SECTION 4: HONEST SYSTEM ARCHITECTURE SPECIFICATIONS ===== -->
+<section class="py-16 sm:py-24 bg-white border-t border-slate-200/80">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 reveal">
+      
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">&lt; 30 sec</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-red-700 block mb-1">Dispatch Latency</span>
+        <p class="text-[11px] text-slate-500">Multi-channel SMS &amp; instant notifications</p>
+      </div>
+
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">10 Regions</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-blue-700 block mb-1">National Scope</span>
+        <p class="text-[11px] text-slate-500">Architected for nationwide facility integration</p>
+      </div>
+
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">100% Free</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-emerald-700 block mb-1">Voluntary Donors</span>
+        <p class="text-[11px] text-slate-500">Altruistic non-remunerated donation ethics</p>
+      </div>
+
+      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
+        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">Zero Cost</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-purple-700 block mb-1">Hospital Software</span>
+        <p class="text-[11px] text-slate-500">Free open workstation access for all wards</p>
+      </div>
+
     </div>
   </div>
 </section>
 
-<!-- ===== CTA ===== -->
-<section class="relative py-28 md:py-36 overflow-hidden">
-  <div class="absolute inset-0 bg-gradient-to-br from-primary via-primary to-[#8a0d14]">
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(255,255,255,0.12),transparent_50%)]"></div>
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(255,255,255,0.08),transparent_50%)]"></div>
+<!-- ===== SECTION 5: HOW WE PARTNER WITH HEALTHCARE FACILITIES ===== -->
+<section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 border-t border-slate-200/80">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    
+    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
+        <span class="material-symbols-outlined text-sm">local_hospital</span> Facility Integration
+      </span>
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
+        How Healthcare Facilities Onboard
+      </h2>
+      <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
+        A seamless 3-step setup enabling public referral centers, regional hospitals, and district clinics to coordinate blood emergency requisitions.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
+      
+      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal">
+        <div class="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-headline font-black text-base flex items-center justify-center mb-5">
+          01
+        </div>
+        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Facility Technical Verification</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Authorized hospital administrators verify facility identity, regional health tier, and emergency contact endpoints.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.1s">
+        <div class="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 font-headline font-black text-base flex items-center justify-center mb-5">
+          02
+        </div>
+        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Staff Workstation Setup</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Triage doctors, maternity staff, and phlebotomy labs receive role-gated PIN credentials for authorized terminal access.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.2s">
+        <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 font-headline font-black text-base flex items-center justify-center mb-5">
+          03
+        </div>
+        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Instant Emergency Requisitions</h3>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Staff log urgent blood group requirements and immediately trigger spatial broadcasts to verified local voluntary donors.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Hospital Onboarding Callout -->
+    <div class="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-md flex flex-col md:flex-row items-center justify-between gap-6 reveal">
+      <div>
+        <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-1.5">
+          Are you a hospital director or blood bank coordinator?
+        </h3>
+        <p class="text-xs sm:text-sm text-slate-600">
+          Onboard your medical facility or schedule a technical demonstration with our clinical integration team.
+        </p>
+      </div>
+      <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20onboard%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
+          <span class="material-symbols-outlined text-sm">chat</span> WhatsApp Facility Team
+        </a>
+        <a href="/login.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
+          <span class="material-symbols-outlined text-sm">key</span> Staff PIN Portal
+        </a>
+      </div>
+    </div>
+
   </div>
-  <div class="relative max-w-3xl mx-auto px-6 text-center reveal">
-    <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 text-white text-xs font-bold uppercase tracking-wider border border-white/20 mb-6">Join Our Mission</span>
-    <h2 class="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-5">Be part of the story.</h2>
-    <p class="text-white/70 text-lg max-w-lg mx-auto mb-10">Whether you're a donor, a hospital, or a partner — there's a role for you in Cameroon's life-saving network.</p>
-    <div class="flex flex-col sm:flex-row justify-center gap-4">
-      <a href="/signup.html" class="inline-flex items-center justify-center gap-3 bg-white text-primary px-8 py-4 rounded-2xl font-bold text-base shadow-2xl hover:shadow-white/30 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
-        <span class="material-symbols-outlined" style="font-variation-settings:'FILL'1">favorite</span>
-        Become a Donor
+</section>
+
+<!-- ===== SECTION 6: FINAL HIGH-CONVERSION CTA ===== -->
+<section class="relative py-24 sm:py-32 lg:py-36 overflow-hidden text-white">
+  
+  <!-- Full-Bleed Background Image Canvas -->
+  <div class="absolute inset-0 z-0 overflow-hidden">
+    <img src="https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?q=80&w=2000&auto=format&fit=crop" 
+         alt="Doctor holding patient hands in solidarity and emergency care" 
+         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out"/>
+    <div class="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/75 to-slate-950/60"></div>
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/70"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(175,16,26,0.35),transparent_70%)]"></div>
+  </div>
+
+  <div class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center reveal">
+    <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/20 mb-5">
+      Join the Cameroon Life-Saving Network
+    </span>
+    
+    <h2 class="font-headline text-3xl sm:text-4xl lg:text-6xl font-black tracking-tight text-white mb-4 sm:mb-6">
+      Every registered donor is a lifeline ready to respond.
+    </h2>
+    
+    <p class="text-white/90 text-sm sm:text-base md:text-lg max-w-xl mx-auto mb-8 sm:mb-10 leading-relaxed font-medium">
+      Whether you are ready to give blood or coordinate hospital requisitions, VitalPulse gives Cameroon the tools to act when seconds matter.
+    </p>
+
+    <div class="flex flex-col sm:flex-row justify-center gap-3.5">
+      <a href="/signup.html" class="inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-headline font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
+        <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
+        Register as a Donor
       </a>
-      <a href="/login.html" class="inline-flex items-center justify-center gap-3 bg-white/10 text-white px-8 py-4 rounded-2xl font-bold text-base border border-white/20 hover:bg-white/20 transition-all duration-200">
-        <span class="material-symbols-outlined">local_hospital</span>
-        Hospital Portal
+      <a href="/login.html" class="inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
+        <span class="material-symbols-outlined text-lg">local_hospital</span>
+        Hospital Staff Portal
       </a>
     </div>
   </div>
@@ -425,82 +790,93 @@ Join Free
 </main>
 
 <!-- ===== FOOTER ===== -->
-<footer class="bg-on-surface pt-20 pb-6 px-6">
+<footer class="bg-slate-950 text-white pt-16 sm:pt-20 pb-8 px-4 sm:px-6 lg:px-8 border-t border-slate-900">
   <div class="max-w-7xl mx-auto">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-10 mb-16">
-      <div>
-        <div class="flex items-center gap-3 mb-6">
-          <img src="/favicon.png" alt="VitalPulse" class="w-10 h-10 rounded-2xl shadow-lg shadow-primary/30 object-contain"/>
-          <span class="text-xl font-black text-white tracking-tighter">Vital<span class="text-white/50">Pulse</span></span>
-        </div>
-        <p class="text-slate-500 text-sm leading-relaxed max-w-xs mb-8">The heartbeat of Cameroon's medical infrastructure. Secure, rapid, and life-saving blood coordination.</p>
-      </div>
-      <div>
-        <h5 class="font-bold text-sm text-white mb-4 uppercase tracking-wider">Company</h5>
-        <div class="flex flex-col gap-2.5">
-          <a href="/about.html" class="text-sm text-slate-400 hover:text-white transition-colors">About</a>
-          <a href="/privacy.html" class="text-sm text-slate-400 hover:text-white transition-colors">Privacy Policy</a>
-          <a href="/terms.html" class="text-sm text-slate-400 hover:text-white transition-colors">Terms of Service</a>
-          <a href="mailto:contact@vitalpulse.cm" class="text-sm text-slate-400 hover:text-white transition-colors">Contact Us</a>
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-8 sm:gap-10 mb-12 sm:mb-16">
+      
+      <!-- Brand Col (5 Cols) -->
+      <div class="md:col-span-5">
+        <a href="/" class="inline-block mb-3 overflow-visible">
+          <img src="/vitalpulse-logo.png" alt="VitalPulse" class="h-16 sm:h-20 w-auto max-w-[240px] sm:max-w-[280px] object-contain brightness-0 invert opacity-95 -my-2"/>
+        </a>
+        <p class="text-slate-400 text-xs sm:text-sm leading-relaxed max-w-sm mb-5">
+          Cameroon's real-time emergency blood coordination system. Bridging the critical gap between emergency wards and voluntary donors nationwide.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-emerald-400">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Emergency Healthcare Network &bull; Cameroon
         </div>
       </div>
-      <div class="bg-white/5 rounded-2xl p-6 border border-white/10">
-        <span class="material-symbols-outlined text-primary block mb-3">emergency</span>
-        <h5 class="font-bold text-sm text-white mb-1 uppercase tracking-wider">Emergency Line</h5>
-        <p class="text-2xl font-black text-white mb-1">+237 800-PULSE</p>
-        <p class="text-xs text-slate-500">24/7 Rapid Response Coordination</p>
+
+      <!-- Quick Links (3 Cols) -->
+      <div class="md:col-span-3">
+        <h5 class="font-headline font-bold text-xs text-slate-300 uppercase tracking-widest mb-3.5">Navigation</h5>
+        <div class="flex flex-col gap-2.5 text-xs sm:text-sm">
+          <a href="/" class="text-slate-400 hover:text-white transition-colors">Home</a>
+          <a href="/about.html" class="text-white font-bold transition-colors">About the Initiative</a>
+          <a href="/public-request.html" class="text-slate-400 hover:text-white transition-colors">Emergency Blood Request</a>
+          <a href="/index.html#matrix" class="text-slate-400 hover:text-white transition-colors">Blood Compatibility Guide</a>
+          <a href="/login.html" class="text-slate-400 hover:text-white transition-colors">Staff PIN Workstation</a>
+        </div>
+      </div>
+
+      <!-- VitalPulse Coordinator Desk (4 Cols) -->
+      <div class="md:col-span-4 bg-white/5 rounded-3xl p-5 sm:p-6 border border-white/10">
+        <div class="flex items-center gap-2 text-red-400 text-xs font-bold uppercase tracking-wider mb-1.5">
+          <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1">headset_mic</span>
+          VitalPulse Coordinator Desk
+        </div>
+        <p class="text-slate-400 text-xs mb-3 leading-relaxed">Platform support, donor mobilization &amp; facility partnership inquiries:</p>
+        <p class="font-headline text-xl sm:text-2xl font-black text-white mb-0.5">
+          <a href="tel:+237652730980" class="hover:text-red-400 transition-colors">+237 652 73 09 80</a>
+        </p>
+        <p class="font-headline text-sm font-bold text-slate-300 mb-3">
+          WhatsApp Desk: <a href="https://wa.me/237674922015" target="_blank" rel="noopener noreferrer" class="text-emerald-400 hover:underline">+237 674 92 20 15</a>
+        </p>
+        <div class="text-xs text-slate-300 pt-2.5 border-t border-white/10">
+          Email: <a href="mailto:info@vitalpulse237.com" class="text-white underline font-semibold">info@vitalpulse237.com</a>
+        </div>
       </div>
     </div>
-    <div class="border-t border-white/10 pt-6 flex flex-col md:flex-row justify-between items-center gap-4">
-      <p class="text-slate-600 text-xs">&copy; 2026 VitalPulse Cameroon. A health-tech initiative.</p>
+
+    <!-- Bottom Bar -->
+    <div class="border-t border-white/10 pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-slate-500 text-center md:text-left">
+      <p>&copy; 2026 VitalPulse Cameroon. A Healthcare Technology System.</p>
       <div class="flex items-center gap-5">
-        <a href="/privacy.html" class="text-slate-600 hover:text-slate-300 text-xs transition-colors">Privacy</a>
-        <a href="/terms.html" class="text-slate-600 hover:text-slate-300 text-xs transition-colors">Terms</a>
-        <a href="mailto:contact@vitalpulse.cm" class="text-slate-600 hover:text-slate-300 text-xs transition-colors">Contact</a>
+        <a href="/privacy.html" class="hover:text-slate-300 transition-colors">Privacy Policy</a>
+        <a href="/terms.html" class="hover:text-slate-300 transition-colors">Terms of Service</a>
+        <a href="mailto:info@vitalpulse237.com" class="hover:text-slate-300 transition-colors">Contact</a>
       </div>
     </div>
   </div>
 </footer>
 
-<style>
-@keyframes fade-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
-@keyframes pulse-slow { 0%, 100% { opacity: 0.3; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.15); } }
-.animate-pulse-slow { animation: pulse-slow 6s ease-in-out infinite; }
-.reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
-.reveal.revealed { opacity: 1; transform: translateY(0); }
-.nav-scrolled { background: rgba(249, 249, 249, 0.85) !important; backdrop-filter: blur(20px) !important; box-shadow: 0 1px 30px rgba(0,0,0,0.06); }
-</style>
-
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('revealed'); observer.unobserve(e.target); } });
-  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
-  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  const loader = document.getElementById('global-loader');
+  if (loader) {
+    setTimeout(() => {
+      loader.style.opacity = '0';
+      setTimeout(() => loader.style.display = 'none', 400);
+    }, 150);
+  }
 
-  const counterObs = new IntersectionObserver(entries => {
+  // Smooth Reveal Animations
+  const observer = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting) {
-        const el = e.target;
-        const target = parseInt(el.dataset.target);
-        if (isNaN(target)) return;
-        const steps = 60;
-        const inc = target / steps;
-        let s = 0;
-        const t = setInterval(() => {
-          s++;
-          const v = Math.round(inc * s);
-          el.textContent = v >= target ? target.toLocaleString() : v.toLocaleString();
-          if (v >= target) clearInterval(t);
-        }, 2000 / steps);
-        counterObs.unobserve(el);
+        e.target.classList.add('revealed');
+        observer.unobserve(e.target);
       }
     });
-  }, { threshold: 0.5 });
-  document.querySelectorAll('.counter-value').forEach(el => counterObs.observe(el));
+  }, { threshold: 0.06, rootMargin: '0px 0px -30px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
 
+  // Navbar Scroll Blur
   const header = document.getElementById('siteHeader');
-  window.addEventListener('scroll', () => { header.classList.toggle('nav-scrolled', window.scrollY > 80); }, { passive: true });
+  window.addEventListener('scroll', () => {
+    header.classList.toggle('nav-scrolled', window.scrollY > 40);
+  }, { passive: true });
 
   // Mobile Menu Toggle
   const mobileBtn = document.getElementById('mobileMenuBtn');
@@ -509,6 +885,38 @@ document.addEventListener('DOMContentLoaded', () => {
     mobileBtn.addEventListener('click', () => {
       mobileMenu.classList.toggle('hidden');
       mobileMenu.classList.toggle('flex');
+    });
+  }
+
+  // Language Switcher Sync
+  const langEnBtn = document.getElementById('lang-en');
+  const langFrBtn = document.getElementById('lang-fr');
+  
+  function updateLangUI(lang) {
+    if (langEnBtn && langFrBtn) {
+      if (lang === 'fr') {
+        langFrBtn.className = 'px-2 py-1 rounded-lg bg-white text-slate-900 shadow-xs font-black transition-all';
+        langEnBtn.className = 'px-2 py-1 rounded-lg text-slate-500 hover:text-slate-900 transition-all';
+      } else {
+        langEnBtn.className = 'px-2 py-1 rounded-lg bg-white text-slate-900 shadow-xs font-black transition-all';
+        langFrBtn.className = 'px-2 py-1 rounded-lg text-slate-500 hover:text-slate-900 transition-all';
+      }
+    }
+  }
+
+  const savedLang = localStorage.getItem('vitalpulse_lang') || 'en';
+  updateLangUI(savedLang);
+
+  if (langEnBtn) {
+    langEnBtn.addEventListener('click', () => {
+      localStorage.setItem('vitalpulse_lang', 'en');
+      updateLangUI('en');
+    });
+  }
+  if (langFrBtn) {
+    langFrBtn.addEventListener('click', () => {
+      localStorage.setItem('vitalpulse_lang', 'fr');
+      updateLangUI('fr');
     });
   }
 });

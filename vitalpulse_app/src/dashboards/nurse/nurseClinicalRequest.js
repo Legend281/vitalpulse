@@ -1,7 +1,7 @@
 import { collection, addDoc, getDocs, query, where, orderBy, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase.js';
 import { createEmergencyRequest, logActivity, fetchHospitalRequests } from '../../db.js';
-import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName, getEffectiveHospitalId, getEffectiveHospitalCity } from '../../auth.js';
 
 /**
  * createNursePatientRequest - Handles Track A (Emergency Uncrossmatched) and Track B (Standard Crossmatched) patient requests
@@ -25,6 +25,8 @@ export async function createNursePatientRequest(reqData) {
 
   const currentUser = getCurrentUser();
   const hospitalName = getEffectiveHospitalName(currentUser);
+  const hospitalId = getEffectiveHospitalId(currentUser) || currentUser?.uid || '';
+  const hospitalCity = getEffectiveHospitalCity(currentUser) || currentUser?.city || '';
   const now = new Date().toISOString();
   const isTrackA = emergencyTrack === 'Track A';
 
@@ -36,6 +38,9 @@ export async function createNursePatientRequest(reqData) {
   const docRef = await addDoc(collection(db, 'requests'), {
     hospital: hospitalName,
     hospitalName,
+    hospitalId,
+    hospitalCity,
+    city: hospitalCity,
     patientName: patientName.trim(),
     patientIdNumber: patientIdNumber.trim(),
     wardNumber: wardNumber.trim(),
@@ -48,7 +53,9 @@ export async function createNursePatientRequest(reqData) {
     emergencyWaiverSigned,
     status: isTrackA ? 'Emergency Dispatch' : 'Pending Crossmatch',
     urgency: isTrackA ? 'Emergency' : 'Routine',
+    isEmergency: isTrackA,
     createdByNurse: currentUser?.email || 'Clinical Nurse',
+    requestedAt: now,
     createdAt: now,
     updatedAt: now
   });

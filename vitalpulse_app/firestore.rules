@@ -1,264 +1,707 @@
 rules_version = '2';
 
+// VitalPulse — Firestore Security Rules (Phase 2)
+// Adapted to the REAL schema (see vitalpulse_app/docs/PHASE0_AUDIT.md §6-7), not the
+// Master Plan's reference schema (no bloodUnits lifecycle, no public_requests, 3 real
+// user-facing roles today). The Master Plan's fuller 6-role/unit-lifecycle model is
+// parked as a documented "Phase 2.5 schema evolution" per the Security Lead's sign-off.
+//
+// Authority model: custom claims ONLY (request.auth.token.role / .hospitalId / .suspended),
+// set exclusively by the grantRole/revokeRole Cloud Functions (functions/src/*).
+// The legacy Firestore `users/{uid}.role` field (donor/hospital/admin) is NEVER read by
+// these rules — it is cosmetic, for client-side dashboard routing only. Zero trust on
+// the client: no user has a custom claim from anything the client wrote.
+//
+// hospitalId convention: for hospital_staff/lab_tech/hospital_admin, hospitalId ==
+// the hospital account's own uid (users/{hospitalUid}). Hospital-owned documents
+// (requests, inventory, issuance_log) carry a matching `hospitalId` field, stamped by
+// the client and verified here against the caller's claim. system_admin bypasses
+// hospitalId matching entirely (national-level oversight, incl. admin-initiated
+// system-wide broadcasts and cross-hospital inventory actions).
+//
+// KNOWN GAP (flagged, not silently worked around): documents written before this
+// migration lack `hospitalId`. See scripts/backfill-hospital-ids.ts for the one-time
+// manual backfill. Until that script is run, pre-existing hospital-owned documents will
+// be readable by system_admin but not by their owning hospital's own staff.
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: check if the requester is authenticated
-    function isAuth() {
-      // Suspension guard (2026-07-31): a suspended user's Firebase ID token stays
-      // cryptographically valid for up to ~1h after admin.revokeRefreshTokens-style
-      // suspension, and Firestore rules can't see revocation status. Cross-checking
-      // the users doc's isSuspended field closes that gap immediately: suspension
-      // takes effect on the next rule evaluation. Costs 1 extra read per rule
-      // evaluation (documented tradeoff; revisit when suspension moves to a
-      // Cloud-Function verifyIdToken path).
-      return request.auth != null
-        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuspended;
+    // ---------- Helpers ----------
+    function signedIn() {
+      // Use .get() with a default: direct field access (request.auth.token.suspended)
+      // throws a hard evaluation error when the key is absent, rather than returning
+      // undefined — and it IS absent for every account until grantRole sets it.
+      //
+      // KNOWN GAP (abuse-case review, 2026-07-25 — platform limitation, not fixable in
+      // rules alone): this checks the `suspended` claim baked into the caller's current
+      // ID token at mint time. revokeRole() sets the claim via Admin SDK and calls
+      // revokeRefreshTokens(), but that only blocks *future* token refreshes — it does
+      // not invalidate an ID token already issued and cached by the client, which stays
+      // cryptographically valid (and is honored by Firestore's rule evaluation, which
+      // checks signature + expiry only, not revocation status) until its own ~1h
+      // expiry. A user suspended mid-session keeps whatever access their still-live
+      // token grants for up to an hour. Real mitigation options, none applied yet: (a)
+      // route every suspend-sensitive privileged action through a Cloud Function that
+      // calls admin.auth().verifyIdToken(idToken, /*checkRevoked=*/true) — this is
+      // where Phase 3 is headed anyway; (b) have signedIn() also cross-check a live
+      // Firestore field (e.g. get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuspended)
+      // instead of relying on the token alone — costs an extra read per rule
+      // evaluation but closes the gap for every direct client read/write, not just
+      // Cloud-Function-mediated ones. Flagging for the Security Lead's call rather than
+      // picking one unilaterally, since (b) has a real cost/quota tradeoff at scale.
+      return request.auth != null && request.auth.token.get('suspended', false) != true;
+    }
+    function rolesList() {
+      return request.auth.token.get('roles', [request.auth.token.get('role', 'donor')]);
+    }
+    function hasAnyRole(targetRoles) {
+      return signedIn() && rolesList().hasAny(targetRoles);
     }
 
-    // Helper: get user role from the users collection
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    // K8 FIX (tracker K8, raised 2026-08-07, fixed 2026-08-08). These three functions were
+    // called in 20 places across this file but defined in none of them. A call to an
+    // undefined function is not a compile error here — the ruleset loads, and the call
+    // throws at evaluation time, which the engine treats as a denial. So the affected rules
+    // failed CLOSED (no data was ever exposed) but were simply dead: 11 rules tests failed
+    // for this reason alone, covering hospital staff reading their own inventory, creating
+    // requests, reading their own notifications and issuance log, plus campaigns and
+    // system_settings for everyone.
+    //
+    // Why role() barely changes anything: rolesList() already falls back to [role] when the
+    // plural `roles` claim is absent, so `rolesList().hasAny(['donor'])` covers `role ==
+    // 'donor'` on its own. Every `|| role() == ...` below is therefore a redundant
+    // right-hand branch — it only ever evaluated when the left side had already returned
+    // false, where it now returns false too instead of throwing. grantRole.ts always writes
+    // `role` as a member of `roles` (see functions/src/grantRole.ts), so the two can't
+    // disagree in a way that would grant more than the left side already does.
+    function role() {
+      return request.auth.token.get('role', '');
     }
 
-    // Role-value mapping (2026-08-08): the app's role field carries either the
-    // legacy scalar ('admin', 'hospital') or the fine-grained values the staff
-    // provisioning writes ('hospital_admin', 'hospital_staff', 'lab_tech',
-    // 'nurse', 'reception', ...) — plus 'system_admin' for the admin UI. The
-    // two helpers below are the single place that maps them so every allow
-    // rule below recognises both spellings. This is a strict widening: no
-    // previously-allowed rule gets narrower.
-    function isAdmin() {
-      return isAuth() && getUserRole() in ['admin', 'system_admin'];
+    // '' rather than null: an absent claim must not accidentally equal a real hospitalId.
+    function myHospitalId() {
+      return request.auth.token.get('hospitalId', '');
     }
 
-    function isHospitalRole() {
-      return isAuth() && getUserRole() in ['hospital', 'hospital_admin', 'hospital_staff', 'lab_tech', 'nurse', 'reception', 'receptionist', 'nbtp_viewer'];
+    // "Signed in with a role that was actually granted." Deliberately NOT built on
+    // rolesList()/hasAnyRole(): rolesList() defaults a claimless account to ['donor'], and
+    // reusing that here would let a signed-in user whose grantRole never ran read the user
+    // directory, campaigns and system_settings — the exact case the "signed-in user with no
+    // role claim is denied everywhere" test covers, which until now passed only because
+    // this function threw.
+    //
+    // KNOWN GAP, PRE-EXISTING, FLAGGED NOT FIXED (needs the Security Lead's call — it is a
+    // live-account decision, not a rules one): rolesList()'s `'donor'` default means
+    // isDonor() still returns true for a signed-in account with no role claim at all, so
+    // donor-scoped collections remain open to one. That predates this fix and is untouched
+    // by it. Tightening the default would deny any real account currently running without a
+    // claim (see tracker K10 for how one could get into that state) — hence flagged rather
+    // than changed unilaterally.
+    function hasRole() {
+      return signedIn()
+             && (request.auth.token.get('roles', []).size() > 0
+                 || request.auth.token.get('role', '') != '');
     }
 
-    // Users collection: each user can read/write their own doc; admins can read/write all.
-    // Hospital accounts are also readable by any authenticated user — they're an institutional
-    // directory (name/city/etc.), not a personal profile, and donors legitimately need to
-    // browse it (donation centers list, partner network, choosing where to donate). Donor and
-    // admin profiles stay private to their own owner + admin.
-    match /users/{userId} {
-      allow read: if isAuth() && (request.auth.uid == userId || isAdmin() || resource.data.role == 'hospital');
-      allow create: if isAuth() && request.auth.uid == userId;
-      allow update: if isAuth() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isAdmin();
+    function isDonor()         { return signedIn() && (rolesList().hasAny(['donor']) || role() == 'donor'); }
+    function isHospitalRole()  { return signedIn() && (rolesList().hasAny(['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']) || role() in ['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']); }
+    function canManageStock()  { return signedIn() && (rolesList().hasAny(['nurse', 'hospital_staff', 'hospital_admin']) || role() in ['hospital_staff', 'hospital_admin']); }
+    function isSystemAdmin()   { return signedIn() && (rolesList().hasAny(['system_admin']) || role() == 'system_admin'); }
+    function isNbtpViewer()    { return signedIn() && (rolesList().hasAny(['nbtp_viewer']) || role() == 'nbtp_viewer'); }
+
+    // True if the caller is hospital-role AND scoped to the given hospitalId.
+    function sameHospital(hid) { return isHospitalRole() && hid == myHospitalId(); }
+
+    function unchangedExcept(allowedKeys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
     }
 
-    // Blood requests: authenticated users can create; hospitals/admins can read/update
+    // B7 (Auth & Onboarding Stream B, donor UI/VitalPulse_Plan_Tracker.md) — "only verified
+    // donors can accept requests." GRANDFATHER CLAUSE, FLAGGED FOR YOUR CONFIRMATION rather
+    // than decided unilaterally: gating strictly on kycStatus=='verified' would instantly
+    // lock out every donor who exists today, since donors/{uid} (new, KYC-only collection,
+    // Stream A4) has no record for any pre-existing account — this function has never run
+    // for them and nothing here is proposing to backfill it. So: a donor with NO
+    // donors/{uid} doc at all is treated as grandfathered/exempt (pre-dates this feature);
+    // only a donor who HAS gone through the new flow and was explicitly rejected or is
+    // still pending is blocked. Whether pre-existing donors should eventually be required
+    // to complete KYC too is a product/rollout decision for you, not something encoded here.
+    function isKycEligible(uid) {
+      let donorPath = /databases/$(database)/documents/donors/$(uid);
+      return !exists(donorPath) || get(donorPath).data.kycStatus == 'verified';
+    }
+
+    // ---------- Users (donor / hospital accounts; role is a custom claim, not this doc) ----------
+    match /users/{uid} {
+      // Broad signed-in read: the app's matching/notification/directory flows all rely
+      // on cross-role lookups (donor scans hospital-role users to notify; hospital-role
+      // scans donor users to match/alert; admin lists everyone). Field-level PHI
+      // redaction (e.g. hiding bloodType from parties who don't need it) is a rules
+      // limitation — rules are whole-document, not field-level, for reads. Flagged as a
+      // hardening item (Master Plan 1.7) for a future Cloud-Function-mediated read path.
+      allow get, list: if hasRole();
+
+      // Self-signup only: caller can create ONLY their own doc, and can only ever
+      // self-declare 'donor' or 'hospital' — closes the remaining half of Finding 3.2
+      // that Phase 1 didn't touch (registerUser() still accepted an arbitrary role
+      // string; Phase 1 only removed the two specific 'admin' backdoor strings).
+      allow create: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.role in ['donor', 'hospital']
+                    && request.resource.data.email is string;
+
+      // Self-update: everything EXCEPT the fields that grant privilege or bypass
+      // review. role/isVerified/isSuspended/rejected/isActive are never client-
+      // settable, on self or others — those are system_admin actions (see below) or,
+      // longer-term, Cloud Functions (Phase 3). email is Firebase Auth's job, not
+      // Firestore's. isActive self-deactivation would let a hospital silently remove
+      // itself from the verified donor-facing network (donor-dashboard filters
+      // isActive !== false), and lets any user mark themselves inactive — only
+      // system_admin may set it (deactivate/reactivateHospital).
+      allow update: if signedIn() && request.auth.uid == uid
+                    && unchangedExcept(request.resource.data.diff(resource.data).affectedKeys())
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                         .hasAny(['role', 'isVerified', 'isSuspended', 'rejected', 'isActive', 'email', 'verifiedAt', 'statusChangedAt']);
+
+      // Privileged changes to ANY user doc (hospital verification, donor suspension,
+      // rejection, deactivation) — system_admin only. Matches Master Plan: "hospital_admin
+      // cannot self-verify own hospital"; suspension is an abuse-queue/system_admin action.
+      // rejectedAt (rejectHospital) and isActive (deactivate/reactivateHospital) are part
+      // of the live app's client flows, so they're whitelisted. isAvailable is NOT: the
+      // suspendDonor client flow writes it, but real suspension is the custom claim
+      // (revokeRole / Phase 3 suspendUser Function) — widening here would only let the
+      // UI fake-suspend while the claim still grants full access.
+      allow update: if isSystemAdmin()
+                    && unchangedExcept(['isVerified', 'isSuspended', 'rejected', 'rejectedAt', 'isActive', 'verifiedAt', 'statusChangedAt']);
+
+      allow delete: if false; // account deletion path is a future Cloud Function (Policy 12)
+    }
+
+    // ---------- Donor KYC records (Auth & Onboarding Stream B) ----------
+    // NEW, KYC-ONLY collection, approved 2026-08-01 (donor UI/VitalPulse_Plan_Tracker.md
+    // Stream A4) — does NOT replace or duplicate users/{uid}; donor profile data (blood
+    // type, points/tier, badges, notification prefs) stays there exactly as before.
+    //
+    // REWRITTEN 2026-08-07 per donor UI/KYC_fix.md (Security Lead spec, followed strictly
+    // at the Security Lead's explicit direction, superseding the Storage-ref version of
+    // this block that SPARK_PLAN_MIGRATION.md §6 had started, 2026-08-05): KYC evidence
+    // (ID photo, optional ID back, live selfie) is now base64 text stored directly on this
+    // document — no Cloud Storage, no Cloud Function, Spark-plan-compatible. Firestore's
+    // own 1 MiB document cap is therefore the hard ceiling on evidence size; KYC_fix.md
+    // Step 2 measured ~142 KB combined for front+back+selfie at 800px/JPEG q65 against
+    // synthetic worst-case (noise) photos at real phone-camera resolution — ~86% headroom.
+    //
+    // Admin check reuses isSystemAdmin() (the existing system_admin custom claim, already
+    // trusted by every other rule in this file, granted only via grantRole/
+    // bootstrap-admin.ts) rather than KYC_fix.md's literal proposal of a second, separately
+    // hand-set users/{uid}.isAdmin field — flagged to and confirmed by the Security Lead at
+    // the Step 1 checkpoint: two independent "who is admin" sources can drift out of sync
+    // (e.g. a revokeRole'd admin keeping a stale isAdmin:true forever); one is enough.
+    //
+    // donors/{uid} is still created by the onDonorSignUp Cloud Function via the Admin SDK
+    // (unavoidable — only the Admin SDK can set the `role` custom claim a new donor needs
+    // for every OTHER rule in this file), which bypasses these rules entirely; `allow
+    // create` below is a defense-in-depth backstop for a client write path the app doesn't
+    // actually exercise today, kept literal to KYC_fix.md's spec.
+    //
+    // THIS IS THE ENTIRE SECURITY BOUNDARY for KYC approval — no server backstop. Every
+    // clause in `allow update` below is there on purpose (KYC_fix.md, verbatim: "do not
+    // modify, simplify, or clean up... removing any one of them reopens the security hole").
+    match /donors/{donorId} {
+      allow read: if request.auth.uid == donorId || isSystemAdmin();
+
+      // KYC_fix.md's own literal `allow create` clause (`if request.auth.uid == donorId`,
+      // no shape check) is a real gap, not a deliberate one — the doc's own Step 1 says
+      // kycStatus starts at 'not_submitted', but nothing in its Step 3 text enforces that
+      // on create, which would let a donor self-create with kycStatus:'verified' if they
+      // ever raced ahead of (or hit a failure in) onDonorSignUp. This does NOT touch the
+      // sacred `allow update` clause below — only tightens the create shape to match the
+      // doc's own documented default, closing a self-verification-via-create path the spec
+      // didn't intend.
+      allow create: if request.auth.uid == donorId
+        && request.resource.data.kycStatus == 'not_submitted'
+        && request.resource.data.kycIdImageBase64 == null
+        && request.resource.data.kycIdBackImageBase64 == null
+        && request.resource.data.kycSelfieImageBase64 == null
+        && request.resource.data.kycRejectionReason == null
+        && request.resource.data.kycReviewedBy == null
+        && request.resource.data.kycReviewedAt == null;
+
+      allow update: if isSystemAdmin() || (
+        request.auth.uid == donorId &&
+        resource.data.kycStatus in ['not_submitted', 'rejected'] &&
+        request.resource.data.kycStatus == 'pending' &&
+        request.resource.data.kycReviewedBy == resource.data.kycReviewedBy &&
+        request.resource.data.kycReviewedAt == resource.data.kycReviewedAt
+      );
+    }
+
+    // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------
+    match /adminQueue/{id} {
+      allow get, list: if isSystemAdmin();
+      allow write: if false; // Cloud Functions only
+    }
+
+    // ---------- Blood requests (hospital-created; donor-matched) ----------
     match /requests/{requestId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
+      allow get, list: if isDonor() || isSystemAdmin() || isNbtpViewer()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
 
-    // Hospital inventory: hospitals can read/write their own; admins can read/write all
-    match /inventory/{hospitalName} {
-      allow read: if isAuth();
-      allow write: if isAuth() && (isHospitalRole() || isAdmin());
-    }
+      // Create: hospital_staff/hospital_admin/nurse must stamp their own hospitalId (lab_tech
+      // excluded — Master Plan 1.2 separation of duties); system_admin may create
+      // system-wide/unscoped requests (e.g. the admin "Central Command" broadcast,
+      // which has no owning hospital account at all and uses `type`, not `bloodType`).
+      allow create: if ((canManageStock() && request.resource.data.hospitalId == myHospitalId()) || isSystemAdmin())
+                    && (request.resource.data.status in ['Open', 'Pending Crossmatch', 'Emergency Dispatch'])
+                    && (request.resource.data.isEmergency == true || request.resource.data.urgency in ['Emergency', 'Immediate', 'Routine'])
+                    && request.resource.data.keys().hasAll(['hospital', 'requestedAt'])
+                    && (('bloodType' in request.resource.data) || ('type' in request.resource.data));
 
-    // Global inventory: admins only
-    match /global_inventory/{type} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
-    }
+      // Donor accepts an Open request (self-assignment only).
+      //
+      // RECONCILED 2026-08-08 against the ACTUAL client write. db.js's
+      // acceptRequest transaction writes SEVEN fields — the two missing from
+      // this whitelist (`checkInTokenExpiresAt`, `nudgeSent`) meant
+      // unchangedExcept() failed and the whole accept was denied. The rule read
+      // as though it permitted accepting; it never did.
+      allow update: if isDonor() && isKycEligible(request.auth.uid)
+                    && resource.data.status == 'Open'
+                    && request.resource.data.status == 'Donor Assigned'
+                    && request.resource.data.matchedDonor == request.auth.uid
+                    && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken',
+                                        'checkInTokenExpiresAt', 'nudgeSent', 'donorScreeningPassed']);
 
-    // Activity logs: admin-only reads (IDOR fix 2026-07-31 — previously readable by any
-    // authenticated user); creation stays open because every client writes its own
-    // activity entries.
-    match /activity_logs/{logId} {
-      allow read: if isAuth() && isAdmin();
-      allow create: if isAuth();
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
+      // The matched donor marks themselves en route.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status == 'Donor Assigned'
+                    && request.resource.data.status == 'Donor En Route'
+                    && unchangedExcept(['status', 'enRouteAt']);
 
-    // Donation requests (donor-scheduled donations)
-    // IDOR fix (2026-07-31): donors may only read their OWN records — previously any
-    // authenticated user could list the whole collection (bloodType, preferredLocation,
-    // notes of every donor). Hospitals/admins may read all (booking management).
-    match /donation_requests/{donationId} {
-      allow read: if isAuth() && (isHospitalRole() || isAdmin() || resource.data.donorId == request.auth.uid);
-      allow create: if isAuth();
-      allow update: if isAuth() && (isAdmin() || isHospitalRole());
-      allow delete: if isAdmin();
-    }
+      // Live position while en route (db.js updateDonorLiveLocation), so the
+      // hospital's tracking map can show an approaching donor. No rule permitted
+      // these fields before, so every write was denied — silently, because the
+      // caller try/catches — and the map sat on "Waiting for signal…" forever.
+      // Status is NOT in the whitelist: this can only ever move the pin.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status == 'Donor En Route'
+                    && unchangedExcept(['donorLat', 'donorLng', 'donorLocationUpdatedAt']);
 
-    // Campaigns
-    match /campaigns/{campaignId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth() && (isAdmin() || isHospitalRole());
-      allow delete: if isAdmin();
-    }
+      // The matched donor signals arrival at reception (db.js donorMarkArrived).
+      // Deliberately cannot set status: only hospital staff move a request to
+      // 'Checked In', after physically verifying the donor's pass code and CNI.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status == 'Donor En Route'
+                    && request.resource.data.status == 'Donor En Route'
+                    && unchangedExcept(['arrivedAt', 'receptionStatus']);
 
-    // Hospital notifications — authenticated hospital and admin access
-    match /hospital_notifications/{notificationId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isAdmin();
-    }
+      // The matched donor withdraws before check-in (db.js donorCancelAssignedRequest).
+      // Only from the two pre-arrival statuses — after check-in a unit may already
+      // have been drawn, so releasing the request would orphan it.
+      allow update: if isDonor()
+                    && resource.data.matchedDonor == request.auth.uid
+                    && resource.data.status in ['Donor Assigned', 'Donor En Route']
+                    && request.resource.data.status == 'Open'
+                    && request.resource.data.matchedDonor == null
+                    && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken',
+                                        'enRouteAt', 'donorScreeningPassed']);
 
-    // Notification log
-    match /notification_log/{logId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
-    }
+      // Owning hospital confirms donor arrival / resolves the request.
+      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+                    && resource.data.status == 'Donor En Route'
+                    && request.resource.data.status == 'Resolved'
+                    && unchangedExcept(['status', 'resolvedAt']);
 
-    // System settings (admins only)
-    match /system_settings/{settingId} {
-      allow read: if isAuth();
-      allow write: if isAdmin();
-    }
+      // Auto-match bookkeeping, written by the requesting hospital right after create.
+      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+                    && unchangedExcept(['matchingDonorsNotified', 'matchingDonorsCount', 'notifiedAt']);
 
-    // Incoming donors (hospital-assigned donor records)
-    match /incoming_donors/{donorId} {
-      allow read: if isAuth();
-      allow write: if isAuth() && (isHospitalRole() || isAdmin());
-    }
+      // Owning hospital advances the request through the REAL lifecycle (Checked In →
+      // Donation Complete → Lab Cleared → Issued → Resolved) or closes/cancels it.
+      // Reconciliation 2026-07-31: the previous single Open→Resolved transition
+      // matched the security-branch's app model; the merged main app drives the full
+      // status set (see REQUEST_ACTIVE_STATUSES in db.js). Field names reconciled with
+      // the actual client writes: completeDonorArrival writes `donationCompletedAt`
+      // (not donationCompleteAt), cancelHospitalRequest writes cancelledBy +
+      // cancellationReason. No whitelist can enforce strict sequencing — the owning
+      // hospital is the operational authority and every transition is audited
+      // client-side via logActivity.
+      // RECONCILED 2026-08-08: `checkedInByStaffUid` and `receptionStatus` are
+      // both written by checkInDonor() and were absent here, so the hospital's
+      // own check-in was denied — the single transition the whole front desk
+      // depends on. `labResolvedAt` is written by resolveLabTest's follow-up.
+      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+                    && request.resource.data.status in ['Checked In', 'Donation Complete', 'Lab Cleared', 'Issued', 'Resolved', 'Cancelled', 'Lab Rejected']
+                    && unchangedExcept(['status', 'checkedInAt', 'checkedInByStaffUid', 'receptionStatus',
+                                        'donationCompletedAt', 'labClearedAt', 'labResolvedAt', 'issuedAt',
+                                        'resolvedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason',
+                                        'calledToRoom', 'calledAt', 'updatedAt']);
 
-    // Inventory movements
-    match /inventory_movements/{movementId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
+      // system_admin retains operational override (audited manually until Phase 3
+      // moves all of these transitions into Cloud Functions per Master Plan 1.5).
+      allow update: if isSystemAdmin();
 
-    // Donor engagement records
-    match /donor_engagement/{engagementId} {
-      allow read: if isAuth();
-      allow write: if isAuth();
-    }
-
-    // Public requests (emergency blood requests from hospitals/unregistered sources)
-    match /public_requests/{requestId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    // Admin notifications — admin-only reads (IDOR fix 2026-07-31); creation stays open
-    // because hospital signups create them client-side to alert admins.
-    match /admin_notifications/{notificationId} {
-      allow read: if isAuth() && isAdmin();
-      allow create: if isAuth();
-      allow update: if isAuth() && isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    // Donor notifications — owner-scoped reads (IDOR fix 2026-07-31): a donor may read
-    // only notifications addressed to their own uid. Creation stays open (client-driven
-    // matching/lab flows notify donors); writes restricted to the owner.
-    match /donor_notifications/{notificationId} {
-      allow read: if isAuth() && resource.data.donorId == request.auth.uid;
-      allow create: if isAuth();
-      allow update: if isAuth() && resource.data.donorId == request.auth.uid;
-      allow delete: if isAdmin();
-    }
-
-    // Immutable audit trail — read by authenticated, written by system
-    match /audit_logs/{logId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if false;
       allow delete: if false;
     }
 
-    // Blood issuance log — read by auth, write by hospitals/admins
-    match /issuance_log/{logId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
+    // ---------- Hospital notifications (real-time alerts) ----------
+    match /hospital_notifications/{notificationId} {
+      allow get, list: if isSystemAdmin() || isHospitalRole();
+      allow create: if isSystemAdmin() || isHospitalRole() || isDonor();
+      allow update, delete: if isSystemAdmin() || isHospitalRole();
     }
 
-    // Phone trust records — tracking phone reputation for public request verification
+    // ---------- Blood inventory (aggregate per hospital+bloodType; with per-batch lifecycle) ----------
+    match /inventory/{docId} {
+      allow get, list: if isSystemAdmin() || isNbtpViewer()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+
+      allow create: if isSystemAdmin()
+                    || ((canManageStock() || isHospitalRole()) && request.resource.data.hospitalId == myHospitalId());
+
+      allow update: if isSystemAdmin()
+                    || ((canManageStock() || isHospitalRole()) && (sameHospital(resource.data.hospitalId) || resource.data.hospitalId == myHospitalId()));
+
+      allow delete: if isSystemAdmin();
+    }
+
+    // ---------- Donation requests (donor-initiated; reviewed by any hospital/admin — no per-hospital targeting exists in this workflow) ----------
+    match /donation_requests/{id} {
+      allow get: if isSystemAdmin() || isHospitalRole()
+                 || (isDonor() && resource.data.donorId == request.auth.uid);
+      // FIX (abuse-case review, 2026-07-25): this used to be `... || isDonor()` with no
+      // resource.data check — the comment claimed "donor client always queries
+      // where(donorId==self)" but nothing in the rule enforced it, so any donor could run
+      // an unfiltered list() and read every other donor's donation history (bloodType,
+      // preferredDate, preferredLocation, notes). Verified both real call sites
+      // (fetchDonationRequestsForDonor in db.js) already filter by donorId==self, so this
+      // tightening doesn't break the app. See firestore.rules.test.js abuse-case tests.
+      allow list: if isSystemAdmin() || isHospitalRole()
+                  || (isDonor() && resource.data.donorId == request.auth.uid);
+
+      // FIX (Security Lead report, 2026-08-08): the donor clause had no isKycEligible() gate,
+      // so a donor whose account was still 'pending' admin review — or one already rejected —
+      // could book a donation slot at a hospital. The rest of Stream D's "unverified donors
+      // can't act" gating (accepting a request: requests/{id} and public_requests/{id} below)
+      // was enforced here in rules; scheduling was enforced only by DOM locks in the client,
+      // which is not authorization. Same grandfather semantics as everywhere else: a donor
+      // with no donors/{uid} doc at all pre-dates KYC and stays allowed.
+      allow create: if (isDonor() && isKycEligible(request.auth.uid)
+                        && request.resource.data.donorId == request.auth.uid
+                        && request.resource.data.status == 'pending')
+                    || ((isHospitalRole() || isSystemAdmin()) && request.resource.data.status == 'completed');
+
+      // Hospital/admin review: approve / reject / complete / cancel / issue / lab outcome.
+      // Reconciliation 2026-07-31: whitelist reconciled with the REAL client writes —
+      // approveDonationRequest (approvedAt), rejectDonationRequest (rejectionReason,
+      // rejectedAt), hospitalCancelBooking (cancellationNote), recordDonationIntake's
+      // full completion payload via completeDonationRequest, resolveLabTest (labResolvedAt,
+      // 'Lab Cleared'/'Lab Rejected'), issueBloodToPatient ('Issued', issuedAt). Deny-by-
+      // default means enumerating every field the legit client writes — not a free-form
+      // write, but a full enumeration of the documented intake schema.
+      // RECONCILED 2026-08-08: 'Checked In' added to the status set, plus
+      // checkedInAt/checkedInByStaffUid/receptionStatus/calledToRoom/calledAt to
+      // the whitelist. A self-scheduled booking is issued a 7-day check-in pass
+      // code, but no rule permitted the front desk to actually check that donor
+      // in — so a scheduled donor arriving with a valid code could never be
+      // admitted, and the booking sat at 'approved' forever.
+      allow update: if (isHospitalRole() || isSystemAdmin())
+                    && request.resource.data.status in ['approved', 'rejected', 'Checked In', 'completed', 'cancelled', 'Issued', 'Lab Cleared', 'Lab Rejected']
+                    && unchangedExcept(['status', 'approvedAt', 'rejectionReason', 'rejectedAt', 'cancelledAt',
+                                        'cancellationNote', 'completedAt', 'labResolvedAt', 'issuedAt', 'updatedAt',
+                                        'checkedInAt', 'checkedInByStaffUid', 'receptionStatus', 'calledToRoom', 'calledAt',
+                                        'donorId', 'donorName', 'donorEmail', 'donorPhone', 'cniHash', 'hospital',
+                                        'bloodType', 'labConfirmedBloodType', 'bloodTypeMismatch', 'componentType',
+                                        'units', 'screeningAnswers', 'screeningFlags', 'screeningPassed',
+                                        'sourceRequestId', 'notes']);
+      // Donor cancels their own still-pending request.
+      allow update: if isDonor() && resource.data.donorId == request.auth.uid
+                    && resource.data.status == 'pending'
+                    && request.resource.data.status == 'cancelled'
+                    && unchangedExcept(['status', 'cancelledAt', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // ---------- Activity/audit feed ----------
+    match /activity_logs/{id} {
+      allow get, list: if hasRole();
+      allow create: if hasRole();
+      allow update: if false;
+      allow delete: if isSystemAdmin();
+    }
+
+    // ---------- Donor notifications ----------
+    match /donor_notifications/{id} {
+      allow get: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
+      // FIX (abuse-case review, 2026-07-25): same class of bug as donation_requests above —
+      // list() had no resource.data check, so any donor could enumerate every other donor's
+      // notification content (emergency-alert text, which can include hospital name/urgency/
+      // notes). Verified fetchDonorNotifications in db.js already filters by donorId==self.
+      allow list: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
+      allow create: if isHospitalRole() || isSystemAdmin()
+                    // Donor-side flows also notify the donor themselves (e.g. check-in
+                    // confirmation), which the previous hospital-only rule blocked.
+                    || (isDonor() && request.resource.data.donorId == request.auth.uid);
+      allow update: if isDonor() && resource.data.donorId == request.auth.uid
+                    && unchangedExcept(['read']);
+      allow delete: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
+    }
+
+    // ---------- Hospital notifications ----------
+    match /hospital_notifications/{id} {
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      // Donors trigger these too (e.g. notifying a hospital their request was accepted).
+      allow create: if isDonor() || isHospitalRole() || isSystemAdmin();
+      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+                    && unchangedExcept(['read']);
+      allow delete: if isSystemAdmin() || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+    }
+
+    // ---------- Issuance log — Restricted-PHI (patient identity + diagnosis, Policy 4) ----------
+    match /issuance_log/{id} {
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow create: if isSystemAdmin()
+                    || ((canManageStock() || isHospitalRole()) && request.resource.data.hospitalId == myHospitalId());
+      allow update, delete: if isSystemAdmin();
+    }
+
+    // ---------- SMS/WhatsApp deep-link log (no real gateway integrated yet; just logged links) ----------
+    match /notification_log/{id} {
+      allow get, list: if isSystemAdmin(); // contains phone numbers — admin-only read
+      allow create: if hasRole(); // both donor- and hospital-triggered flows write here
+      allow update, delete: if false;
+    }
+
+    // ---------- Campaigns (cross-hospital; not owned by a single hospital) ----------
+    match /campaigns/{id} {
+      allow get, list: if hasRole();
+      allow create, delete: if isSystemAdmin();
+      allow update: if isSystemAdmin()
+                    || (isHospitalRole() && unchangedExcept(['participants', 'participantCount', 'updatedAt']));
+    }
+
+    // ---------- Global system settings ----------
+    match /system_settings/{doc} {
+      allow get: if hasRole();
+      allow write: if isSystemAdmin();
+    }
+
+    // ====== Reconciliation additions (2026-07-31) — collections the merged main app
+    // actually uses that the Phase 2 rules omitted (deny-by-default would have silently
+    // broken these features after the claims migration) ======
+
+    // ---------- Public emergency requests (public-request.html triage) ----------
+    // FLAGGED, not silently faked: the anonymous web form that creates these today
+    // (public-request.html, "No account needed") CANNOT be authorized under the claims
+    // model — rules require a signed-in, role-provisioned caller. Phase 3 moves the
+    // public intake to a Cloud Function with phone verification (phone_trust). Until
+    // then system_admin creates broadcasts from the form's triage data; donor
+    // accept/en-route and hospital lifecycle mirrors the requests rules.
+    match /public_requests/{id} {
+      allow get, list: if isDonor() || isSystemAdmin() || isNbtpViewer()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow create: if isSystemAdmin();
+      allow update: if isSystemAdmin()
+                    // Donor accept: public requests broadcast in 'Broadcasting', not 'Open'.
+                    // Client shape (db.js acceptPublicRequest): status + matchedDonor +
+                    // matchedAt + checkInToken + donorScreeningPassed. B7: same
+                    // isKycEligible gate as requests/{requestId} above.
+                    || (isDonor() && isKycEligible(request.auth.uid) && resource.data.status == 'Broadcasting'
+                        && request.resource.data.status == 'Donor Assigned'
+                        && request.resource.data.matchedDonor == request.auth.uid
+                        && unchangedExcept(['status', 'matchedDonor', 'matchedAt', 'checkInToken', 'donorScreeningPassed']))
+                    || (isDonor() && resource.data.matchedDonor == request.auth.uid
+                        && resource.data.status == 'Donor Assigned'
+                        && request.resource.data.status == 'Donor En Route'
+                        && unchangedExcept(['status', 'enRouteAt']))
+                    || (isHospitalRole() && sameHospital(resource.data.hospitalId)
+                        && request.resource.data.status in ['Checked In', 'Donation Complete', 'Lab Cleared', 'Issued', 'Resolved', 'Cancelled', 'Lab Rejected']
+                        && unchangedExcept(['status', 'checkedInAt', 'donationCompletedAt', 'labClearedAt', 'issuedAt', 'resolvedAt', 'cancelledAt', 'updatedAt']));
+      allow delete: if false;
+    }
+
+    // ---------- Phone trust records (public-request anti-abuse reputation) ----------
+    // Mirrors the live rules' hospital/admin scoping. The anonymous intake's own writes
+    // to this collection are part of the Phase 3 Cloud Function migration above.
     match /phone_trust/{phoneHash} {
-      allow read: if isAuth() && (isHospitalRole() || isAdmin());
-      allow write: if isAuth() && (isHospitalRole() || isAdmin());
+      allow get, list: if isHospitalRole() || isSystemAdmin();
+      allow create, update: if isHospitalRole() || isSystemAdmin();
+      allow delete: if false;
     }
 
-    // Shadow hospitals — unregistered hospitals tracked via public requests
+    // ---------- Shadow hospitals (unregistered hospitals tracked via public requests) ----------
     match /shadow_hospitals/{shadowId} {
-      allow read: if isAuth();
-      allow write: if isAuth() && (isHospitalRole() || isAdmin());
+      allow get, list: if isSystemAdmin() || isHospitalRole();
+      allow create: if isSystemAdmin();
+      allow update: if isSystemAdmin() || (isHospitalRole() && unchangedExcept(['requestCount', 'lastRequestAt', 'updatedAt']));
+      allow delete: if false;
     }
 
-    // ====== PHASE 3: Hemovigilance Reports ======
-    match /hemovigilance_reports/{reportId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    // ====== Donor Reaction Log ======
-    // Distinct from hemovigilance — this is the DONOR feeling unwell after giving blood.
-    match /donor_reactions/{reactionId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    // ====== PHASE 3: Demand Forecasts ======
-    match /demand_forecasts/{forecastId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    // ====== PHASE 3: Myth-Busting Articles ======
-    match /myth_articles/{articleId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    // ====== PHASE 3: Care Reminders ======
-    match /care_reminders/{reminderId} {
-      allow read: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isAuth();
-    }
-
-    // ====== PHASE 3: Life Saver Certificates ======
-    match /life_saver_certificates/{certId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    // ====== PHASE 2: Inter-Hospital Blood Transfers ======
-    // Peer-to-peer between hospitals — no admin approval step by design.
+    // ---------- Inter-hospital blood transfers ----------
     match /blood_transfers/{transferId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAdmin();
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && (sameHospital(resource.data.requestingHospitalId)
+                                                || sameHospital(resource.data.targetHospitalId)));
+      allow create: if canManageStock() && request.resource.data.requestingHospitalId == myHospitalId()
+                    || isSystemAdmin();
+      allow update: if isSystemAdmin()
+                    || (isHospitalRole() && sameHospital(resource.data.requestingHospitalId)
+                        && unchangedExcept(['status', 'updatedAt', 'receivedAt', 'cancelReason', 'cancelledAt']))
+                    || (isHospitalRole() && sameHospital(resource.data.targetHospitalId)
+                        && unchangedExcept(['status', 'updatedAt', 'dispatchedAt']));
+      allow delete: if false;
     }
 
-    // ====== PHASE 2: Chronic / Recurring Patient Registry ======
-    // Hospital-scoped — each hospital manages only its own patients.
+    // ---------- Chronic / recurring patient registry (hospital-scoped PHI) ----------
     match /chronic_patients/{patientId} {
-      allow read: if isAuth();
-      allow create: if isAuth() && (isHospitalRole() || isAdmin());
-      allow update: if isAuth() && (isHospitalRole() || isAdmin());
-      allow delete: if isAuth() && (isHospitalRole() || isAdmin());
+      allow get, list: if isSystemAdmin() || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow create, update: if isSystemAdmin()
+                            || (canManageStock() && request.resource.data.hospitalId == myHospitalId());
+      allow delete: if isSystemAdmin();
     }
 
-    // Default: deny everything else
+    // ---------- Global inventory (admin consolidated view) ----------
+    match /global_inventory/{type} {
+      allow get, list: if hasRole();
+      allow write: if isSystemAdmin();
+    }
+
+    // ---------- Inventory movements (append-only audit of stock changes) ----------
+    match /inventory_movements/{movementId} {
+      allow get, list: if isSystemAdmin() || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow create: if canManageStock() || isSystemAdmin();
+      allow update, delete: if false;
+    }
+
+    // ---------- Donor engagement records (community features) ----------
+    match /donor_engagement/{engagementId} {
+      allow get, list, create, update: if hasRole();
+      allow delete: if false;
+    }
+
+    // ---------- Phase 3: hemovigilance / reactions / forecasts / articles / certificates ----------
+    match /hemovigilance_reports/{reportId} {
+      allow get, list: if hasRole();
+      allow create: if isSystemAdmin() || canManageStock();
+      allow update: if isSystemAdmin() || (canManageStock() && unchangedExcept(['status', 'updatedAt']));
+      allow delete: if isSystemAdmin();
+    }
+    match /donor_reactions/{reactionId} {
+      allow get, list: if hasRole();
+      allow create, update: if isSystemAdmin() || isHospitalRole();
+      allow delete: if isSystemAdmin();
+    }
+    match /demand_forecasts/{forecastId} {
+      allow get, list: if hasRole();
+      allow create: if isSystemAdmin() || canManageStock();
+      allow update: if isSystemAdmin() || (canManageStock() && unchangedExcept(['status', 'updatedAt']));
+      allow delete: if isSystemAdmin();
+    }
+    match /myth_articles/{articleId} {
+      allow get, list: if hasRole();
+      allow create: if isSystemAdmin() || isHospitalRole();
+      allow update: if isSystemAdmin() || (isHospitalRole() && unchangedExcept(['status', 'updatedAt']));
+      allow delete: if isSystemAdmin();
+    }
+    match /life_saver_certificates/{certId} {
+      allow get, list: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
+      allow create: if isSystemAdmin() || (isHospitalRole() && request.resource.data.donorId is string);
+      allow update, delete: if isSystemAdmin();
+    }
+    match /care_reminders/{reminderId} {
+      allow get, list, create, update, delete: if hasRole();
+    }
+    // ---------- Patient Transfusion Monitoring (Bedside 2-Person Check & Vitals) ----------
+    match /patient_transfusions/{transfusionId} {
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow create: if (isHospitalRole() && request.resource.data.hospitalId == myHospitalId())
+                    || isSystemAdmin();
+      allow update: if (isHospitalRole() && sameHospital(resource.data.hospitalId))
+                    || isSystemAdmin();
+      allow delete: if isSystemAdmin();
+    }
+
+    // ---------- Admin notifications (admin alert center) ----------
+    // create stays signed-in-open: hospital signups write here client-side to alert
+    // admins (auth.js), and under the claims model a brand-new account has no claims
+    // yet. Reads are system_admin only.
+    match /admin_notifications/{id} {
+      allow get, list: if isSystemAdmin();
+      allow create: if signedIn();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    // ---------- Audit trail (client-written, same Phase 3 fate as activity_logs) ----------
+    // The app writes audit_logs client-side via logAuditTrail() (try/catch, non-blocking).
+    // Rules lock it admin-read + no client writes, matching the activity_logs decision:
+    // Phase 3's writeAudit Cloud Function is the real home. Flagged, not silently deferred.
+    // ---------- Hospital staff sub-accounts ----------
+    // The staff doc carries the PIN credential material (pinHash/pinSalt). Reads
+    // stay scoped to the owning hospital's own admins so the roster page works;
+    // ALL writes are denied to every client, including hospital_admin, because
+    // staff creation/PIN rotation now happens exclusively in
+    // functions/src/staffManagement.ts (Admin SDK, which bypasses these rules).
+    //
+    // Before 2026-08-08 this was `allow write: if ... hasAnyRole(['hospital_admin'])`,
+    // and the client wrote the hash itself. Combined with staff_accounts below,
+    // that was a full unauthenticated hospital-takeover path.
+    match /hospitals/{hospitalId}/staff/{staffUid} {
+      allow read: if signedIn() && ((sameHospital(hospitalId) && hasAnyRole(['hospital_admin'])) || isSystemAdmin());
+      allow write: if false;
+    }
+
+    // ---------- Staff email -> hospital routing index (server-only) ----------
+    // Replaces the old `staff_accounts/{email}` collection, which was
+    // `allow get, list: if true` — i.e. ANY unauthenticated visitor could list
+    // every hospital staff member in the country together with the SHA-256 of
+    // their 4-digit PIN, and `allow write: if signedIn()` let any donor forge or
+    // overwrite a staff record. `staff_index` holds no credential material at
+    // all (email -> {hospitalId, staffUid}) and is still readable by nobody:
+    // only authenticateStaffDirectLogin touches it, via the Admin SDK.
+    match /staff_index/{email} {
+      allow read, write: if false;
+    }
+
+    // Legacy collection, retained ONLY to keep it explicitly denied while the
+    // existing documents are purged. Do not reintroduce: it is the collection
+    // that leaked every staff PIN hash publicly.
+    match /staff_accounts/{email} {
+      allow read, write: if false;
+    }
+
+    // Rate-limit/lockout counters for staff PIN verification. Server-only —
+    // a client that could write here could reset its own lockout.
+    match /staff_login_attempts/{key} {
+      allow read, write: if false;
+    }
+
+    match /audit_logs/{id} {
+      allow get, list: if hasRole();
+      allow create: if hasRole();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    // ---------- Audit logs (Phase 1 — written only by the writeAudit Cloud Function via Admin SDK, which bypasses these rules entirely) ----------
+    match /auditLogs/{id} {
+      allow get, list: if isSystemAdmin();
+      allow write: if false;
+    }
+
+    // ---------- Password reset tokens (functions/src/passwordReset.ts) — token hashes only,
+    // read/written exclusively by the Admin SDK (which bypasses these rules). No client path
+    // at all, not even system_admin read: unlike KYC evidence there is no legitimate reason
+    // for anyone to read another account's outstanding reset-token hash. ----------
+    match /passwordResetTokens/{uid} {
+      allow read, write: if false;
+    }
+
+    // ---------- DENY BY DEFAULT ----------
     match /{document=**} {
       allow read, write: if false;
     }

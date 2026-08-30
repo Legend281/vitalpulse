@@ -1,6 +1,6 @@
-import { collection, getDocs, query } from 'firebase/firestore';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
-import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
+import { getCurrentUser, getEffectiveHospitalName, getEffectiveHospitalId } from '../../auth.js';
 import { resolveLabTest } from '../../db.js';
 import { showToast } from '../../main.js';
 
@@ -26,7 +26,20 @@ export function initLabDashboard() {
 export async function fetchAllLabBatches(hospitalName) {
   if (!hospitalName) return { pending: [], cleared: [], rejected: [] };
   try {
-    const q = query(collection(db, 'inventory'));
+    const currentUser = getCurrentUser();
+    const effectiveHospitalId = getEffectiveHospitalId(currentUser);
+    let q;
+    if (effectiveHospitalId) {
+      q = query(
+        collection(db, 'inventory'),
+        where('hospitalId', '==', effectiveHospitalId)
+      );
+    } else {
+      q = query(
+        collection(db, 'inventory'),
+        where('hospital', '==', hospitalName)
+      );
+    }
     const snapshot = await getDocs(q);
 
     const pending = [];
@@ -35,7 +48,7 @@ export async function fetchAllLabBatches(hospitalName) {
 
     snapshot.docs.forEach(docSnap => {
       const data = docSnap.data();
-      const matchHospital = data.hospital === hospitalName || data.hospitalName === hospitalName;
+      const matchHospital = !hospitalName || data.hospital === hospitalName || data.hospitalName === hospitalName || (effectiveHospitalId && data.hospitalId === effectiveHospitalId);
       if (!matchHospital) return;
 
       const bloodType = data.bloodType;

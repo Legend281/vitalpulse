@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { hasAnyRole, getActiveRoles, isLegacyAccount, setActiveStaffSession, clearActiveStaffSession } from './roleGating';
+import { hasAnyRole, getActiveRoles, isLegacyAccount, setActiveStaffSession, clearActiveStaffSession, getHospitalVerificationStatus } from './roleGating';
 
 // Mock sessionStorage for tests (vitest uses jsdom which has sessionStorage)
 beforeEach(() => {
@@ -325,3 +325,40 @@ describe('getFirstAccessibleView', () => {
         expect(getFirstAccessibleView(receptionUser, viewIds, map)).toBe('dashboard');
     });
 });
+
+describe('getHospitalVerificationStatus', () => {
+    it('returns unauthenticated when hospital object is null', () => {
+        const res = getHospitalVerificationStatus(null);
+        expect(res.status).toBe('unauthenticated');
+        expect(res.isVerified).toBe(false);
+    });
+
+    it('returns pending when isVerified is false and not rejected', () => {
+        const res = getHospitalVerificationStatus({ isVerified: false, rejected: false, name: 'St. Mary' });
+        expect(res.status).toBe('pending');
+        expect(res.isVerified).toBe(false);
+        expect(res.label).toBe('Accreditation Pending');
+    });
+
+    it('returns verified when isVerified is true', () => {
+        const res = getHospitalVerificationStatus({ isVerified: true, name: 'Laquintinie Hospital' });
+        expect(res.status).toBe('verified');
+        expect(res.isVerified).toBe(true);
+        expect(res.label).toBe('MINSANTE Verified');
+    });
+
+    it('returns rejected when rejected is true', () => {
+        const res = getHospitalVerificationStatus({ isVerified: false, rejected: true, name: 'Fake Clinic' });
+        expect(res.status).toBe('rejected');
+        expect(res.isVerified).toBe(false);
+        expect(res.label).toBe('Accreditation Declined');
+    });
+
+    it('returns deactivated when isActive is false', () => {
+        const res = getHospitalVerificationStatus({ isVerified: true, isActive: false, name: 'Suspended Hospital' });
+        expect(res.status).toBe('deactivated');
+        expect(res.isVerified).toBe(false);
+        expect(res.label).toBe('Account Deactivated');
+    });
+});
+

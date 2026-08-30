@@ -32,13 +32,12 @@ function isLocalDev() {
   return h === 'localhost' || h === '127.0.0.1' || h.startsWith('192.168.') || h.startsWith('10.') || h.endsWith('.local');
 }
 
-if (isLocalDev()) {
-  // Default emulator port (Firebase CLI) — adjust if your local setup uses a different port.
+// Opt-in Functions emulator connection (prevents connection refused / internal error when local emulator is not running)
+if (isLocalDev() && (import.meta.env.VITE_USE_FULL_EMULATOR_SUITE === 'true' || import.meta.env.VITE_USE_FUNCTIONS_EMULATOR === 'true')) {
   try {
     connectFunctionsEmulator(functions, 'localhost', parseInt(import.meta.env.VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT || '5001', 10));
     console.log('[firebase] Connected Functions to emulator on localhost');
   } catch (e) {
-    // Non-fatal: keep using remote functions if emulator isn't available
     console.warn('[firebase] Could not connect Functions emulator:', e?.message || e);
   }
 }

@@ -14,6 +14,7 @@ import { doc, setDoc, getDoc, updateDoc, addDoc, collection, query, where, getDo
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db } from './firebase';
 import { authenticateStaffDirectLoginCall } from './db';
+import { dispatchAdminAlert } from './adminNotificationService';
 
 const checkDuplicateCniFn = httpsCallable(getFunctions(), 'checkDuplicateCni');
 
@@ -186,35 +187,35 @@ export async function registerUser(email, password, role, additionalData) {
             }
         }
 
-        // Notify admin about new hospital registration
-        if (role === 'hospital' && requireHospitalApproval) {
-            addDoc(collection(db, 'admin_notifications'), {
-                title: 'New Hospital Registration',
-                message: `${additionalData.name} has registered and needs verification.`,
-                type: 'info',
-                read: false,
-                createdAt: new Date().toISOString()
-            }).catch(err => console.warn('Failed to notify admin about new hospital:', err));
+        // Notify admin via WhatsApp, Email & In-App about new hospital registration
+        if (role === 'hospital') {
+            dispatchAdminAlert({
+                type: 'HOSPITAL_REGISTRATION',
+                title: '🏥 New Hospital Registration Pending Verification',
+                name: additionalData.name || 'New Hospital',
+                city: additionalData.city || 'Cameroon',
+                phone: additionalData.phone || '',
+                email,
+                urgency: 'critical',
+                details: `Facility applied for VitalPulse accreditation.${additionalData.licenseFileName ? ' License attached: ' + additionalData.licenseFileName : ''} Review credentials and verify in Admin Dashboard.`,
+                dashboardView: 'verifications'
+            }).catch(err => console.warn('Failed to dispatch admin alert for new hospital:', err));
         }
 
-        // Notify admin about new donor registrations, gated by the "Donor Request Alerts"
-        // setting — off by default behavior matches the setting's own unchecked default.
+        // Notify admin via WhatsApp, Email & In-App about new donor registrations
         if (role === 'donor') {
-            try {
-                const settingsSnap = await getDoc(doc(db, 'system_settings', 'config'));
-                const donorAlertsEnabled = settingsSnap.exists() && settingsSnap.data().donorAlerts === true;
-                if (donorAlertsEnabled) {
-                    addDoc(collection(db, 'admin_notifications'), {
-                        title: 'New Donor Registration',
-                        message: `${additionalData.name} registered as a donor${additionalData.city ? ' in ' + additionalData.city : ''}.`,
-                        type: 'info',
-                        read: false,
-                        createdAt: new Date().toISOString()
-                    }).catch(err => console.warn('Failed to notify admin about new donor:', err));
-                }
-            } catch (e) {
-                console.warn('Failed to read donor-alerts setting:', e);
-            }
+            dispatchAdminAlert({
+                type: 'DONOR_REGISTRATION',
+                title: '🩸 New Blood Donor Registered',
+                name: additionalData.name || 'New Donor',
+                bloodType: additionalData.bloodType || 'O+',
+                city: additionalData.city || 'Cameroon',
+                phone: additionalData.phone || '',
+                email,
+                urgency: 'routine',
+                details: `Registered in ${additionalData.city || 'Cameroon'}. Available for emergency donor matching.`,
+                dashboardView: 'users'
+            }).catch(err => console.warn('Failed to dispatch admin alert for new donor:', err));
         }
 
         // Send verification email (non-blocking)

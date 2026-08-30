@@ -55,14 +55,9 @@
      Hospitals or Safety Oversight, nor log out. Mirrors hospital.html's drawer. -->
 <aside id="adminDrawer" class="md:hidden fixed top-0 left-0 z-[70] h-full w-72 max-w-[85vw] bg-white shadow-2xl -translate-x-full transition-transform duration-300 ease-out flex flex-col">
   <div class="flex items-center justify-between px-5 pt-6 pb-4 border-b border-slate-100 shrink-0">
-    <div class="flex items-center gap-3 min-w-0">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-rose-500 flex items-center justify-center shadow-md shadow-red-200/40 shrink-0">
-        <span class="material-symbols-outlined text-white text-lg" style="font-variation-settings:'FILL' 1">bloodtype</span>
-      </div>
-      <div class="min-w-0">
-        <div class="font-manrope font-black text-lg tracking-tight truncate"><span class="text-red-600">Vital</span><span class="text-slate-900">Pulse</span></div>
-        <div class="text-[8px] uppercase tracking-[0.2em] text-slate-400 font-extrabold">Admin Portal</div>
-      </div>
+    <div class="flex flex-col items-start gap-1 min-w-0">
+      <img src="/vitalpulse-logo.png" alt="VitalPulse" class="w-full max-w-[220px] h-18 object-contain object-left -my-2"/>
+      <span class="text-[8px] uppercase tracking-[0.22em] text-slate-400 font-extrabold pl-1">Admin Portal</span>
     </div>
     <button id="adminDrawerClose" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0 cursor-pointer" aria-label="Close menu">
       <span class="material-symbols-outlined text-lg">close</span>
@@ -125,19 +120,11 @@
 <aside class="hidden md:flex flex-col h-screen w-60 lg:w-64 bg-white sticky top-0 shrink-0 z-40 border-r border-slate-100">
 <div class="flex flex-col h-full">
 <!-- Brand Section -->
-<div class="px-5 pt-6 pb-5 shrink-0">
-<div class="flex items-center gap-3">
-<div class="w-11 h-11 rounded-xl bg-gradient-to-br from-red-600 to-rose-500 flex items-center justify-center shadow-lg shadow-red-200/50 brand-heartbeat shrink-0">
-  <span class="material-symbols-outlined text-white text-xl" style="font-variation-settings:'FILL' 1">bloodtype</span>
-</div>
-<div>
-<div class="font-manrope font-extrabold text-xl tracking-tight leading-none"><span class="text-red-600">Vital</span><span class="text-slate-900">Pulse</span></div>
-<div class="text-[10px] uppercase tracking-[0.25em] text-slate-400 font-semibold mt-0.5">Admin Portal</div>
-<svg class="w-full h-[3px] mt-0.5" viewBox="0 0 120 3" preserveAspectRatio="none" aria-hidden="true">
-  <path d="M0,1.5 L40,1.5 L44,0.5 L48,2.5 L52,0.5 L56,2.5 L60,1.5 L120,1.5" stroke="#af101a" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.4"/>
-</svg>
-</div>
-</div>
+<div class="px-4 pt-4 pb-2 shrink-0 overflow-visible">
+  <a href="/admin.html" class="flex flex-col items-start gap-1 group">
+    <img src="/vitalpulse-logo.png" alt="VitalPulse" class="w-full max-w-[240px] h-20 object-contain object-left group-hover:scale-105 transition-transform -my-2"/>
+    <span class="text-[9px] uppercase tracking-[0.25em] text-slate-400 font-extrabold pl-1">Admin Portal</span>
+  </a>
 </div>
 
 <!-- Divider -->
@@ -1275,6 +1262,97 @@ Urgent Request
 
     <!-- Settings Sections -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Admin WhatsApp & Email Live Alerts -->
+        <div class="space-y-4 lg:col-span-2">
+            <div class="flex items-center gap-2">
+                <div class="w-0.5 h-4 rounded-full bg-emerald-500"></div>
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Admin WhatsApp & Email Live Alerts</h3>
+            </div>
+            <div class="bg-white rounded-xl border border-slate-100 shadow-sm p-6 space-y-6">
+                <div class="flex items-start justify-between gap-4 flex-wrap pb-4 border-b border-slate-100">
+                    <div>
+                        <h4 class="text-sm font-black text-slate-900 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-emerald-600 text-lg">chat</span>
+                            Real-Time Admin WhatsApp & Email Notifications
+                        </h4>
+                        <p class="text-xs text-slate-500 mt-1 max-w-2xl">
+                            Automatically receive instant alerts on WhatsApp & Email whenever a new hospital registers, a critical public blood request is submitted, or a donor registers. Click any alert to instantly resolve or triage the case in the dashboard.
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" id="btnTestWhatsAppAlert" class="cursor-pointer px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold transition-all flex items-center gap-1.5 border border-emerald-200">
+                            <span class="material-symbols-outlined text-sm">send</span> Test WhatsApp Alert
+                        </button>
+                        <button type="button" id="btnTestEmailAlert" class="cursor-pointer px-3.5 py-2 rounded-xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition-all flex items-center gap-1.5 border border-indigo-200">
+                            <span class="material-symbols-outlined text-sm">mail</span> Test Email Alert
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingAdminNotificationPhone">Admin WhatsApp Number</label>
+                        <div class="relative">
+                            <input type="text" id="settingAdminNotificationPhone" placeholder="+237 674 92 20 15" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 outline-none focus:border-emerald-400 focus:ring-3 focus:ring-emerald-500/10 transition-all font-mono" />
+                            <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-base">call</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1.5">Primary admin number for WhatsApp notifications and 1-click triage links.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingAdminNotificationEmail">Admin Alert Email</label>
+                        <div class="relative">
+                            <input type="email" id="settingAdminNotificationEmail" placeholder="info@vitalpulse237.com" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2.5 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/10 transition-all" />
+                            <span class="material-symbols-outlined absolute left-3 top-2.5 text-slate-400 text-base">mail</span>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1.5">Receives instant summary reports of unverified facilities & emergency requests.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingWhatsAppWebhook">WhatsApp Bot Webhook URL (Optional)</label>
+                        <input type="url" id="settingWhatsAppWebhook" placeholder="https://api.callmebot.com/whatsapp.php or custom webhook" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-emerald-400 focus:ring-3 focus:ring-emerald-500/10 transition-all font-mono" />
+                        <p class="text-[10px] text-slate-400 mt-1.5">Optional endpoint for automated background WhatsApp message delivery.</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5" for="settingEmailWebhook">External Notification Webhook (Optional)</label>
+                        <input type="url" id="settingEmailWebhook" placeholder="https://formspree.io/f/xxx or https://webhook.site/..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 outline-none focus:border-indigo-400 focus:ring-3 focus:ring-indigo-500/10 transition-all font-mono" />
+                        <p class="text-[10px] text-slate-400 mt-1.5">Optional relay webhook. Core email delivery is handled securely by the backend via Firebase Secrets.</p>
+                    </div>
+                </div>
+
+                <!-- Event Notification Toggles -->
+                <div class="pt-4 border-t border-slate-100 space-y-3">
+                    <p class="text-xs font-bold text-slate-700 uppercase tracking-wider">Select Events to Notify Admin</p>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <label class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/70 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                            <input type="checkbox" id="settingAdminNotifyHospitalReg" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" checked />
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-800">Hospital Registration</p>
+                                <p class="text-[10px] text-slate-500">Alert on new hospital signups</p>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/70 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                            <input type="checkbox" id="settingAdminNotifyPublicRequest" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" checked />
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-800">Public Blood Request</p>
+                                <p class="text-[10px] text-slate-500">Alert on urgent triage intake</p>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/70 cursor-pointer hover:bg-slate-100/70 transition-colors">
+                            <input type="checkbox" id="settingAdminNotifyDonorReg" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" checked />
+                            <div class="min-w-0">
+                                <p class="text-xs font-bold text-slate-800">New Donor Registration</p>
+                                <p class="text-[10px] text-slate-500">Alert when donors sign up</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Alerts & Notifications -->
         <div class="space-y-4">
             <div class="flex items-center gap-2">

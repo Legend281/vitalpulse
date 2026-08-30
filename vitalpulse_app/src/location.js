@@ -1,4 +1,5 @@
 import { CITY_COORDINATES, calculateDistanceKm } from './db';
+import { encodeGeohash } from './geohash';
 
 export function findNearestCity(lat, lng) {
   if (!lat || !lng || isNaN(lat) || isNaN(lng)) return null;
@@ -26,9 +27,12 @@ export async function captureUserLocation(fallbackCity = 'Yaoundé') {
                 ? 'HTTP non-secure origin (browser requires HTTPS or localhost for GPS)'
                 : 'Browser Geolocation API unavailable';
             console.info(`Location fallback active (${reason}). Using city: ${safeFallback}`);
+            const lat = coords.lat;
+            const lng = coords.lon || coords.lng;
             resolve({
-                lat: coords.lat,
-                lng: coords.lon || coords.lng,
+                lat,
+                lng,
+                geohash: encodeGeohash(lat, lng, 6),
                 source: 'city',
                 city: safeFallback,
                 reason
@@ -39,9 +43,12 @@ export async function captureUserLocation(fallbackCity = 'Yaoundé') {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const nearest = findNearestCity(pos.coords.latitude, pos.coords.longitude);
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
                 resolve({
-                    lat: pos.coords.latitude,
-                    lng: pos.coords.longitude,
+                    lat,
+                    lng,
+                    geohash: encodeGeohash(lat, lng, 6),
                     source: 'gps',
                     accuracyKm: Math.round((pos.coords.accuracy || 0) / 1000 * 10) / 10,
                     city: nearest ? nearest.name.charAt(0).toUpperCase() + nearest.name.slice(1) : safeFallback,
@@ -50,9 +57,12 @@ export async function captureUserLocation(fallbackCity = 'Yaoundé') {
             },
             (err) => {
                 console.warn('GPS permission denied or unavailable:', err.message);
+                const lat = coords.lat;
+                const lng = coords.lon || coords.lng;
                 resolve({
-                    lat: coords.lat,
-                    lng: coords.lon || coords.lng,
+                    lat,
+                    lng,
+                    geohash: encodeGeohash(lat, lng, 6),
                     source: 'city',
                     city: safeFallback,
                     reason: err.message

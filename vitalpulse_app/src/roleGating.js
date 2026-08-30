@@ -107,6 +107,8 @@ export function isLegacyAccount(user) {
     return true;
 }
 
+import { resetWorkstationTimer, stopWorkstationTimer } from './inactivityLock.js';
+
 /**
  * Sets the active staff session after a successful PIN verification.
  * Stored in sessionStorage so it clears when the tab/browser closes.
@@ -121,6 +123,7 @@ export function setActiveStaffSession(staffMember) {
             roles: staffMember.roles,
             switchedAt: new Date().toISOString(),
         }));
+        resetWorkstationTimer();
     } catch (e) {
         console.warn('Failed to set staff session in sessionStorage:', e);
     }
@@ -145,6 +148,7 @@ export function getActiveStaffSession() {
 export function clearActiveStaffSession() {
     try {
         sessionStorage.removeItem(STAFF_SESSION_KEY);
+        stopWorkstationTimer();
     } catch (e) { /* ignore */ }
 }
 
@@ -180,3 +184,51 @@ export function getFirstAccessibleView(user, viewIds = [], permissionMap = {}) {
     }
     return 'dashboard';
 }
+
+/**
+ * Computes authoritative hospital verification and accreditation state.
+ *
+ * @param {object|null} hospital - The Firestore hospital document or user object.
+ * @returns {{ status: 'verified'|'pending'|'rejected'|'deactivated'|'unauthenticated', isVerified: boolean, badgeClass: string, label: string }}
+ */
+export function getHospitalVerificationStatus(hospital) {
+    if (!hospital) {
+        return {
+            status: 'unauthenticated',
+            isVerified: false,
+            badgeClass: 'bg-slate-100 text-slate-600 border-slate-200',
+            label: 'Unauthenticated'
+        };
+    }
+    if (hospital.isActive === false) {
+        return {
+            status: 'deactivated',
+            isVerified: false,
+            badgeClass: 'bg-slate-100 text-slate-700 border-slate-300',
+            label: 'Account Deactivated'
+        };
+    }
+    if (hospital.rejected === true) {
+        return {
+            status: 'rejected',
+            isVerified: false,
+            badgeClass: 'bg-rose-50 text-rose-700 border-rose-200',
+            label: 'Accreditation Declined'
+        };
+    }
+    if (hospital.isVerified === true || hospital.verified === true) {
+        return {
+            status: 'verified',
+            isVerified: true,
+            badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            label: 'MINSANTE Verified'
+        };
+    }
+    return {
+        status: 'pending',
+        isVerified: false,
+        badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+        label: 'Accreditation Pending'
+    };
+}
+
