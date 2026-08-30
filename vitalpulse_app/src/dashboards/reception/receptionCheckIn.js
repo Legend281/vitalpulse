@@ -1,6 +1,6 @@
 import { doc, getDoc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
-import { logActivity, findRequestByCheckInToken, checkInDonor } from '../../db.js';
+import { logActivity, findRequestByCheckInToken, checkInDonor, getCheckInJourneyStage } from '../../db.js';
 import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
@@ -28,6 +28,29 @@ export async function verifyAndCheckInToken(tokenInput, hospitalName = '') {
   const requestId = matched.id;
   const donorId = matched.matchedDonor || matched.donorId || null;
   const donorName = matched.donorName || 'Donor';
+
+  // Re-scan of a code whose journey already moved past the front desk. We do
+  // NOT re-write 'Checked In' — that would let the same donation be recorded
+  // twice (duplicate inventory batch). Instead we pull the current stage up so
+  // the desk can continue the SAME process from where it stopped: a drawn unit
+  // goes to the Lab Testing Queue, a cleared one to Nurse issuance.
+  const stage = getCheckInJourneyStage(matched);
+  if (stage) {
+    return {
+      success: false,
+      already: true,
+      stage: stage.stage,
+      stageLabel: stage.label,
+      nextView: stage.view,
+      nextHint: stage.hint,
+      requestId,
+      donorId,
+      donorName,
+      code,
+      bloodType: matched.bloodType || matched.type || 'Unknown',
+      hospital: matched.hospital || matched.hospitalName || hospitalName
+    };
+  }
 
   // 2. Advance the journey. The second argument is the source collection the
   //    code was found in — previously a donorId was passed here, which

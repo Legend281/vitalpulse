@@ -3598,6 +3598,52 @@
   </div>
 </div>
 
+<!-- JOURNEY CONTINUATION MODAL (re-scan of an already-advanced pass code) -->
+<div id="journeyContinuationModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('journeyContinuationModal')"></div>
+  <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div class="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4 text-white">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="material-symbols-outlined text-xl">route</span>
+          <div>
+            <h3 class="text-sm font-black text-white">This journey is still in progress</h3>
+            <p class="text-[10px] text-amber-100 font-medium">Pass code already used — continuing the same process</p>
+          </div>
+        </div>
+        <button onclick="window.closeModal('journeyContinuationModal')" class="text-amber-200 hover:text-white cursor-pointer"><span class="material-symbols-outlined text-sm">close</span></button>
+      </div>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="flex items-center gap-3">
+        <span id="journeyBloodBadge" class="w-12 h-12 rounded-2xl bg-red-50 text-red-700 font-black text-base flex items-center justify-center border border-red-100 shrink-0">?</span>
+        <div>
+          <p class="text-sm font-extrabold text-slate-900" id="journeyDonorName">Donor</p>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Donor Name</p>
+        </div>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+        <p class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Stage</p>
+        <p class="text-sm font-black text-amber-900" id="journeyStageTitle">Step X of 6</p>
+        <p class="text-xs font-semibold text-amber-800 mt-1.5 leading-relaxed" id="journeyNextHint">Continue from where the journey stopped.</p>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
+        <button onclick="window.closeModal('journeyContinuationModal')" class="px-4 py-2.5 text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer">Close</button>
+        <div class="flex items-center gap-2">
+          <button id="btnJourneyGoLab" onclick="window.journeyContinuationGo('lab')" class="px-4 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm">science</span> Continue at Lab Testing
+          </button>
+          <button id="btnJourneyGoNurse" onclick="window.journeyContinuationGo('nurse-issued')" class="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-sm">medical_services</span> Continue at Nurse
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- NURSE NEW PATIENT REQUEST MODAL (TRACK A vs TRACK B) -->
 <div id="nurseNewRequestModal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" onclick="window.closeModal('nurseNewRequestModal')"></div>

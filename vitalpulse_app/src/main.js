@@ -59,6 +59,33 @@ function requireHospitalScope() {
 }
 
 /**
+ * Resolves the hospital's city from Firestore when the cached session
+ * doesn't carry one (set on another device, or the session predates the
+ * city). The Settings screen already prefills from the hospital's doc —
+ * broadcasts must do the same instead of failing on a stale cache. The
+ * refreshed city is written back to the session so the next broadcast
+ * doesn't need the extra read. When the hospital's record genuinely has
+ * no city, the scope returns unchanged and createEmergencyRequest's
+ * fail-fast error fires with a clear instruction.
+ */
+async function resolveHospitalScopeCity(scope) {
+    if (!scope || scope.city) return scope;
+    try {
+        const h = await fetchHospitalById(scope.id);
+        const city = h?.city || null;
+        if (city) {
+            const current = getCurrentUser();
+            const refreshed = { ...current, hospitalCity: city };
+            localStorage.setItem('vitalpulse_user', JSON.stringify(refreshed));
+            return { ...scope, city };
+        }
+    } catch (e) {
+        console.warn('Could not resolve hospital city from Firestore:', e);
+    }
+    return scope;
+}
+
+/**
  * Renders the "we can't tell which hospital you belong to" state. Only reachable
  * for a staff account whose hospitalId/hospitalName never resolved (claims not
  * yet backfilled — see scripts/migrate-staff-and-claims.ts).
@@ -79,8 +106,7 @@ import { passwordsMatch, isSignupFormValid } from './signupValidation';
 import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from "firebase/firestore";
 import { db } from './firebase';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -2610,6 +2636,9 @@ function initDonorCheckInTokenLookup() {
 
     pairs.forEach(({ input, btn }) => {
         if (!input || !btn) return;
+        // The dedicated reception dashboard already claims these inputs when a
+        // reception role is active; binding again would double-fire every scan.
+        if (input.dataset.receptionBound) return;
 
         const doLookup = async () => {
             const token = input.value.trim();
@@ -2629,6 +2658,28 @@ function initDonorCheckInTokenLookup() {
                 const match = await findRequestByCheckInToken(token, hospitalName);
                 if (!match) {
                     await window.vpAlert({ type: 'error', title: 'Code not recognised', message: 'No donor found with that pass code at your hospital. Check the code, or register them as a walk-in.' });
+                    return;
+                }
+
+                // A code whose journey already moved past the desk: pull the stage
+                // up so the SAME process can continue (Lab Testing / Nurse issue)
+                // instead of failing the check-in. Never re-checked-in.
+                const stage = getCheckInJourneyStage(match);
+                if (stage) {
+                    if (typeof window.showJourneyContinuationCard === 'function') {
+                        window.showJourneyContinuationCard({
+                            donorName: match.donorName || 'Donor',
+                            bloodType: match.bloodType || match.type || 'Unknown',
+                            stage: stage.stage,
+                            stageLabel: stage.label,
+                            nextHint: stage.hint,
+                            nextView: stage.view,
+                        });
+                    } else {
+                        await window.vpAlert({ type: 'info', title: `Step ${stage.stage} of 6 — ${stage.label}`, message: stage.hint });
+                    }
+                    input.value = '';
+                    btn.disabled = false;
                     return;
                 }
 
@@ -3155,7 +3206,7 @@ function initNewRequestModal() {
             // for) their hospital — previously it was stamped with the nurse's
             // own name/uid and a 'Cameroon' city, which made the request
             // invisible to the hospital and unmatchable to any donor.
-            const scope = requireHospitalScope();
+            const scope = await resolveHospitalScopeCity(requireHospitalScope());
             if (!scope) return;
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Submitting...';
@@ -3186,7 +3237,10 @@ function initNewRequestModal() {
                 loadHospitalRequests();
             } catch (err) {
                 console.error('Failed to create request:', err);
-                window.vpNotify('Failed to create request.');
+                const msg = err?.message?.toLowerCase().includes('city')
+                    ? 'Cannot create the request: ' + err.message
+                    : 'Failed to create request.';
+                window.vpNotify(msg);
             } finally {
                 btn.innerHTML = 'Submit Request';
                 btn.disabled = false;
@@ -3224,7 +3278,7 @@ function initUrgentRequestModal() {
             e.preventDefault();
             const currentUser = getCurrentUser();
             if (!currentUser) return;
-            const scope = requireHospitalScope();
+            const scope = await resolveHospitalScopeCity(requireHospitalScope());
             if (!scope) return;
             const btn = form.querySelector('button[type="submit"]');
             btn.innerHTML = 'Broadcasting...';
@@ -3251,7 +3305,10 @@ function initUrgentRequestModal() {
                 showToast('Emergency broadcast sent!');
             } catch (err) {
                 console.error('Failed to broadcast:', err);
-                window.vpNotify('Failed to broadcast emergency.');
+                const msg = err?.message?.toLowerCase().includes('city')
+                    ? 'Cannot broadcast: ' + err.message
+                    : 'Failed to broadcast emergency.';
+                window.vpNotify(msg);
             } finally {
                 btn.innerHTML = 'Broadcast Emergency';
                 btn.disabled = false;
@@ -6787,12 +6844,15 @@ function initDonationIntakeModal() {
                 } catch (e) { console.warn('SMS notification failed:', e); }
 
                 close();
-                showToast('Donation intake recorded — blood is now in lab quarantine.');
+                showToast('Donation recorded! Next step: open the Lab Testing tab and clear this unit — it stays "Waiting for Lab Test" (not counted as available stock) until you do.');
                 loadHospitalDonors();
                 loadHospitalDashboard();
             } catch (err) {
                 console.error('Failed to complete donation intake:', err);
-                window.vpNotify(err.message || 'Failed to complete donation intake.');
+                const msg = (err?.code === 'internal' || err?.message?.startsWith('internal'))
+                    ? 'Intake backend is not reachable yet — the blood-inventory functions are not deployed (a production/deployment issue, not your data). Contact the admin to deploy them, then retry.'
+                    : (err?.message || 'Failed to complete donation intake.');
+                window.vpNotify(msg);
             } finally {
                 btn.disabled = false;
             }

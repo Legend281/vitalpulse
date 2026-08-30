@@ -2570,7 +2570,12 @@ function renderDonorJourneyCard(r) {
         ? `<span class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200"><span class="material-symbols-outlined text-sm">hourglass_top</span> Waiting for reception</span>`
         : `<button onclick="window.donorMarkArrived('${r.id}', '${currentUser?.uid || ''}', ${!!r.isPublicRequest})" class="press-scale text-xs font-extrabold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2.5 rounded-xl shadow-sm transition-opacity flex items-center gap-1.5 cursor-pointer"><span class="material-symbols-outlined text-sm">badge</span> I've Arrived — Show Pass Code</button>`}`;
   } else {
-    actions = `<span class="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-sky-100 text-sky-800 border border-sky-200'}">${esc(r.status)}</span>`;
+    // 'Donation Complete' is NOT the end of the journey — it means the blood was
+    // drawn and is at the lab (steps 5–6, lab clearance and issuance, happen on
+    // the hospital side). Show that honestly instead of "Complete".
+    const drawn = r.status === 'Donation Complete' || r.status === 'completed';
+    const statusText = drawn ? 'Blood Drawn · Awaiting Lab' : r.status;
+    actions = `<span class="px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider ${isComplete ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : drawn ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-sky-100 text-sky-800 border border-sky-200'}">${esc(statusText)}</span>`;
   }
 
   const nodes = JOURNEY_STEPS.map((s, idx) => {
@@ -2593,6 +2598,11 @@ function renderDonorJourneyCard(r) {
   }).join('');
 
   const awaitingVerification = r.status === 'Donor En Route' && r.receptionStatus === 'Awaiting Verification';
+  const atLabHint = (r.status === 'Donation Complete' || r.status === 'completed') ? `
+    <div class="flex items-start gap-2 bg-amber-50 text-amber-900 border border-amber-200 rounded-2xl px-4 py-3 text-xs font-semibold">
+      <span class="material-symbols-outlined text-sm mt-0.5 shrink-0">science</span>
+      <span>Your blood is at the hospital lab now. Lab testing and final issuance happen on the hospital side — no action is needed from you. This journey finishes when a hospital lab clears your unit and it is issued to a patient.</span>
+    </div>` : '';
   const passcodeTicket = r.checkInToken ? `
     <div class="bg-emerald-50/90 border ${awaitingVerification ? 'border-emerald-400 ring-2 ring-emerald-200' : 'border-emerald-200'} rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 shadow-xs">
       <div class="flex items-center gap-3.5">
