@@ -477,6 +477,25 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ---------- Official Website Visits & Clicks Analytics (vitalpulse237.com) ----------
+    match /website_link_clicks/{id} {
+      allow create: if true; // Public click tracking
+      allow get, list: if isSystemAdmin();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    match /website_page_visits/{id} {
+      allow create: if true; // Public page visit tracking
+      allow get, list: if isSystemAdmin();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    match /analytics_summary/{id} {
+      allow create, update: if true; // Public atomic counter updates for website traffic & clicks
+      allow get, list: if true;
+      allow delete: if isSystemAdmin();
+    }
+
     // ---------- Campaigns (cross-hospital; not owned by a single hospital) ----------
     match /campaigns/{id} {
       allow get, list: if hasRole();

@@ -72,12 +72,12 @@ const ALL_TYPES = ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'];
 // FROM". These are genuinely different matrices — confusing them was the 2026-07-24
 // inverted-compatibility bug.
 const DONATES_TO = {
-    'O-':  ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
-    'O+':  ['O+', 'A+', 'B+', 'AB+'],
-    'A-':  ['A-', 'A+', 'AB-', 'AB+'],
-    'A+':  ['A+', 'AB+'],
-    'B-':  ['B-', 'B+', 'AB-', 'AB+'],
-    'B+':  ['B+', 'AB+'],
+    'O-': ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+    'O+': ['O+', 'A+', 'B+', 'AB+'],
+    'A-': ['A-', 'A+', 'AB-', 'AB+'],
+    'A+': ['A+', 'AB+'],
+    'B-': ['B-', 'B+', 'AB-', 'AB+'],
+    'B+': ['B+', 'AB+'],
     'AB-': ['AB-', 'AB+'],
     'AB+': ['AB+'],
 };

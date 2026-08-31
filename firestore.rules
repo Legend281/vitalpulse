@@ -174,7 +174,7 @@ service cloud.firestore {
       allow update: if isSystemAdmin()
                     && unchangedExcept(['isVerified', 'isSuspended', 'rejected', 'rejectedAt', 'isActive', 'verifiedAt', 'statusChangedAt']);
 
-      allow delete: if isSystemAdmin();
+      allow delete: if false; // account deletion path is a future Cloud Function (Policy 12)
     }
 
     // ---------- Donor KYC records (Auth & Onboarding Stream B) ----------
@@ -234,8 +234,6 @@ service cloud.firestore {
         request.resource.data.kycReviewedBy == resource.data.kycReviewedBy &&
         request.resource.data.kycReviewedAt == resource.data.kycReviewedAt
       );
-
-      allow delete: if isSystemAdmin();
     }
 
     // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------
@@ -348,6 +346,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---------- Hospital notifications (real-time alerts) ----------
+    match /hospital_notifications/{notificationId} {
+      allow get, list: if isSystemAdmin() || isHospitalRole();
+      allow create: if isSystemAdmin() || isHospitalRole() || isDonor();
+      allow update, delete: if isSystemAdmin() || isHospitalRole();
+    }
+
     // ---------- Blood inventory (aggregate per hospital+bloodType; with per-batch lifecycle) ----------
     match /inventory/{docId} {
       allow get, list: if isSystemAdmin() || isNbtpViewer()
@@ -442,15 +447,18 @@ service cloud.firestore {
                     || (isDonor() && request.resource.data.donorId == request.auth.uid);
       allow update: if isDonor() && resource.data.donorId == request.auth.uid
                     && unchangedExcept(['read']);
-      allow delete: if false;
+      allow delete: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
     }
 
     // ---------- Hospital notifications ----------
     match /hospital_notifications/{id} {
-      allow read, get, list: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isSystemAdmin();
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      // Donors trigger these too (e.g. notifying a hospital their request was accepted).
+      allow create: if isDonor() || isHospitalRole() || isSystemAdmin();
+      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+                    && unchangedExcept(['read']);
+      allow delete: if isSystemAdmin() || (isHospitalRole() && sameHospital(resource.data.hospitalId));
     }
 
     // ---------- Issuance log — Restricted-PHI (patient identity + diagnosis, Policy 4) ----------
@@ -467,6 +475,25 @@ service cloud.firestore {
       allow get, list: if isSystemAdmin(); // contains phone numbers — admin-only read
       allow create: if hasRole(); // both donor- and hospital-triggered flows write here
       allow update, delete: if false;
+    }
+
+    // ---------- Official Website Visits & Clicks Analytics (vitalpulse237.com) ----------
+    match /website_link_clicks/{id} {
+      allow create: if true; // Public click tracking
+      allow get, list: if isSystemAdmin();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    match /website_page_visits/{id} {
+      allow create: if true; // Public page visit tracking
+      allow get, list: if isSystemAdmin();
+      allow update, delete: if isSystemAdmin();
+    }
+
+    match /analytics_summary/{id} {
+      allow create, update: if true; // Public atomic counter updates for website traffic & clicks
+      allow get, list: if true;
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- Campaigns (cross-hospital; not owned by a single hospital) ----------

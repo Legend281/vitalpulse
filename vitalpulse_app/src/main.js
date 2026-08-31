@@ -109,7 +109,7 @@ import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from 
 import { db } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall, recordWebsiteClick, fetchWebsiteClickAnalytics, subscribeToWebsiteClickAnalytics, recordWebsiteVisit, fetchWebsiteVisitAnalytics, subscribeToWebsiteVisitAnalytics } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -3892,6 +3892,21 @@ async function loadAdminDashboard() {
         if (clinicsOnlineEl) clinicsOnlineEl.textContent = percentage + '%';
         if (clinicsOnlineBar) clinicsOnlineBar.style.width = percentage + '%';
 
+        // Real-time website traffic & link clicks subscription for Admin Overview Cards
+        subscribeToWebsiteVisitAnalytics((visitData) => {
+            const totalVisitsEl = document.getElementById('adminWebsiteVisitsTotal');
+            const todayVisitsEl = document.getElementById('adminWebsiteVisitsToday');
+            if (totalVisitsEl) totalVisitsEl.textContent = visitData.totalPageViews || 0;
+            if (todayVisitsEl) todayVisitsEl.textContent = `Today: ${visitData.viewsToday || 0}`;
+        });
+
+        subscribeToWebsiteClickAnalytics((clickData) => {
+            const totalClicksEl = document.getElementById('adminWebsiteClicksTotal');
+            const todayClicksEl = document.getElementById('adminWebsiteClicksToday');
+            if (totalClicksEl) totalClicksEl.textContent = clickData.totalClicks || 0;
+            if (todayClicksEl) todayClicksEl.textContent = `Today: ${clickData.clicksToday || 0}`;
+        });
+
         // 2. Load Hospital Verifications
         const tableBody = document.getElementById('adminPendingHospitals');
         if (tableBody) {
@@ -6276,11 +6291,209 @@ window.viewDonorDetail = async (donorId) => {
     }
 };
 
+// Automatic public page visit tracking
+function triggerPublicPageVisitRecord() {
+    if (typeof window !== 'undefined') {
+        const path = window.location.pathname.toLowerCase();
+        if (!path.includes('admin') && !path.includes('hospital') && !path.includes('donor')) {
+            const pageTitle = document.title ? document.title.split('—')[0].trim() : 'Public Page';
+            recordWebsiteVisit(pageTitle, window.location.pathname);
+        }
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', triggerPublicPageVisitRecord);
+} else {
+    triggerPublicPageVisitRecord();
+}
+
+// Global click tracking listener for official website links (vitalpulse237.com)
+document.addEventListener('click', (e) => {
+    const linkEl = e.target.closest('a[data-track-link="vitalpulse237.com"], a[href*="vitalpulse237.com"]');
+    if (linkEl) {
+        const sourcePage = linkEl.dataset.sourcePage || document.title || window.location.pathname || 'Website Link';
+        const linkUrl = linkEl.href || 'https://vitalpulse237.com';
+        recordWebsiteClick(sourcePage, linkUrl);
+        
+        // If domain vitalpulse237.com is not yet registered/pointing to live IP, prevent browser ERR_NAME_NOT_RESOLVED
+        if (linkUrl.includes('vitalpulse237.com') && !window.location.hostname.includes('vitalpulse237.com')) {
+            e.preventDefault();
+            if (typeof window.showToast === 'function') {
+                window.showToast('Official domain click recorded! (vitalpulse237.com)', 'success');
+            }
+        }
+    }
+});
+
+async function renderWebsiteClickAnalyticsSection() {
+    const totalViewsEl = document.getElementById('webAnalyticsTotalViews');
+    const uniqueVisitorsEl = document.getElementById('webAnalyticsUniqueVisitors');
+    const visitsTodayEl = document.getElementById('webAnalyticsVisitsToday');
+    const totalClicksEl = document.getElementById('webAnalyticsTotalClicks');
+    const clickRateEl = document.getElementById('webAnalyticsClickRate');
+    const primaryDeviceEl = document.getElementById('webAnalyticsPrimaryDevice');
+    const primaryDeviceShareEl = document.getElementById('webAnalyticsPrimaryDeviceShare');
+    const pageBarsContainer = document.getElementById('webAnalyticsPageBars');
+    const sourceBarsContainer = document.getElementById('webAnalyticsSourceBars');
+    const visitsTableBody = document.getElementById('adminWebsiteVisitsTableBody');
+    const refreshBtn = document.getElementById('btnRefreshWebsiteAnalytics');
+
+    if (refreshBtn && !refreshBtn.dataset.bound) {
+        refreshBtn.dataset.bound = 'true';
+        refreshBtn.onclick = async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<span class="material-symbols-outlined text-sm animate-spin">sync</span> Refreshing...';
+            await renderWebsiteClickAnalyticsSection();
+            setTimeout(() => {
+                if (refreshBtn) {
+                    refreshBtn.disabled = false;
+                    refreshBtn.innerHTML = '<span class="material-symbols-outlined text-sm">refresh</span> Refresh Analytics';
+                }
+            }, 300);
+            if (typeof window.showToast === 'function') {
+                window.showToast('Website analytics refreshed!', 'success');
+            }
+        };
+    }
+
+    try {
+        const [visitData, clickData] = await Promise.all([
+            fetchWebsiteVisitAnalytics(),
+            fetchWebsiteClickAnalytics()
+        ]);
+        
+        const visitSummary = visitData.summary || {};
+        const recentVisits = visitData.recentVisits || [];
+        const clickSummary = clickData.summary || {};
+        const recentClicks = clickData.recentClicks || [];
+
+        const totalPageViews = visitSummary.totalPageViews || recentVisits.length || 0;
+        const uniqueVisits = visitSummary.uniqueVisits || recentVisits.filter(v => v.isUniqueVisit).length || 0;
+        const viewsToday = visitSummary.viewsToday || 0;
+        const totalClicks = clickSummary.totalClicks || recentClicks.length || 0;
+        const clickRate = totalPageViews > 0 ? ((totalClicks / totalPageViews) * 100).toFixed(1) : '0.0';
+
+        if (totalViewsEl) totalViewsEl.textContent = totalPageViews;
+        if (uniqueVisitorsEl) uniqueVisitorsEl.textContent = uniqueVisits;
+        if (visitsTodayEl) visitsTodayEl.textContent = viewsToday;
+        if (totalClicksEl) totalClicksEl.textContent = totalClicks;
+        if (clickRateEl) clickRateEl.textContent = `${clickRate}% CTR on official link`;
+
+        const deviceMap = visitSummary.viewsByDevice || clickSummary.clicksByDevice || {};
+        if (Object.keys(deviceMap).length === 0 && recentVisits.length > 0) {
+            recentVisits.forEach(v => {
+                const d = v.userDevice || 'Desktop';
+                deviceMap[d] = (deviceMap[d] || 0) + 1;
+            });
+        }
+        const deviceEntries = Object.entries(deviceMap).sort((a, b) => b[1] - a[1]);
+        if (deviceEntries.length > 0) {
+            const [topDevice, devCount] = deviceEntries[0];
+            const devPct = totalPageViews > 0 ? Math.round((devCount / totalPageViews) * 100) : 100;
+            if (primaryDeviceEl) primaryDeviceEl.textContent = topDevice;
+            if (primaryDeviceShareEl) primaryDeviceShareEl.textContent = `${devPct}% ratio (${devCount} visits)`;
+        } else {
+            if (primaryDeviceEl) primaryDeviceEl.textContent = 'Desktop';
+            if (primaryDeviceShareEl) primaryDeviceShareEl.textContent = '0 visits logged';
+        }
+
+        const pageMap = visitSummary.viewsByPage || {};
+        if (Object.keys(pageMap).length === 0 && recentVisits.length > 0) {
+            recentVisits.forEach(v => {
+                const p = (v.pageTitle || 'Page').replace(/[^a-zA-Z0-9_]/g, '_');
+                pageMap[p] = (pageMap[p] || 0) + 1;
+            });
+        }
+        const pageEntries = Object.entries(pageMap).sort((a, b) => b[1] - a[1]);
+        if (pageBarsContainer) {
+            if (pageEntries.length === 0) {
+                pageBarsContainer.innerHTML = '<p class="text-xs text-slate-400 italic">No page views recorded yet. Visit public pages to see traffic breakdown.</p>';
+            } else {
+                pageBarsContainer.innerHTML = pageEntries.map(([pg, count]) => {
+                    const pgName = pg.replace(/_/g, ' ');
+                    const pct = totalPageViews > 0 ? Math.round((count / totalPageViews) * 100) : 0;
+                    return `
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-bold text-slate-700">
+                                <span>${esc(pgName)}</span>
+                                <span class="text-cyan-600">${pct}% (${count})</span>
+                            </div>
+                            <div class="w-full bg-slate-200/70 h-2 rounded-full overflow-hidden">
+                                <div class="bg-gradient-to-r from-cyan-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width:${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        const sourceMap = clickSummary.clicksBySource || {};
+        if (Object.keys(sourceMap).length === 0 && recentClicks.length > 0) {
+            recentClicks.forEach(c => {
+                const s = (c.sourcePage || 'General').replace(/[^a-zA-Z0-9_]/g, '_');
+                sourceMap[s] = (sourceMap[s] || 0) + 1;
+            });
+        }
+        const sourceEntries = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]);
+        if (sourceBarsContainer) {
+            if (sourceEntries.length === 0) {
+                sourceBarsContainer.innerHTML = '<p class="text-xs text-slate-400 italic">No link clicks recorded yet. Click vitalpulse237.com links to see click breakdown.</p>';
+            } else {
+                sourceBarsContainer.innerHTML = sourceEntries.map(([src, count]) => {
+                    const srcName = src.replace(/_/g, ' ');
+                    const pct = totalClicks > 0 ? Math.round((count / totalClicks) * 100) : 0;
+                    return `
+                        <div class="space-y-1">
+                            <div class="flex justify-between text-xs font-bold text-slate-700">
+                                <span>${esc(srcName)}</span>
+                                <span class="text-amber-600">${pct}% (${count})</span>
+                            </div>
+                            <div class="w-full bg-slate-200/70 h-2 rounded-full overflow-hidden">
+                                <div class="bg-gradient-to-r from-amber-500 to-amber-400 h-full rounded-full transition-all duration-500" style="width:${pct}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        if (visitsTableBody) {
+            if (recentVisits.length === 0 && recentClicks.length === 0) {
+                visitsTableBody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-400 italic">No website activity logged yet. Visit any public page to see live session logs!</td></tr>';
+            } else {
+                visitsTableBody.innerHTML = recentVisits.map(v => {
+                    let timeStr = 'Just now';
+                    if (v.timestamp) {
+                        try {
+                            const d = new Date(v.timestamp);
+                            if (!isNaN(d.getTime())) timeStr = d.toLocaleString();
+                        } catch {}
+                    }
+                    return `
+                        <tr class="hover:bg-slate-100/60 transition-colors">
+                            <td class="py-2.5 font-mono text-[11px] text-slate-500">${timeStr}</td>
+                            <td class="py-2.5 font-bold text-slate-800">${esc(v.pageTitle || 'Public Page')}</td>
+                            <td class="py-2.5"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${v.isUniqueVisit ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}">${v.isUniqueVisit ? 'New Session' : 'Repeat Visit'}</span></td>
+                            <td class="py-2.5 text-slate-600 font-medium">${esc(v.userDevice || 'Desktop')}</td>
+                            <td class="py-2.5 text-slate-600">${esc(v.userBrowser || 'Browser')}</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+    } catch (e) {
+        console.error('Failed to render website traffic analytics:', e);
+    }
+}
+
 // ============================================
 // ANALYTICS DASHBOARD
 // ============================================
 
 async function loadAnalyticsDashboard() {
+    renderWebsiteClickAnalyticsSection();
     const totalStockEl = document.getElementById('analyticsTotalStock');
     const totalDonorsEl = document.getElementById('analyticsTotalDonors');
     const totalHospitalsEl = document.getElementById('analyticsTotalHospitals');

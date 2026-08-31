@@ -296,7 +296,7 @@ Urgent Request
 </div>
 </div>
 
-<div class="grid grid-cols-1 md:grid-cols-4 gap-5">
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
 <!-- Metric Card 1: Active Requests -->
 <div class="bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer relative overflow-hidden">
 <div class="h-1 w-full bg-gradient-to-r from-red-500 to-red-400"></div>
@@ -330,7 +330,7 @@ Urgent Request
 </div>
 <div class="flex items-end justify-between">
 <h3 id="adminAvgResponse" class="text-3xl font-black text-slate-900 tracking-tight leading-none">--<span class="text-base ml-0.5 font-bold text-slate-400">m</span></h3>
-<span class="text-[10px] font-medium text-slate-400">avg across all ops</span>
+<span class="text-[10px] font-medium text-slate-400">avg across ops</span>
 </div>
 </div>
 </div>
@@ -371,6 +371,46 @@ Urgent Request
 </div>
 <div class="mt-3 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
 <div id="adminClinicsOnlineBar" class="h-full rounded-full transition-all duration-1000 bg-gradient-to-r from-violet-500 to-violet-400" style="width:0%"></div>
+</div>
+</div>
+</div>
+
+<!-- Metric Card 5: Official Website Visits (Traffic) -->
+<div onclick="window.switchView('analytics')" class="bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer relative overflow-hidden">
+<div class="h-1 w-full bg-gradient-to-r from-cyan-500 to-cyan-400"></div>
+<div class="p-5">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-lg bg-cyan-50 flex items-center justify-center">
+<span class="material-symbols-outlined text-cyan-500 text-lg">visibility</span>
+</div>
+<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Website Visits</p>
+</div>
+<span class="text-[10px] font-bold text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded-full font-mono">Traffic</span>
+</div>
+<div class="flex items-end justify-between">
+<h3 id="adminWebsiteVisitsTotal" class="text-3xl font-black text-slate-900 tracking-tight leading-none">--</h3>
+<span id="adminWebsiteVisitsToday" class="text-[10px] font-bold text-slate-400">Today: --</span>
+</div>
+</div>
+</div>
+
+<!-- Metric Card 6: Official Website Clicks (vitalpulse237.com) -->
+<div onclick="window.switchView('analytics')" class="bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer relative overflow-hidden">
+<div class="h-1 w-full bg-gradient-to-r from-amber-500 to-amber-400"></div>
+<div class="p-5">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2.5">
+<div class="w-9 h-9 rounded-lg bg-amber-50 flex items-center justify-center">
+<span class="material-symbols-outlined text-amber-500 text-lg">touch_app</span>
+</div>
+<p class="text-xs font-bold text-slate-500 uppercase tracking-wide">Link Clicks</p>
+</div>
+<span class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-mono">vitalpulse237.com</span>
+</div>
+<div class="flex items-end justify-between">
+<h3 id="adminWebsiteClicksTotal" class="text-3xl font-black text-slate-900 tracking-tight leading-none">--</h3>
+<span id="adminWebsiteClicksToday" class="text-[10px] font-bold text-slate-400">Today: --</span>
 </div>
 </div>
 </div>
@@ -1101,6 +1141,102 @@ Urgent Request
             </div>
         </div>
     </div>
+
+    <!-- SECTION: OFFICIAL WEBSITE TRAFFIC & LINK CLICK ANALYTICS -->
+    <section class="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-6">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center text-cyan-600 shrink-0">
+                    <span class="material-symbols-outlined text-xl">analytics</span>
+                </div>
+                <div>
+                    <h3 class="text-base font-black text-slate-900 flex items-center gap-2 flex-wrap">
+                        Website Traffic & Link Click Analytics
+                        <span class="text-xs font-bold text-cyan-700 bg-cyan-100 px-2 py-0.5 rounded-full font-mono">vitalpulse237.com</span>
+                    </h3>
+                    <p class="text-xs text-slate-500 font-medium">Real-time visitor page views, unique sessions & official link clicks</p>
+                </div>
+            </div>
+            <button id="btnRefreshWebsiteAnalytics" class="cursor-pointer px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors self-start sm:self-auto">
+                <span class="material-symbols-outlined text-sm">refresh</span> Refresh Analytics
+            </button>
+        </div>
+
+        <!-- Metric Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Page Views</p>
+                <p id="webAnalyticsTotalViews" class="text-2xl font-black text-cyan-600 mt-1">0</p>
+                <p class="text-[10px] text-slate-500 mt-1 font-medium">All-time website visits</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unique Visitors</p>
+                <p id="webAnalyticsUniqueVisitors" class="text-2xl font-black text-slate-900 mt-1">0</p>
+                <p class="text-[10px] text-slate-500 mt-1 font-medium">Unique visitor sessions</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Visits Today</p>
+                <p id="webAnalyticsVisitsToday" class="text-2xl font-black text-emerald-600 mt-1">0</p>
+                <p class="text-[10px] text-emerald-600/80 mt-1 font-medium">Page loads today</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Link Clicks</p>
+                <p id="webAnalyticsTotalClicks" class="text-2xl font-black text-amber-600 mt-1">0</p>
+                <p id="webAnalyticsClickRate" class="text-[10px] text-amber-600/80 mt-1 font-medium">--% CTR on link</p>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Primary Device</p>
+                <p id="webAnalyticsPrimaryDevice" class="text-base font-bold text-slate-800 mt-1 truncate">Desktop</p>
+                <p id="webAnalyticsPrimaryDeviceShare" class="text-[10px] text-slate-500 mt-1 font-medium">--% ratio</p>
+            </div>
+        </div>
+
+        <!-- Breakdown & Recent Visit Log Table -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+            <!-- Page Views Breakdown -->
+            <div class="bg-slate-50/70 rounded-xl p-5 border border-slate-200/60 space-y-4">
+                <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <span class="material-symbols-outlined text-sm text-slate-500">space_dashboard</span> Most Visited Pages
+                </h4>
+                <div id="webAnalyticsPageBars" class="space-y-3">
+                    <p class="text-xs text-slate-400 italic">Loading page traffic...</p>
+                </div>
+
+                <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pt-4 border-t border-slate-200/60">
+                    <span class="material-symbols-outlined text-sm text-slate-500">alt_route</span> Link Click Sources
+                </h4>
+                <div id="webAnalyticsSourceBars" class="space-y-3">
+                    <p class="text-xs text-slate-400 italic">Loading click sources...</p>
+                </div>
+            </div>
+
+            <!-- Live Visitor Activity Table -->
+            <div class="lg:col-span-2 bg-slate-50/70 rounded-xl p-5 border border-slate-200/60 space-y-4 overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <h4 class="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-sm text-slate-500">history</span> Recent Website Activity Log
+                    </h4>
+                    <span class="text-[10px] text-slate-400 font-medium">Last 50 visitor sessions</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-200">
+                                <th class="pb-2">Time</th>
+                                <th class="pb-2">Page Visited</th>
+                                <th class="pb-2">Session Type</th>
+                                <th class="pb-2">Device</th>
+                                <th class="pb-2">Browser</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminWebsiteVisitsTableBody" class="divide-y divide-slate-200/60 text-xs">
+                            <tr><td colspan="5" class="py-6 text-center text-slate-400">Loading visit log...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
 </div>
 
 <!-- NEW VIEW: CAMPAIGNS -->

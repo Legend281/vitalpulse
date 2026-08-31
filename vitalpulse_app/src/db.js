@@ -7,13 +7,14 @@ import {
     updateDoc,
     setDoc,
     deleteDoc,
-query,
-where,
-orderBy,
-limit,
-startAfter,
-onSnapshot,
-runTransaction
+    query,
+    where,
+    orderBy,
+    limit,
+    startAfter,
+    onSnapshot,
+    runTransaction,
+    increment
 } from "firebase/firestore";
 import { db } from './firebase';
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -52,7 +53,7 @@ export async function logActivity(title, description, type, actor = null) {
             actor, // admin name/email who performed the action
             timestamp: new Date().toISOString()
         });
-    } catch(e) {
+    } catch (e) {
         console.error("Failed to log activity", e);
     }
 }
@@ -361,7 +362,7 @@ export async function reconcileStaleAssignedRequests(timeoutHours = 3, nudgeMinu
                         'Request Auto-Reopened',
                         `Request #${d.id.slice(0, 8)} auto-reopened due to donor no-show timeout (${timeoutHours}h) at ${hospital}`,
                         'warning'
-                    ).catch(() => {});
+                    ).catch(() => { });
 
                     if (donorId) {
                         await addDonorNotification(
@@ -369,12 +370,12 @@ export async function reconcileStaleAssignedRequests(timeoutHours = 3, nudgeMinu
                             'Donation Request Timed Out',
                             `Your commitment for request #${d.id.slice(0, 8)} at ${hospital} timed out after ${timeoutHours} hours without check-in. The request has been auto-reopened for other donors.`,
                             'warning'
-                        ).catch(() => {});
+                        ).catch(() => { });
                     }
                 } else if (elapsed >= nudgeMs && !data.nudgeSent) {
                     const donorId = data.matchedDonor;
                     const hospital = data.hospital || data.hospitalName || 'Hospital';
-                    await updateDoc(doc(db, colName, d.id), { nudgeSent: true }).catch(() => {});
+                    await updateDoc(doc(db, colName, d.id), { nudgeSent: true }).catch(() => { });
                     nudgedCount++;
                     if (donorId) {
                         await addDonorNotification(
@@ -382,7 +383,7 @@ export async function reconcileStaleAssignedRequests(timeoutHours = 3, nudgeMinu
                             'Check-In Required Soon',
                             `⏰ Pending Check-In Alert: You accepted request #${d.id.slice(0, 8)} at ${hospital}. Please check in at reception within 30 minutes to prevent auto-reopening.`,
                             'info'
-                        ).catch(() => {});
+                        ).catch(() => { });
                     }
                 }
             }
@@ -484,8 +485,8 @@ export async function acceptRequest(requestId, donorId, screeningData = {}) {
             if (hospital.phone && shouldNotifyByType(hospital, 'donor')) {
                 // Respect the hospital's own SMS/WhatsApp toggles (Settings) — SMS defaults on,
                 // WhatsApp defaults off, matching the checked state of those toggles in the UI.
-                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => {});
-                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => { });
+                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => { });
             }
             await addHospitalNotification(hDoc.id, 'Donor Assigned', msg, 'success', 'requests');
         }
@@ -544,8 +545,8 @@ export async function donorSetEnRoute(requestId, donorId) {
             const hospital = hDoc.data();
             const msg = `[VitalPulse] 🚑 A donor is en route to your facility for request #${requestId.slice(0, 8).toUpperCase()} (${result.bloodType || result.type || '?'}). Expected arrival shortly.`;
             if (hospital.phone && shouldNotifyByType(hospital, 'donor')) {
-                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => {});
-                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => { });
+                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => { });
             }
             await addHospitalNotification(hDoc.id, 'Donor En Route', msg, 'info', 'requests');
         }
@@ -708,7 +709,7 @@ export async function clearAllDonorNotifications(donorId) {
 }
 
 export function subscribeToDonorNotifications(donorId, callback) {
-    if (!donorId) return () => {};
+    if (!donorId) return () => { };
     const q = query(
         collection(db, 'donor_notifications'),
         where('donorId', '==', donorId)
@@ -940,8 +941,8 @@ export function calculateDistanceKm(lat1, lon1, lat2, lon2) {
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return Math.round(R * c * 10) / 10;
 }
@@ -1032,7 +1033,7 @@ export async function autoMatchDonors(requestId, requestData) {
         const count = d.donationCount || 0;
         if (count >= 20) return 400; // Platinum
         if (count >= 10) return 300; // Gold
-        if (count >= 5)  return 200; // Silver
+        if (count >= 5) return 200; // Silver
         return 100;                 // Bronze
     };
 
@@ -1053,8 +1054,8 @@ export async function autoMatchDonors(requestId, requestData) {
         const distanceLabel = dist !== null ? ` (~${dist} km away)` : '';
         const msg = `[VitalPulse] 🆘 Emergency blood request! ${bloodTypeNeeded} (${componentType}) needed${displayLocation ? ' at ' + displayLocation : ''}${distanceLabel}. Your compatibility matches. Please respond in app.`;
         if (donor.phone) {
-            if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => {});
-            if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
+            if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => { });
+            if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => { });
         }
         await addDonorNotification(
             donor.id,
@@ -1085,12 +1086,12 @@ export async function autoMatchDonors(requestId, requestData) {
 //
 // Whole blood / red cells: donor -> the recipient types they can safely give to.
 const WHOLE_BLOOD_DONOR_TO_RECIPIENT = {
-    'O-':  ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
-    'O+':  ['O+', 'A+', 'B+', 'AB+'],
-    'A-':  ['A-', 'A+', 'AB-', 'AB+'],
-    'A+':  ['A+', 'AB+'],
-    'B-':  ['B-', 'B+', 'AB-', 'AB+'],
-    'B+':  ['B+', 'AB+'],
+    'O-': ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+    'O+': ['O+', 'A+', 'B+', 'AB+'],
+    'A-': ['A-', 'A+', 'AB-', 'AB+'],
+    'A+': ['A+', 'AB+'],
+    'B-': ['B-', 'B+', 'AB-', 'AB+'],
+    'B+': ['B+', 'AB+'],
     'AB-': ['AB-', 'AB+'],
     'AB+': ['AB+']
 };
@@ -1102,9 +1103,9 @@ const WHOLE_BLOOD_DONOR_TO_RECIPIENT = {
 const ABO_GROUP = (t) => (t || '').replace(/[+-]$/, '');
 const PLASMA_RECIPIENTS_BY_GROUP = {
     'AB': ['AB+', 'AB-', 'A+', 'A-', 'B+', 'B-', 'O+', 'O-'],
-    'A':  ['A+', 'A-', 'O+', 'O-'],
-    'B':  ['B+', 'B-', 'O+', 'O-'],
-    'O':  ['O+', 'O-']
+    'A': ['A+', 'A-', 'O+', 'O-'],
+    'B': ['B+', 'B-', 'O+', 'O-'],
+    'O': ['O+', 'O-']
 };
 const ALL_BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 const PLASMA_DONOR_TO_RECIPIENT = {};
@@ -1332,9 +1333,9 @@ export async function fetchDonorById(donorId) {
     const userDoc = doc(db, 'users', donorId);
     const snapshot = await getDoc(userDoc);
     if (!snapshot.exists()) return null;
-    
+
     const donor = { id: snapshot.id, ...snapshot.data() };
-    
+
     const donationsQ = query(
         collection(db, 'donation_requests'),
         where('donorId', '==', donorId)
@@ -1343,7 +1344,7 @@ export async function fetchDonorById(donorId) {
     let donations = donationsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     donations = donations.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     donor.donations = donations;
-    
+
     return donor;
 }
 
@@ -1764,14 +1765,14 @@ export async function resolveLabTest(hospitalName, bloodType, batchId, result, r
 
                 // Also update the matching requests/public_requests doc if linked
                 if (donData.sourceRequestId) {
-                    await updateSourceRequestStatus(donData.sourceRequestId, { status: newStatus, labResolvedAt: new Date().toISOString() }).catch(() => {});
+                    await updateSourceRequestStatus(donData.sourceRequestId, { status: newStatus, labResolvedAt: new Date().toISOString() }).catch(() => { });
                 }
 
                 if (donData.donorId) {
                     const msg = result === 'Cleared'
                         ? `[VitalPulse] 🔬 Great news! Your donated blood passed all 5-panel TTI safety screening tests and is now ready in active inventory.`
                         : `[VitalPulse] ⚠️ Health Notice: Your recent donation required lab deferral (${resolvedBatch.rejectionReason}). Please consult medical staff for details.`;
-                    await addDonorNotification(donData.donorId, result === 'Cleared' ? 'Lab Screening Passed' : 'Lab Deferral Notice', msg, result === 'Cleared' ? 'success' : 'warning').catch(() => {});
+                    await addDonorNotification(donData.donorId, result === 'Cleared' ? 'Lab Screening Passed' : 'Lab Deferral Notice', msg, result === 'Cleared' ? 'success' : 'warning').catch(() => { });
                 }
             }
         } catch (e) {
@@ -1788,7 +1789,7 @@ export async function resolveLabTest(hospitalName, bloodType, batchId, result, r
         ? `${resolvedBatch.units} unit(s) of ${bloodType} (${resolvedBatch.componentType}) passed all TTI screening and are now available for issue.`
         : `${resolvedBatch.units} unit(s) of ${bloodType} (${resolvedBatch.componentType}) rejected — ${resolvedBatch.rejectionReason}.`;
     for (const hDoc of labHSnap.docs) {
-        await addHospitalNotification(hDoc.id, labNotifTitle, labNotifMsg, labNotifType, 'inventory').catch(() => {});
+        await addHospitalNotification(hDoc.id, labNotifTitle, labNotifMsg, labNotifType, 'inventory').catch(() => { });
     }
 
     return resolvedBatch;
@@ -1873,10 +1874,10 @@ export async function submitDonationRequest(donorId, donationData) {
     await logActivity(
         'Donation Request Submitted',
         `${donationData.donorName} requested to donate ${donationData.units || 1} unit(s) of ${donationData.bloodType}`
-            + (donationData.screeningFlags?.length ? ` — screening flags: ${donationData.screeningFlags.join(', ')}` : ''),
+        + (donationData.screeningFlags?.length ? ` — screening flags: ${donationData.screeningFlags.join(', ')}` : ''),
         donationData.screeningFlags?.length ? 'warning' : 'info'
     );
-    
+
     return { id: docRef.id, ...donationData };
 }
 
@@ -1948,7 +1949,7 @@ export async function approveDonationRequest(requestId, requestData) {
             'Donation Booking Confirmed',
             `Your donation booking for ${requestData.bloodType} at ${requestData.preferredLocation || requestData.hospital || 'the hospital'} has been confirmed. Thank you for choosing to donate!`,
             'success'
-        ).catch(() => {});
+        ).catch(() => { });
     }
 }
 
@@ -2135,7 +2136,7 @@ export async function rejectDonationRequest(requestId, requestData, reason) {
         rejectedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     });
-    
+
     await logActivity(
         'Donation Rejected',
         `Donation request for ${requestData.bloodType} rejected: ${reason || 'Not specified'}`,
@@ -2170,7 +2171,7 @@ export async function cancelDonationRequest(requestId, requestData) {
         cancelledAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     });
-    
+
     await logActivity(
         'Donation Cancelled',
         `Donation request for ${requestData.bloodType} was cancelled by donor`,
@@ -2199,7 +2200,7 @@ export async function hospitalCancelBooking(requestId, requestData) {
             'Donation Booking Cancelled',
             `Your scheduled donation at ${requestData.preferredLocation || 'the hospital'} has been cancelled. Please contact the hospital for more information.`,
             'warning'
-        ).catch(() => {});
+        ).catch(() => { });
     }
 }
 
@@ -2249,7 +2250,7 @@ export async function removeIncomingDonor(requestId, hospitalName, isPublicReque
             'Hospital Removed Your Assignment',
             `The hospital has released you from request #${requestId.slice(0, 8)}. You are no longer expected at this location.`,
             'warning'
-        ).catch(() => {});
+        ).catch(() => { });
     }
 
     await logActivity(
@@ -2288,7 +2289,7 @@ export async function updateSystemSettings(settings) {
         ...settings,
         updatedAt: new Date().toISOString()
     }, { merge: true });
-    
+
     await logActivity(
         'Settings Updated',
         'System configuration was updated',
@@ -2320,13 +2321,13 @@ export async function createCampaign(campaignData) {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
     });
-    
+
     await logActivity(
         'Campaign Created',
         `New campaign "${clean.title}" created`,
         'info'
     );
-    
+
     return { id: docRef.id, ...clean };
 }
 
@@ -2340,7 +2341,7 @@ export async function updateCampaign(campaignId, updates) {
 
 export async function deleteCampaign(campaignId) {
     await deleteDoc(doc(db, 'campaigns', campaignId));
-    
+
     await logActivity(
         'Campaign Deleted',
         'A campaign has been removed',
@@ -2475,7 +2476,7 @@ export async function donorMarkArrived(requestId, donorId, isPublic = false) {
         'Donor Arrived at Reception',
         `Donor signalled arrival for request #${requestId.slice(0, 8)} at ${hospitalName || 'Unknown'} — awaiting front-desk verification.`,
         'info'
-    ).catch(() => {});
+    ).catch(() => { });
 
     // Tell the desk somebody is standing in front of them.
     if (hospitalName) {
@@ -2492,7 +2493,7 @@ export async function donorMarkArrived(requestId, donorId, isPublic = false) {
                 `A donor has arrived for request #${requestId.slice(0, 8).toUpperCase()} and is waiting to be verified at the front desk. Ask for their pass code.`,
                 'info',
                 'donors'
-            ).catch(() => {});
+            ).catch(() => { });
         }
     }
 
@@ -2539,9 +2540,9 @@ export async function checkInDonor(requestId, sourceCollection = null) {
                 throw new Error(
                     isBooking
                         ? `This pass code belongs to a finished donation (status "${reqData.status}"). ` +
-                            `It cannot be checked in again — to donate again, the donor must book a NEW appointment, which issues a fresh code.`
+                        `It cannot be checked in again — to donate again, the donor must book a NEW appointment, which issues a fresh code.`
                         : `This pass code was already used for this donation (status "${reqData.status}"). ` +
-                            `The blood is now in laboratory testing — the Lab Testing Queue and issue step continue from the hospital dashboards, not reception. Pass codes are single-use, so no re-check-in is possible.`
+                        `The blood is now in laboratory testing — the Lab Testing Queue and issue step continue from the hospital dashboards, not reception. Pass codes are single-use, so no re-check-in is possible.`
                 );
             }
             throw new Error(
@@ -2568,7 +2569,7 @@ export async function checkInDonor(requestId, sourceCollection = null) {
     const donorId = reqData.matchedDonor || reqData.donorId;
     if (donorId) {
         const msg = `[VitalPulse] 🏥 Reception Check-In Verified! You have checked in at ${hospitalOf(reqData) || 'the hospital'}. Please proceed to the donation room for vitals & blood draw.`;
-        await addDonorNotification(donorId, 'Reception Check-In Confirmed', msg, 'info').catch(() => {});
+        await addDonorNotification(donorId, 'Reception Check-In Confirmed', msg, 'info').catch(() => { });
     }
     return { ...reqData, sourceCollection: resolvedCollection };
 }
@@ -2746,16 +2747,16 @@ export async function completeDonorArrival(requestId, intakeData = {}) {
         const hospitalsQ = query(collection(db, 'users'), where('name', '==', hospitalName), where('role', '==', 'hospital'));
         const hSnap = await getDocs(hospitalsQ);
         for (const hDoc of hSnap.docs) {
-            await addHospitalNotification(hDoc.id, 'Donation Completed', `A donor has completed their blood donation for request #${requestId.slice(0, 8).toUpperCase()}. Blood is now in lab quarantine for TTI screening.`, 'success', 'lab').catch(() => {});
+            await addHospitalNotification(hDoc.id, 'Donation Completed', `A donor has completed their blood donation for request #${requestId.slice(0, 8).toUpperCase()}. Blood is now in lab quarantine for TTI screening.`, 'success', 'lab').catch(() => { });
         }
     }
 
     if (donorId) {
         const msg = `[VitalPulse] 🩸 Blood Draw Complete! Your donation at ${hospitalName} is now in the lab for mandatory 5-panel TTI safety screening.`;
-        await addDonorNotification(donorId, 'Donation Collected', msg, 'success').catch(() => {});
+        await addDonorNotification(donorId, 'Donation Collected', msg, 'success').catch(() => { });
         if (donor.phone) {
-            if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => {});
-            if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
+            if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => { });
+            if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => { });
         }
     }
     return intakeResult;
@@ -2888,12 +2889,12 @@ export async function issueBloodToPatient(bloodType, units, patientData) {
                     const donData = donSnap.data();
                     await updateDoc(donReqRef, { status: 'Issued', issuedAt: new Date().toISOString() });
                     if (donData.sourceRequestId) {
-                        await updateSourceRequestStatus(donData.sourceRequestId, { status: 'Issued', issuedAt: new Date().toISOString() }).catch(() => {});
+                        await updateSourceRequestStatus(donData.sourceRequestId, { status: 'Issued', issuedAt: new Date().toISOString() }).catch(() => { });
                     }
 
                     if (donData.donorId) {
                         const msg = `[VitalPulse] 🎉 HERO ALERT! Your donated blood was just issued to a patient in need at ${hospitalName}. You officially saved a life today!`;
-                        await addDonorNotification(donData.donorId, '🎉 Life Saved!', msg, 'success').catch(() => {});
+                        await addDonorNotification(donData.donorId, '🎉 Life Saved!', msg, 'success').catch(() => { });
                     }
                 }
             } catch (e) {
@@ -2913,7 +2914,7 @@ async function _checkLowStockAndNotify(hospitalName, bloodType, unitsAvailable) 
             const q = query(collection(db, 'users'), where('name', '==', hospitalName), where('role', '==', 'hospital'));
             const snap = await getDocs(q);
             for (const d of snap.docs) {
-                await addHospitalNotification(d.id, 'Low Stock Alert', `⚠️ ${bloodType} stock at ${hospitalName} is critically low — only ${unitsAvailable} unit(s) remaining.`, unitsAvailable === 0 ? 'error' : 'warning', 'inventory').catch(() => {});
+                await addHospitalNotification(d.id, 'Low Stock Alert', `⚠️ ${bloodType} stock at ${hospitalName} is critically low — only ${unitsAvailable} unit(s) remaining.`, unitsAvailable === 0 ? 'error' : 'warning', 'inventory').catch(() => { });
             }
         }
     } catch (e) { /* non-critical */ }
@@ -2928,7 +2929,7 @@ export async function deductInventoryStock(bloodType, units, reason = 'adjustmen
     const result = { bloodType, unitsAvailable: data.unitsAvailable, deducted: data.deducted };
 
     // Non-blocking low stock check after deduction completes
-    _postDeductLowStockCheck(hospitalName, bloodType, result.unitsAvailable).catch(() => {});
+    _postDeductLowStockCheck(hospitalName, bloodType, result.unitsAvailable).catch(() => { });
     return result;
 }
 
@@ -2940,7 +2941,7 @@ async function _postDeductLowStockCheck(hospitalName, bloodType, newUnits) {
             const q = query(collection(db, 'users'), where('name', '==', hospitalName), where('role', '==', 'hospital'));
             const snap = await getDocs(q);
             for (const d of snap.docs) {
-                await addHospitalNotification(d.id, 'Low Stock Alert', `⚠️ ${bloodType} stock at ${hospitalName} is critically low — only ${newUnits} unit(s) remaining.`, newUnits === 0 ? 'error' : 'warning', 'inventory').catch(() => {});
+                await addHospitalNotification(d.id, 'Low Stock Alert', `⚠️ ${bloodType} stock at ${hospitalName} is critically low — only ${newUnits} unit(s) remaining.`, newUnits === 0 ? 'error' : 'warning', 'inventory').catch(() => { });
             }
         }
     } catch (e) { /* non-critical */ }
@@ -3115,7 +3116,7 @@ export async function redeemPulseReward(donorId, rewardKey, costPoints, metadata
         const userSnap = await transaction.get(userRef);
         if (!userSnap.exists()) throw new Error('Donor profile not found');
         const userData = userSnap.data();
-        
+
         // If points field isn't set, compute from engagement or fallback to metadata
         const currentPts = typeof userData.points === 'number' ? userData.points : (metadata.currentPoints || 0);
 
@@ -3153,13 +3154,13 @@ export async function redeemPulseReward(donorId, rewardKey, costPoints, metadata
         'Reward Voucher Redeemed',
         `Donor redeemed ${metadata.rewardTitle || rewardKey} for ${costPoints} points. Voucher: ${voucherCode}`,
         'success'
-    ).catch(() => {});
+    ).catch(() => { });
 
     await logAuditTrail(
         'REWARD_REDEEMED',
         `Donor ${donorId} redeemed reward ${rewardKey} (${costPoints} pts). Voucher: ${voucherCode}`,
         { donorId, rewardKey, costPoints, voucherCode }
-    ).catch(() => {});
+    ).catch(() => { });
 
     return result;
 }
@@ -3535,7 +3536,7 @@ export async function sendPartnerInvitation(shadowId) {
 
     const msg = `[VitalPulse] ${data.requestCount} patients at ${data.name} have requested blood through VitalPulse! Register your hospital for free to get faster donor matching & direct inventory access: vitalpulse.org/claim?id=${shadowId.slice(0, 8)}`;
     if (data.contactPhone) {
-        await sendSmsNotification(data.contactPhone, msg).catch(() => {});
+        await sendSmsNotification(data.contactPhone, msg).catch(() => { });
     }
 
     await updateDoc(doc(db, 'shadow_hospitals', shadowId), {
@@ -3698,8 +3699,8 @@ export async function submitPublicRequest(requestData) {
             const distanceLabel = dist !== null ? ` (~${dist} km away)` : '';
             const msg = `[VitalPulse] 🆘 Public emergency blood request! ${bloodTypeNeeded} (${componentType}) needed at ${requestData.hospitalName}${distanceLabel}. Your compatibility matches. Please respond in app.`;
             if (donor.phone) {
-                if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => {});
-                if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
+                if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => { });
+                if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => { });
             }
             await addDonorNotification(
                 donor.id,
@@ -3934,8 +3935,8 @@ export async function acceptPublicRequest(requestId, donorId, screeningData = {}
             const hospital = hDoc.data();
             const msg = `[VitalPulse] A donor has accepted your public ${reqData.bloodType || 'blood'} request (#${requestId.slice(0, 8).toUpperCase()}). They are on their way. Pass Code: ${checkInToken}`;
             if (hospital.phone && shouldNotifyByType(hospital, 'donor')) {
-                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => {});
-                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => { });
+                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => { });
             }
             await addHospitalNotification(hDoc.id, 'Donor Assigned (Public)', msg, 'success', 'requests');
         }
@@ -4803,4 +4804,171 @@ export async function fetchHospitalIssuedCertificates(hospitalName, maxResults =
         console.error('Failed to fetch hospital certificates:', e);
         return [];
     }
+}
+
+// ============================================
+// OFFICIAL WEBSITE (vitalpulse237.com) CLICK ANALYTICS
+// ============================================
+
+function detectDeviceType() {
+    const ua = navigator.userAgent || '';
+    if (/mobile/i.test(ua)) return 'Mobile';
+    if (/tablet|ipad/i.test(ua)) return 'Tablet';
+    return 'Desktop';
+}
+
+function detectBrowserType() {
+    const ua = navigator.userAgent || '';
+    if (ua.includes('Edg/')) return 'Edge';
+    if (ua.includes('Chrome/')) return 'Chrome';
+    if (ua.includes('Safari/') && !ua.includes('Chrome/')) return 'Safari';
+    if (ua.includes('Firefox/')) return 'Firefox';
+    return 'Browser';
+}
+
+export async function recordWebsiteClick(sourcePage = 'General', linkUrl = 'https://vitalpulse237.com') {
+    try {
+        const timestamp = new Date().toISOString();
+        const dateKey = timestamp.split('T')[0];
+        const userDevice = detectDeviceType();
+        const userBrowser = detectBrowserType();
+        const sanitizedSource = (sourcePage || 'General').replace(/[^a-zA-Z0-9_]/g, '_');
+
+        await addDoc(collection(db, 'website_link_clicks'), {
+            linkUrl,
+            sourcePage,
+            userDevice,
+            userBrowser,
+            timestamp,
+            dateKey
+        });
+
+        const summaryRef = doc(db, 'analytics_summary', 'website_clicks');
+        await setDoc(summaryRef, {
+            linkUrl: 'vitalpulse237.com',
+            totalClicks: increment(1),
+            clicksToday: increment(1),
+            lastClickAt: timestamp,
+            lastClickSource: sourcePage,
+            [`clicksBySource.${sanitizedSource}`]: increment(1),
+            [`clicksByDevice.${userDevice}`]: increment(1),
+            [`clicksByDate.${dateKey}`]: increment(1)
+        }, { merge: true });
+    } catch (err) {
+        console.warn('Failed to record website link click:', err);
+    }
+}
+
+export async function fetchWebsiteClickAnalytics() {
+    try {
+        const summaryRef = doc(db, 'analytics_summary', 'website_clicks');
+        const summarySnap = await getDoc(summaryRef);
+        const summaryData = summarySnap.exists() ? summarySnap.data() : { totalClicks: 0, clicksToday: 0 };
+
+        const q = query(
+            collection(db, 'website_link_clicks'),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+        );
+        const logsSnap = await getDocs(q);
+        const recentClicks = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        return {
+            summary: summaryData,
+            recentClicks
+        };
+    } catch (err) {
+        console.error('Failed to fetch website click analytics:', err);
+        return { summary: { totalClicks: 0, clicksToday: 0 }, recentClicks: [] };
+    }
+}
+
+export function subscribeToWebsiteClickAnalytics(callback) {
+    const summaryRef = doc(db, 'analytics_summary', 'website_clicks');
+    return onSnapshot(summaryRef, (snap) => {
+        const data = snap.exists() ? snap.data() : { totalClicks: 0, clicksToday: 0 };
+        callback(data);
+    }, (err) => {
+        console.warn('Website click analytics subscription error:', err);
+    });
+}
+
+// ============================================
+// OFFICIAL WEBSITE VISIT & TRAFFIC ANALYTICS
+// ============================================
+
+export async function recordWebsiteVisit(pageTitle = 'Home', pagePath = window.location.pathname) {
+    try {
+        const timestamp = new Date().toISOString();
+        const dateKey = timestamp.split('T')[0];
+        const userDevice = detectDeviceType();
+        const userBrowser = detectBrowserType();
+
+        let isUniqueVisit = false;
+        const sessionKey = `vp_visit_session_${dateKey}`;
+        if (!sessionStorage.getItem(sessionKey)) {
+            isUniqueVisit = true;
+            sessionStorage.setItem(sessionKey, 'true');
+        }
+
+        const sanitizedPage = (pageTitle || 'Page').replace(/[^a-zA-Z0-9_]/g, '_');
+
+        await addDoc(collection(db, 'website_page_visits'), {
+            pageTitle,
+            pagePath,
+            isUniqueVisit,
+            userDevice,
+            userBrowser,
+            timestamp,
+            dateKey
+        });
+
+        const summaryRef = doc(db, 'analytics_summary', 'website_visits');
+        await setDoc(summaryRef, {
+            totalPageViews: increment(1),
+            uniqueVisits: increment(1),
+            viewsToday: increment(1),
+            lastVisitAt: timestamp,
+            lastVisitPage: pageTitle,
+            [`viewsByPage.${sanitizedPage}`]: increment(1),
+            [`viewsByDevice.${userDevice}`]: increment(1),
+            [`viewsByDate.${dateKey}`]: increment(1)
+        }, { merge: true });
+    } catch (err) {
+        console.warn('Failed to record website visit:', err);
+    }
+}
+
+export async function fetchWebsiteVisitAnalytics() {
+    try {
+        const summaryRef = doc(db, 'analytics_summary', 'website_visits');
+        const summarySnap = await getDoc(summaryRef);
+        const summaryData = summarySnap.exists() ? summarySnap.data() : { totalPageViews: 0, uniqueVisits: 0, viewsToday: 0 };
+
+        const q = query(
+            collection(db, 'website_page_visits'),
+            orderBy('timestamp', 'desc'),
+            limit(50)
+        );
+        const logsSnap = await getDocs(q);
+        const recentVisits = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        return {
+            summary: summaryData,
+            recentVisits
+        };
+    } catch (err) {
+        console.error('Failed to fetch website visit analytics:', err);
+        return { summary: { totalPageViews: 0, uniqueVisits: 0, viewsToday: 0 }, recentVisits: [] };
+    }
+}
+
+export function subscribeToWebsiteVisitAnalytics(callback) {
+    const summaryRef = doc(db, 'analytics_summary', 'website_visits');
+    return onSnapshot(summaryRef, (snap) => {
+        const data = snap.exists() ? snap.data() : { totalPageViews: 0, uniqueVisits: 0, viewsToday: 0 };
+        callback(data);
+    }, (err) => {
+        console.warn('Website visit analytics subscription error:', err);
+    });
 }
