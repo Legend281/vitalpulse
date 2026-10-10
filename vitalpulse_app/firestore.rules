@@ -132,6 +132,20 @@ service cloud.firestore {
       return !exists(donorPath) || get(donorPath).data.kycStatus == 'verified';
     }
 
+    // Validates anonymous/public creation of emergency blood requests
+    // Enforces Master Plan Section 1.3 Rule 5: strict schema validation, phone present, size limits
+    function isValidPublicRequestCreate() {
+      let d = request.resource.data;
+      return d.contactPhone is string && d.contactPhone.size() >= 9 && d.contactPhone.size() <= 35
+          && d.hospitalName is string && d.hospitalName.size() >= 2 && d.hospitalName.size() <= 150
+          && d.city is string && d.city.size() >= 2
+          && d.bloodType in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+          && d.status in ['Broadcasting', 'Pending Review']
+          && d.track in ['A', 'B']
+          && (d.units is int || d.units is number) && d.units >= 1 && d.units <= 50
+          && d.resolvedAt == null;
+    }
+
     // ---------- Users (donor / hospital accounts; role is a custom claim, not this doc) ----------
     match /users/{uid} {
       // Broad signed-in read: the app's matching/notification/directory flows all rely
@@ -505,7 +519,7 @@ service cloud.firestore {
     match /public_requests/{id} {
       allow get, list: if isDonor() || isSystemAdmin() || isNbtpViewer()
                        || (isHospitalRole() && sameHospital(resource.data.hospitalId));
-      allow create: if isSystemAdmin();
+      allow create: if isSystemAdmin() || isValidPublicRequestCreate();
       allow update: if isSystemAdmin()
                     // Donor accept: public requests broadcast in 'Broadcasting', not 'Open'.
                     // Client shape (db.js acceptPublicRequest): status + matchedDonor +

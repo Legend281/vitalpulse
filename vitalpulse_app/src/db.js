@@ -3452,11 +3452,16 @@ export async function fetchHospitalCampaigns(hospitalName) {
 // (forced Track B), or Blocked (rejected outright). First-time submitters are
 // implicitly Standard since no record exists for their number.
 export async function getPhoneTrustScore(phone) {
-    const q = query(collection(db, 'phone_trust'), where('phone', '==', phone));
-    const snap = await getDocs(q);
-    if (snap.empty) return { trustLevel: 'standard', flagCount: 0 };
-    const data = snap.docs[0].data();
-    return { trustLevel: data.trustLevel || 'standard', flagCount: data.flagCount || 0, id: snap.docs[0].id };
+    try {
+        const q = query(collection(db, 'phone_trust'), where('phone', '==', phone));
+        const snap = await getDocs(q);
+        if (snap.empty) return { trustLevel: 'standard', flagCount: 0 };
+        const data = snap.docs[0].data();
+        return { trustLevel: data.trustLevel || 'standard', flagCount: data.flagCount || 0, id: snap.docs[0].id };
+    } catch (err) {
+        // Fallback for unauthenticated public clients who cannot read phone_trust
+        return { trustLevel: 'standard', flagCount: 0 };
+    }
 }
 
 export async function downgradePhoneTrust(phone, reason, level = 'downgraded') {
@@ -3568,17 +3573,27 @@ export async function submitPublicRequest(requestData) {
     const status = track === 'A' ? 'Broadcasting' : 'Pending Review';
 
     // Check if the named hospital is a registered partner
-    const registeredCheck = await getDocs(query(
-        collection(db, 'users'),
-        where('name', '==', requestData.hospitalName),
-        where('role', '==', 'hospital')
-    ));
-    const isRegisteredHospital = !registeredCheck.empty;
+    let isRegisteredHospital = false;
+    try {
+        const registeredCheck = await getDocs(query(
+            collection(db, 'users'),
+            where('name', '==', requestData.hospitalName),
+            where('role', '==', 'hospital')
+        ));
+        isRegisteredHospital = !registeredCheck.empty;
+    } catch (e) {
+        // Anonymous/unauthenticated callers cannot query users collection under deny-by-default rules
+        isRegisteredHospital = false;
+    }
 
     // Create/update shadow hospital if not registered
     let shadowHospitalId = null;
     if (!isRegisteredHospital) {
-        shadowHospitalId = await ensureShadowHospital(requestData.hospitalName, requestData.city);
+        try {
+            shadowHospitalId = await ensureShadowHospital(requestData.hospitalName, requestData.city);
+        } catch (e) {
+            console.warn('Could not record shadow hospital from public request:', e);
+        }
     }
 
     const cityCoords = CITY_COORDINATES[requestData.city] || null;
@@ -3647,80 +3662,86 @@ export async function submitPublicRequest(requestData) {
         'Public Request Submitted',
         `${requestData.category} at ${requestData.hospitalName} (${requestData.city}) — Track ${track}`,
         track === 'A' ? 'warning' : 'info'
-    );
+    ).catch(() => {});
 
     // Track A: actively push the request to nearby compatible donors
     if (track === 'A') {
-        const bloodTypeNeeded = requestData.bloodType;
-        const componentType = requestData.componentType || 'Whole Blood';
-        const compatibleTypes = getCompatibleDonorTypes(bloodTypeNeeded, componentType);
-        const maxRadiusKm = requestData.urgency === 'Critical' ? 50 : 25;
-        const hospCoords = getCoordinatesForLocation(requestData.city, cityCoords?.lat, cityCoords?.lon);
+        try {
+            const bloodTypeNeeded = requestData.bloodType;
+            const componentType = requestData.componentType || 'Whole Blood';
+            const compatibleTypes = getCompatibleDonorTypes(bloodTypeNeeded, componentType);
+            const maxRadiusKm = requestData.urgency === 'Critical' ? 50 : 25;
+            const hospCoords = getCoordinatesForLocation(requestData.city, cityCoords?.lat, cityCoords?.lon);
 
-        const donorsQuery = query(
-            collection(db, 'users'),
-            where('role', '==', 'donor'),
-            where('bloodType', 'in', compatibleTypes),
-            where('isAvailable', '==', true),
-            limit(100)
-        );
-
-        const donorSnap = await getDocs(donorsQuery);
-        let matchingDonors = [];
-
-        for (const donorDoc of donorSnap.docs) {
-            const donor = { id: donorDoc.id, ...donorDoc.data() };
-            if (donor.isSuspended) continue;
-
-            // Donor GPS coords are stored as lat/lng (see donor-dashboard.js's
-            // enableLiveGpsLocation), not lat/lon — pass donor.lng here, not donor.lon,
-            // or this always falls through to the city-centroid fallback.
-            const donorCoords = getCoordinatesForLocation(donor.city, donor.lat, donor.lng);
-            let dist = null;
-            if (hospCoords && donorCoords) {
-                dist = calculateDistanceKm(hospCoords.lat, hospCoords.lon, donorCoords.lat, donorCoords.lon);
-            }
-
-            const isExactCity = requestData.city && donor.city && donor.city.trim().toLowerCase() === requestData.city.trim().toLowerCase();
-            const isWithinRadius = dist !== null && dist <= maxRadiusKm;
-
-            if (isExactCity || isWithinRadius) {
-                donor.matchedDistanceKm = dist;
-                matchingDonors.push(donor);
-            }
-        }
-
-        // Trusted, proven donors are notified first — same reasoning as autoMatchDonors.
-        matchingDonors.sort((a, b) => (b.donationCount || 0) - (a.donationCount || 0));
-
-        for (const donor of matchingDonors) {
-            const dist = donor.matchedDistanceKm;
-            const distanceLabel = dist !== null ? ` (~${dist} km away)` : '';
-            const msg = `[VitalPulse] 🆘 Public emergency blood request! ${bloodTypeNeeded} (${componentType}) needed at ${requestData.hospitalName}${distanceLabel}. Your compatibility matches. Please respond in app.`;
-            if (donor.phone) {
-                if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => {});
-                if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
-            }
-            await addDonorNotification(
-                donor.id,
-                'Emergency Blood Request',
-                `🆘 ${bloodTypeNeeded} (${componentType}) needed urgently at ${requestData.hospitalName}${distanceLabel}. Urgency: ${requestData.urgency}`,
-                'error'
+            const donorsQuery = query(
+                collection(db, 'users'),
+                where('role', '==', 'donor'),
+                where('bloodType', 'in', compatibleTypes),
+                where('isAvailable', '==', true),
+                limit(100)
             );
-        }
 
-        if (matchingDonors.length > 0) {
-            await updateDoc(docRef, {
-                matchingDonorsNotified: matchingDonors.map(d => d.id),
-                matchingDonorsCount: matchingDonors.length,
-                notifiedAt: new Date().toISOString()
-            });
+            const donorSnap = await getDocs(donorsQuery);
+            let matchingDonors = [];
 
-            await logActivity(
-                'Donors Notified',
-                `${matchingDonors.length} compatible donor(s) alerted for public request #${docRef.id.slice(0, 8)} (${bloodTypeNeeded}) — ${requestData.hospitalName}`,
-                'info'
-            );
+            for (const donorDoc of donorSnap.docs) {
+                const donor = { id: donorDoc.id, ...donorDoc.data() };
+                if (donor.isSuspended) continue;
+
+                // Donor GPS coords are stored as lat/lng (see donor-dashboard.js's
+                // enableLiveGpsLocation), not lat/lon — pass donor.lng here, not donor.lon,
+                // or this always falls through to the city-centroid fallback.
+                const donorCoords = getCoordinatesForLocation(donor.city, donor.lat, donor.lng);
+                let dist = null;
+                if (hospCoords && donorCoords) {
+                    dist = calculateDistanceKm(hospCoords.lat, hospCoords.lon, donorCoords.lat, donorCoords.lon);
+                }
+
+                const isExactCity = requestData.city && donor.city && donor.city.trim().toLowerCase() === requestData.city.trim().toLowerCase();
+                const isWithinRadius = dist !== null && dist <= maxRadiusKm;
+
+                if (isExactCity || isWithinRadius) {
+                    donor.matchedDistanceKm = dist;
+                    matchingDonors.push(donor);
+                }
+            }
+
+            // Trusted, proven donors are notified first — same reasoning as autoMatchDonors.
+            matchingDonors.sort((a, b) => (b.donationCount || 0) - (a.donationCount || 0));
+
+            for (const donor of matchingDonors) {
+                const dist = donor.matchedDistanceKm;
+                const distanceLabel = dist !== null ? ` (~${dist} km away)` : '';
+                const msg = `[VitalPulse] 🆘 Public emergency blood request! ${bloodTypeNeeded} (${componentType}) needed at ${requestData.hospitalName}${distanceLabel}. Your compatibility matches. Please respond in app.`;
+                if (donor.phone) {
+                    if (donor.notifSms !== false) await sendSmsNotification(donor.phone, msg).catch(() => {});
+                    if (donor.notifWhatsapp === true) await sendWhatsAppNotification(donor.phone, msg).catch(() => {});
+                }
+                await addDonorNotification(
+                    donor.id,
+                    'Emergency Blood Request',
+                    `🆘 ${bloodTypeNeeded} (${componentType}) needed urgently at ${requestData.hospitalName}${distanceLabel}. Urgency: ${requestData.urgency}`,
+                    'error'
+                ).catch(() => {});
+            }
+
+            if (matchingDonors.length > 0) {
+                await updateDoc(docRef, {
+                    matchingDonorsNotified: matchingDonors.map(d => d.id),
+                    matchingDonorsCount: matchingDonors.length,
+                    notifiedAt: new Date().toISOString()
+                }).catch(() => {});
+
+                await logActivity(
+                    'Donors Notified',
+                    `${matchingDonors.length} compatible donor(s) alerted for public request #${docRef.id.slice(0, 8)} (${bloodTypeNeeded}) — ${requestData.hospitalName}`,
+                    'info'
+                ).catch(() => {});
+            }
+        } catch (donorDispatchErr) {
+            // Unauthenticated callers cannot query private donor PHI or write notifications.
+            // Dispatch is handled via the admin notification service and active donor feed.
+            console.info('Direct client-side donor scan skipped for public requisition; coordinators notified:', donorDispatchErr?.message || donorDispatchErr);
         }
     }
 

@@ -677,3 +677,47 @@ describe('staff credential handling — permanent guarantees', () => {
         expect(addDoc).not.toHaveBeenCalled();
     });
 });
+
+describe('submitPublicRequest & getPhoneTrustScore — public intake resilience', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('getPhoneTrustScore falls back to standard trust when getDocs throws a permissions error', async () => {
+        getDocs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+        const { getPhoneTrustScore } = await import('./db.js');
+        const res = await getPhoneTrustScore('+237699999999');
+        expect(res).toEqual({ trustLevel: 'standard', flagCount: 0 });
+    });
+
+    it('submitPublicRequest succeeds for unauthenticated requests even if users query fails with permissions error', async () => {
+        // getPhoneTrustScore check
+        getDocs.mockResolvedValueOnce({ empty: true });
+        // registeredCheck on users collection throws permission error
+        getDocs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+        // shadow_hospitals query throws permission error
+        getDocs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+        // donor query throws permission error
+        getDocs.mockRejectedValueOnce(new Error('Missing or insufficient permissions.'));
+        // addDoc to public_requests succeeds
+        addDoc.mockResolvedValueOnce({ id: 'pr_mock_123' });
+
+        const { submitPublicRequest } = await import('./db.js');
+        const result = await submitPublicRequest({
+            category: 'Trauma',
+            urgency: 'Critical',
+            hospitalName: 'Hôpital Général de Douala',
+            city: 'Douala',
+            bloodType: 'O-',
+            componentType: 'Whole Blood',
+            units: 2,
+            contactPhone: '+237677777777',
+            relationship: 'Family',
+            submitterName: 'John Doe',
+        });
+
+        expect(result.id).toBe('pr_mock_123');
+        expect(result.track).toBe('A');
+        expect(result.status).toBe('Broadcasting');
+        expect(addDoc).toHaveBeenCalled();
+    });
+});
+
