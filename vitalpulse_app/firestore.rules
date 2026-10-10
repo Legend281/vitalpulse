@@ -98,16 +98,24 @@ service cloud.firestore {
     // by it. Tightening the default would deny any real account currently running without a
     // claim (see tracker K10 for how one could get into that state) — hence flagged rather
     // than changed unilaterally.
+    function isSystemAdmin()   {
+      return signedIn() && (
+        rolesList().hasAny(['system_admin', 'admin'])
+        || role() in ['system_admin', 'admin']
+        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['system_admin', 'admin'])
+      );
+    }
     function hasRole() {
       return signedIn()
              && (request.auth.token.get('roles', []).size() > 0
-                 || request.auth.token.get('role', '') != '');
+                 || request.auth.token.get('role', '') != ''
+                 || isSystemAdmin());
     }
 
     function isDonor()         { return signedIn() && (rolesList().hasAny(['donor']) || role() == 'donor'); }
     function isHospitalRole()  { return signedIn() && (rolesList().hasAny(['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']) || role() in ['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']); }
     function canManageStock()  { return signedIn() && (rolesList().hasAny(['nurse', 'hospital_staff', 'hospital_admin']) || role() in ['hospital_staff', 'hospital_admin']); }
-    function isSystemAdmin()   { return signedIn() && (rolesList().hasAny(['system_admin']) || role() == 'system_admin'); }
     function isNbtpViewer()    { return signedIn() && (rolesList().hasAny(['nbtp_viewer']) || role() == 'nbtp_viewer'); }
 
     // True if the caller is hospital-role AND scoped to the given hospitalId.
@@ -154,7 +162,8 @@ service cloud.firestore {
       // redaction (e.g. hiding bloodType from parties who don't need it) is a rules
       // limitation — rules are whole-document, not field-level, for reads. Flagged as a
       // hardening item (Master Plan 1.7) for a future Cloud-Function-mediated read path.
-      allow get, list: if hasRole();
+      allow get: if signedIn() && (request.auth.uid == uid || hasRole() || isSystemAdmin());
+      allow list: if hasRole() || isSystemAdmin();
 
       // Self-signup only: caller can create ONLY their own doc, and can only ever
       // self-declare 'donor' or 'hospital' — closes the remaining half of Finding 3.2

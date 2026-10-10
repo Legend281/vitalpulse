@@ -330,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Admin console is admin-only. Fast path using the cached profile (the admin branch
     // below re-verifies the role against Firestore, since localStorage can be stale).
-    if (path.includes('admin.html') && currentUser && currentUser.role !== 'admin') {
+    if (path.includes('admin.html') && currentUser && !['admin', 'system_admin', 'nbtp_viewer'].includes(currentUser.role)) {
         window.location.href = currentUser.role === 'hospital' ? '/hospital.html' : '/donor.html';
         return;
     }
@@ -1076,7 +1076,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         const snap = await getDoc(doc(db, 'users', fbUser.uid));
                         const role = snap.exists() ? snap.data().role : null;
-                        if (role !== 'admin') {
+                        if (!['admin', 'system_admin', 'nbtp_viewer'].includes(role)) {
                             window.location.href = role === 'hospital' ? '/hospital.html' : '/donor.html';
                             return;
                         }
