@@ -3586,13 +3586,14 @@ export async function submitPublicRequest(requestData) {
         isRegisteredHospital = false;
     }
 
-    // Create/update shadow hospital if not registered
+    // Create/update shadow hospital if not registered and user is authenticated
     let shadowHospitalId = null;
-    if (!isRegisteredHospital) {
+    const currentUser = getCurrentUser();
+    if (!isRegisteredHospital && currentUser) {
         try {
             shadowHospitalId = await ensureShadowHospital(requestData.hospitalName, requestData.city);
         } catch (e) {
-            console.warn('Could not record shadow hospital from public request:', e);
+            shadowHospitalId = null;
         }
     }
 

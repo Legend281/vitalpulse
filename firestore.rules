@@ -143,7 +143,7 @@ service cloud.firestore {
           && d.status in ['Broadcasting', 'Pending Review']
           && d.track in ['A', 'B']
           && (d.units is int || d.units is number) && d.units >= 1 && d.units <= 50
-          && d.resolvedAt == null;
+          && (!('resolvedAt' in d) || d.resolvedAt == null);
     }
 
     // ---------- Users (donor / hospital accounts; role is a custom claim, not this doc) ----------
@@ -461,10 +461,13 @@ service cloud.firestore {
 
     // ---------- Hospital notifications ----------
     match /hospital_notifications/{id} {
-      allow read, get, list: if isAuth();
-      allow create: if isAuth();
-      allow update: if isAuth();
-      allow delete: if isSystemAdmin();
+      allow get, list: if isSystemAdmin()
+                       || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      // Donors trigger these too (e.g. notifying a hospital their request was accepted).
+      allow create: if isDonor() || isHospitalRole() || isSystemAdmin();
+      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+                    && unchangedExcept(['read']);
+      allow delete: if isSystemAdmin() || (isHospitalRole() && sameHospital(resource.data.hospitalId));
     }
 
     // ---------- Issuance log — Restricted-PHI (patient identity + diagnosis, Policy 4) ----------
