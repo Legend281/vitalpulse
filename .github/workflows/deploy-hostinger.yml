@@ -42,10 +42,17 @@ jobs:
           cd vitalpulse_app
           npm run build
 
+      - name: 5.5 Prepare FTP Server Host
+        id: ftp-config
+        run: |
+          RAW_SERVER="${{ secrets.HOSTINGER_FTP_SERVER }}"
+          CLEAN_SERVER=$(echo "$RAW_SERVER" | sed -e 's|^[^/]*://||' -e 's|/.*$||')
+          echo "server=$CLEAN_SERVER" >> $GITHUB_OUTPUT
+
       - name: 6. Deploy compiled dist/ to Hostinger via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
+          server: ${{ steps.ftp-config.outputs.server }}
           username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
           password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
           local-dir: ./vitalpulse_app/dist/
