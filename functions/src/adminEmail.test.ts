@@ -60,7 +60,7 @@ describe('adminEmail', () => {
       ok: true,
       json: async () => ({ id: 'email_msg_12345' }),
       text: async () => ''
-    } as any);
+    } as unknown as Response);
 
     const result = await sendAdminNotificationEmailHandler(req({
       title: 'Test Admin Notification',

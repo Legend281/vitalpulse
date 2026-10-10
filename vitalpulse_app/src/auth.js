@@ -578,13 +578,12 @@ export function waitForAuthUser() {
 // the account that's actually signed in right now.
 export async function fetchVerifiedUser(firebaseUser) {
     let role = 'donor';
-    let userData = {};
     const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
     if (!userDoc.exists()) {
         await signOut(auth);
         throw new Error('Account not found or has been deleted by an administrator.');
     }
-    userData = userDoc.data();
+    const userData = userDoc.data();
     role = userData.role || role;
     return {
         uid: firebaseUser.uid,

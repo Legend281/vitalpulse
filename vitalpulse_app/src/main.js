@@ -30,6 +30,9 @@ function hospitalScopeCity() {
     return getEffectiveHospitalCity(getCurrentUser());
 }
 
+// Hospital notification cache
+let _hospitalNotifCache = null;
+
 // Notifications are addressed to the HOSPITAL's uid, so "mark all read" must
 // clear the hospital's queue, not the signed-in staff member's (which is empty).
 window.markAllHospitalNotificationsReadAction = async () => {

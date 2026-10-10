@@ -3573,7 +3573,7 @@ export async function submitPublicRequest(requestData) {
     const status = track === 'A' ? 'Broadcasting' : 'Pending Review';
 
     // Check if the named hospital is a registered partner
-    let isRegisteredHospital = false;
+    let isRegisteredHospital;
     try {
         const registeredCheck = await getDocs(query(
             collection(db, 'users'),

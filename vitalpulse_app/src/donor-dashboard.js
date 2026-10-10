@@ -2689,7 +2689,7 @@ function renderNearbyMap(donorCoords) {
 // dedicated view-centers view (loadDonationCentersView, above) — only displays hospitals
 // that are officially registered in VitalPulse.
 async function fetchAndCacheDonationCenters(donorCoords) {
-  let hospitals = [];
+  let hospitals;
   try {
     hospitals = await fetchAllHospitals();
   } catch (e) {
@@ -3592,7 +3592,7 @@ window.openRequestDetailModal = (reqId, isJourney = false) => {
           <button onclick="window.closeRequestDetailModal(); window.donorMarkArrived('${r.id}', '${currentUser?.uid || ''}', ${isPublic})" class="press-scale w-full py-3 rounded-xl font-black text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer">
             <span class="material-symbols-outlined text-sm">badge</span> I've Arrived — Show Passcode
           </button>` : `
-          <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete KYC verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.closeRequestDetailModal(); window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale w-full py-3.5 rounded-2xl font-black text-xs shadow-md ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60' : 'bg-primary hover:bg-primary/90 text-white shadow-primary/25 cursor-pointer'} transition-all flex items-center justify-center gap-2">
+          <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete KYC verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.closeRequestDetailModal(); window.donorAcceptRequest('${r.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale w-full py-3.5 rounded-2xl font-black text-xs shadow-md ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60' : 'bg-primary hover:bg-primary/90 text-white shadow-primary/25 cursor-pointer'} transition-all flex items-center justify-center gap-2">
             <span class="material-symbols-outlined text-base">bolt</span>
             <span>${acceptBlocked ? (kycPending ? 'Complete Identity Verification to Accept' : 'Unavailable to Accept') : 'Accept Request & Start Journey'}</span>
           </button>`}

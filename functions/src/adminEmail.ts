@@ -161,7 +161,7 @@ export async function sendAdminNotificationEmailHandler(request: CallableRequest
 
   toEmail = toEmail || 'info@vitalpulse237.com';
 
-  let apiKey: string | null = null;
+  let apiKey: string | null;
   try {
     apiKey = customApiKey || RESEND_API_KEY.value() || process.env.RESEND_API_KEY || null;
   } catch {
@@ -182,14 +182,15 @@ export async function sendAdminNotificationEmailHandler(request: CallableRequest
         recipient: toEmail,
         messageId
       };
-    } catch (err: any) {
-      console.error('[AdminEmail] Resend delivery failed:', err?.message || err);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[AdminEmail] Resend delivery failed:', errorMsg);
       if (!webhookEndpoint) {
         return {
           success: false,
           channel: 'resend',
           recipient: toEmail,
-          error: err?.message || 'Failed to dispatch via Resend'
+          error: errorMsg || 'Failed to dispatch via Resend'
         };
       }
     }
@@ -224,12 +225,13 @@ export async function sendAdminNotificationEmailHandler(request: CallableRequest
         recipient: toEmail,
         error: `Webhook returned ${hookRes.status}: ${hookErr}`
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
       return {
         success: false,
         channel: 'webhook',
         recipient: toEmail,
-        error: err?.message || 'Webhook request failed'
+        error: errorMsg || 'Webhook request failed'
       };
     }
   }

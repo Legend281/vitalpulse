@@ -187,7 +187,7 @@ export async function dispatchAdminAlert({
   }
 
   // 3. Automated Server-Side Email Dispatch via Cloud Functions (Resend API) + Webhook Fallback
-  let emailDeliveryResult = null;
+  let emailDeliveryResult;
   try {
     const sendEmailFn = httpsCallable(getFunctions(), 'sendAdminNotificationEmail');
     const emailRes = await sendEmailFn({

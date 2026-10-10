@@ -183,7 +183,7 @@ export function getGeohashNeighbors(geohash) {
  * @returns {string[]} Unique geohash prefixes to query
  */
 export function getGeohashesForRadius(latitude, longitude, radiusKm = 15) {
-  let precision = 5; // Default ~5km
+  let precision;
   if (radiusKm <= 2) precision = 6; // ~1.2km
   else if (radiusKm <= 10) precision = 5; // ~5km
   else if (radiusKm <= 40) precision = 4; // ~39km
