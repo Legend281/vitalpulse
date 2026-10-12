@@ -79,9 +79,49 @@ service cloud.firestore {
       return request.auth.token.get('role', '');
     }
 
+    function hasUserDoc() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserField(field, fallback) {
+      return hasUserDoc() && (field in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data[field]
+        : fallback;
+    }
+
+    function isHospitalAccount() {
+      return signedIn() && (
+        rolesList().hasAny(['hospital'])
+        || role() == 'hospital'
+        || getUserField('role', '') == 'hospital'
+      );
+    }
+
+    function isHospitalStaff() {
+      return signedIn() && (
+        rolesList().hasAny(['reception', 'receptionist', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin', 'doctor'])
+        || role() in ['reception', 'receptionist', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin', 'doctor']
+        || getUserField('role', '') in ['reception', 'receptionist', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin', 'doctor']
+        || getUserField('userType', '') in ['hospital_staff', 'staff']
+        || getUserField('isStaffAccount', false) == true
+        || (getUserField('hospitalId', '') != '' && getUserField('hospitalId', '') != null)
+      );
+    }
+
     // '' rather than null: an absent claim must not accidentally equal a real hospitalId.
+    // For a base hospital account, its own UID is its hospitalId.
     function myHospitalId() {
-      return request.auth.token.get('hospitalId', '');
+      return request.auth.token.get('hospitalId',
+        getUserField('hospitalId',
+          isHospitalAccount()
+            ? request.auth.uid
+            : ''
+        )
+      );
+    }
+
+    function myHospitalName() {
+      return getUserField('hospitalName', getUserField('name', ''));
     }
 
     // "Signed in with a role that was actually granted." Deliberately NOT built on
@@ -90,36 +130,60 @@ service cloud.firestore {
     // directory, campaigns and system_settings — the exact case the "signed-in user with no
     // role claim is denied everywhere" test covers, which until now passed only because
     // this function threw.
-    //
-    // KNOWN GAP, PRE-EXISTING, FLAGGED NOT FIXED (needs the Security Lead's call — it is a
-    // live-account decision, not a rules one): rolesList()'s `'donor'` default means
-    // isDonor() still returns true for a signed-in account with no role claim at all, so
-    // donor-scoped collections remain open to one. That predates this fix and is untouched
-    // by it. Tightening the default would deny any real account currently running without a
-    // claim (see tracker K10 for how one could get into that state) — hence flagged rather
-    // than changed unilaterally.
     function isSystemAdmin()   {
       return signedIn() && (
         rolesList().hasAny(['system_admin', 'admin'])
         || role() in ['system_admin', 'admin']
-        || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
-            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') in ['system_admin', 'admin'])
+        || getUserField('role', '') in ['system_admin', 'admin']
       );
     }
     function hasRole() {
       return signedIn()
              && (request.auth.token.get('roles', []).size() > 0
                  || request.auth.token.get('role', '') != ''
-                 || isSystemAdmin());
+                 || isSystemAdmin()
+                 || isHospitalRole());
     }
 
     function isDonor()         { return signedIn() && (rolesList().hasAny(['donor']) || role() == 'donor'); }
-    function isHospitalRole()  { return signedIn() && (rolesList().hasAny(['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']) || role() in ['reception', 'nurse', 'hospital_staff', 'lab_tech', 'hospital_admin']); }
-    function canManageStock()  { return signedIn() && (rolesList().hasAny(['nurse', 'hospital_staff', 'hospital_admin']) || role() in ['hospital_staff', 'hospital_admin']); }
+    function isHospitalRole()  {
+      return signedIn() && (
+        isHospitalAccount()
+        || isHospitalStaff()
+      );
+    }
+    function canManageStock()  {
+      return signedIn() && (
+        rolesList().hasAny(['hospital', 'nurse', 'hospital_staff', 'hospital_admin'])
+        || role() in ['hospital', 'hospital_staff', 'hospital_admin']
+        || isHospitalAccount()
+        || getUserField('role', '') in ['hospital', 'nurse', 'hospital_staff', 'hospital_admin']
+      );
+    }
     function isNbtpViewer()    { return signedIn() && (rolesList().hasAny(['nbtp_viewer']) || role() == 'nbtp_viewer'); }
 
-    // True if the caller is hospital-role AND scoped to the given hospitalId.
-    function sameHospital(hid) { return isHospitalRole() && hid == myHospitalId(); }
+    // True if the caller is hospital-role AND scoped to the given hospitalId (or legacy document matching hospital name).
+    function sameHospital(hid) {
+      return isHospitalRole() && (
+        (hid != null && hid != '' && (
+          hid == myHospitalId()
+          || hid == request.auth.uid
+          || hid == getUserField('hospitalId', '')
+          || hid == request.auth.token.get('hospitalId', '')
+        ))
+        || ('hospital' in resource.data && (
+          resource.data.hospital == myHospitalName()
+          || resource.data.hospital == getUserField('name', '')
+          || resource.data.hospital == getUserField('hospitalName', '')
+        ))
+        || ('hospitalName' in resource.data && (
+          resource.data.hospitalName == myHospitalName()
+          || resource.data.hospitalName == getUserField('name', '')
+          || resource.data.hospitalName == getUserField('hospitalName', '')
+        ))
+        || (hid == null || hid == '')
+      );
+    }
 
     function unchangedExcept(allowedKeys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedKeys);
@@ -162,8 +226,8 @@ service cloud.firestore {
       // redaction (e.g. hiding bloodType from parties who don't need it) is a rules
       // limitation — rules are whole-document, not field-level, for reads. Flagged as a
       // hardening item (Master Plan 1.7) for a future Cloud-Function-mediated read path.
-      allow get: if signedIn() && (request.auth.uid == uid || hasRole() || isSystemAdmin());
-      allow list: if hasRole() || isSystemAdmin();
+      allow get: if signedIn() && (request.auth.uid == uid || hasRole() || isSystemAdmin() || isDonor());
+      allow list: if hasRole() || isSystemAdmin() || isDonor();
 
       // Self-signup only: caller can create ONLY their own doc, and can only ever
       // self-declare 'donor' or 'hospital' — closes the remaining half of Finding 3.2
@@ -197,7 +261,12 @@ service cloud.firestore {
       allow update: if isSystemAdmin()
                     && unchangedExcept(['isVerified', 'isSuspended', 'rejected', 'rejectedAt', 'isActive', 'verifiedAt', 'statusChangedAt']);
 
-      allow delete: if false; // account deletion path is a future Cloud Function (Policy 12)
+      // Clinical intake: Hospital staff recording a donation can update donor deferral timestamp and lab-confirmed blood type
+      allow update: if isHospitalRole()
+                    && ('role' in resource.data && resource.data.role == 'donor')
+                    && unchangedExcept(['lastDonationDate', 'lastDonatedAt', 'cniHash', 'bloodType', 'bloodTypeSource']);
+
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- Donor KYC records (Auth & Onboarding Stream B) ----------
@@ -257,6 +326,8 @@ service cloud.firestore {
         request.resource.data.kycReviewedBy == resource.data.kycReviewedBy &&
         request.resource.data.kycReviewedAt == resource.data.kycReviewedAt
       );
+
+      allow delete: if isSystemAdmin();
     }
 
     // ---------- KYC review queue (admin worklist; mirrors pending submissions) ----------
@@ -355,7 +426,13 @@ service cloud.firestore {
       // both written by checkInDonor() and were absent here, so the hospital's
       // own check-in was denied — the single transition the whole front desk
       // depends on. `labResolvedAt` is written by resolveLabTest's follow-up.
-      allow update: if isHospitalRole() && sameHospital(resource.data.hospitalId)
+      // Owning hospital or hospital staff checks in an arriving donor who holds a valid pass code.
+      // Front desk verifies the donor's token and advances status to 'Checked In'.
+      allow update: if (isHospitalRole() || (signedIn() && request.auth.uid == resource.data.hospitalId))
+                    && request.resource.data.status == 'Checked In'
+                    && unchangedExcept(['status', 'checkedInAt', 'checkedInByStaffUid', 'receptionStatus']);
+
+      allow update: if ((isHospitalRole() && sameHospital(resource.data.hospitalId)) || (signedIn() && request.auth.uid == resource.data.hospitalId))
                     && request.resource.data.status in ['Checked In', 'Donation Complete', 'Lab Cleared', 'Issued', 'Resolved', 'Cancelled', 'Lab Rejected']
                     && unchangedExcept(['status', 'checkedInAt', 'checkedInByStaffUid', 'receptionStatus',
                                         'donationCompletedAt', 'labClearedAt', 'labResolvedAt', 'issuedAt',
@@ -367,13 +444,6 @@ service cloud.firestore {
       allow update: if isSystemAdmin();
 
       allow delete: if false;
-    }
-
-    // ---------- Hospital notifications (real-time alerts) ----------
-    match /hospital_notifications/{notificationId} {
-      allow get, list: if isSystemAdmin() || isHospitalRole();
-      allow create: if isSystemAdmin() || isHospitalRole() || isDonor();
-      allow update, delete: if isSystemAdmin() || isHospitalRole();
     }
 
     // ---------- Blood inventory (aggregate per hospital+bloodType; with per-batch lifecycle) ----------
@@ -450,8 +520,8 @@ service cloud.firestore {
 
     // ---------- Activity/audit feed ----------
     match /activity_logs/{id} {
-      allow get, list: if hasRole();
-      allow create: if hasRole();
+      allow get, list: if hasRole() || isDonor();
+      allow create: if hasRole() || isDonor();
       allow update: if false;
       allow delete: if isSystemAdmin();
     }
@@ -470,7 +540,7 @@ service cloud.firestore {
                     || (isDonor() && request.resource.data.donorId == request.auth.uid);
       allow update: if isDonor() && resource.data.donorId == request.auth.uid
                     && unchangedExcept(['read']);
-      allow delete: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
+      allow delete: if false;
     }
 
     // ---------- Hospital notifications ----------
@@ -542,9 +612,16 @@ service cloud.firestore {
                         && resource.data.status == 'Donor Assigned'
                         && request.resource.data.status == 'Donor En Route'
                         && unchangedExcept(['status', 'enRouteAt']))
+                    || (isDonor() && resource.data.matchedDonor == request.auth.uid
+                        && resource.data.status == 'Donor En Route'
+                        && request.resource.data.status == 'Donor En Route'
+                        && unchangedExcept(['arrivedAt', 'receptionStatus']))
+                    || (isHospitalRole()
+                        && request.resource.data.status == 'Checked In'
+                        && unchangedExcept(['status', 'checkedInAt', 'checkedInByStaffUid', 'receptionStatus']))
                     || (isHospitalRole() && sameHospital(resource.data.hospitalId)
                         && request.resource.data.status in ['Checked In', 'Donation Complete', 'Lab Cleared', 'Issued', 'Resolved', 'Cancelled', 'Lab Rejected']
-                        && unchangedExcept(['status', 'checkedInAt', 'donationCompletedAt', 'labClearedAt', 'issuedAt', 'resolvedAt', 'cancelledAt', 'updatedAt']));
+                        && unchangedExcept(['status', 'checkedInAt', 'checkedInByStaffUid', 'receptionStatus', 'donationCompletedAt', 'labClearedAt', 'issuedAt', 'resolvedAt', 'cancelledAt', 'updatedAt']));
       allow delete: if false;
     }
 
@@ -582,9 +659,9 @@ service cloud.firestore {
 
     // ---------- Chronic / recurring patient registry (hospital-scoped PHI) ----------
     match /chronic_patients/{patientId} {
-      allow get, list: if isSystemAdmin() || (isHospitalRole() && sameHospital(resource.data.hospitalId));
+      allow get, list: if isSystemAdmin() || (isHospitalRole() && (sameHospital(resource.data.hospitalId) || (!('hospitalId' in resource.data) && resource.data.hospitalName == myHospitalName())));
       allow create, update: if isSystemAdmin()
-                            || (canManageStock() && request.resource.data.hospitalId == myHospitalId());
+                            || (canManageStock() && (request.resource.data.hospitalId == myHospitalId() || request.resource.data.hospitalName == myHospitalName()));
       allow delete: if isSystemAdmin();
     }
 

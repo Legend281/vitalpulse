@@ -2957,7 +2957,7 @@
 
 <!-- DONOR ENGAGEMENT MODAL -->
 <div id="donorEngagementModal" class="fixed inset-0 z-50 hidden items-center justify-center">
-  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="donorEngagementBackdrop"></div>
+  <div class="absolute inset-0 bg-black/40 backdrop-blur-sm cursor-pointer" id="donorEngagementBackdrop" onclick="window.closeDonorEngagement && window.closeDonorEngagement()"></div>
   <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
     <!-- Sticky Header -->
     <div class="sticky top-0 z-10 bg-gradient-to-r from-amber-600 via-amber-600 to-yellow-600 px-6 py-4 rounded-t-2xl shrink-0">
@@ -2971,7 +2971,7 @@
             <p class="text-[11px] text-white/70 font-medium" id="donorEngagementName">-</p>
           </div>
         </div>
-        <button id="btnCloseDonorEngagement" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-sm shrink-0">
+        <button id="btnCloseDonorEngagement" type="button" onclick="window.closeDonorEngagement && window.closeDonorEngagement()" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all cursor-pointer backdrop-blur-sm shrink-0" aria-label="Close modal">
           <span class="material-symbols-outlined text-lg">close</span>
         </button>
       </div>
@@ -2984,6 +2984,13 @@
           <span class="text-sm">Loading donor profile...</span>
         </div>
       </div>
+    </div>
+
+    <!-- Footer Action -->
+    <div class="px-6 py-3.5 bg-slate-50 rounded-b-2xl border-t border-slate-100 flex justify-end shrink-0">
+      <button type="button" onclick="window.closeDonorEngagement && window.closeDonorEngagement()" class="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 transition-colors shadow-xs cursor-pointer">
+        Close
+      </button>
     </div>
   </div>
 </div>

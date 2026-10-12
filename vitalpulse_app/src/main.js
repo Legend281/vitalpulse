@@ -1424,6 +1424,12 @@ async function initHospitalVerificationGuard() {
         return;
     }
 
+    try {
+        await fbUser.getIdToken(true);
+    } catch (e) {
+        console.warn('[HospitalGuard] Silent token refresh:', e);
+    }
+
     const hospitalScopeIdVal = hospitalScopeId() || fbUser.uid;
     const gateEl = document.getElementById('hospitalVerificationGate');
     const badgeEl = document.getElementById('hospitalAccreditationBadge');
@@ -1768,6 +1774,7 @@ function initHospitalNavigation() {
     };
 
     window.switchHospitalView = switchView;
+    window.switchView = switchView;
 
     navIds.forEach(id => {
         const nav = document.getElementById('nav-' + id);
@@ -7737,8 +7744,9 @@ function initIssueBloodModal() {
             const currentStock = parseInt(document.getElementById('issueCurrentQty').value, 10);
 
             if (!bloodType) { window.vpNotify('Please select a blood type from the inventory.'); return; }
-            if (units > currentStock) {
-                if (!await window.vpConfirm(`Only ${currentStock} units of ${bloodType} available. Issue ${units} anyway? This will result in negative stock.`)) return;
+            if (units > currentStock || currentStock <= 0) {
+                window.vpNotify(`Cannot issue blood: requested ${units} unit(s), but only ${currentStock || 0} tested and cleared unit(s) of ${bloodType} are available.`);
+                return;
             }
 
             const btn = form.querySelector('button[type="submit"]');
@@ -8691,16 +8699,32 @@ window.printDonorSlip = async (donationId) => {
 // DONOR ENGAGEMENT — Hospital View (Feature)
 // ============================================
 
+window.closeDonorEngagement = () => {
+    const modal = document.getElementById('donorEngagementModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+};
+
+let _donorEngagementModalInitialized = false;
 function initDonorEngagementModal() {
+    if (_donorEngagementModalInitialized) return;
     const modal = document.getElementById('donorEngagementModal');
     const backdrop = document.getElementById('donorEngagementBackdrop');
     const closeBtn = document.getElementById('btnCloseDonorEngagement');
-    const close = () => { if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); } };
-    if (backdrop) backdrop.addEventListener('click', close);
-    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (backdrop) backdrop.addEventListener('click', window.closeDonorEngagement);
+    if (closeBtn) closeBtn.addEventListener('click', window.closeDonorEngagement);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) {
+            window.closeDonorEngagement();
+        }
+    });
+    _donorEngagementModalInitialized = true;
 }
 
 window.openDonorEngagement = async (donorId) => {
+    initDonorEngagementModal();
     const modal = document.getElementById('donorEngagementModal');
     const content = document.getElementById('donorEngagementContent');
     const nameLabel = document.getElementById('donorEngagementName');

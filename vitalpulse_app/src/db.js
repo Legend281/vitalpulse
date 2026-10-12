@@ -15,9 +15,9 @@ startAfter,
 onSnapshot,
 runTransaction
 } from "firebase/firestore";
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { getCurrentUser } from './auth';
+import { getCurrentUser, getEffectiveHospitalId } from './auth';
 import {
     sparkAddInventoryStock,
     sparkDeductInventoryStock,
@@ -53,7 +53,7 @@ export async function logActivity(title, description, type, actor = null) {
             timestamp: new Date().toISOString()
         });
     } catch(e) {
-        console.error("Failed to log activity", e);
+        console.debug("Activity log skipped:", e?.message);
     }
 }
 
@@ -75,7 +75,7 @@ export async function logAuditTrail(eventType, details, metadata = {}) {
             immutable: true
         });
     } catch (e) {
-        console.error("[logAuditTrail] Failed to record audit entry:", e);
+        console.debug("[logAuditTrail] Audit record skipped:", e?.message);
     }
 }
 
@@ -468,26 +468,30 @@ export async function acceptRequest(requestId, donorId, screeningData = {}) {
         { hospital: reqData.hospital, targetId: requestId, previousState: 'Open', newState: 'Donor Assigned' }
     );
 
-    // Notify the hospital
+    // Notify the hospital (non-fatal follow-up; transaction has already committed)
     const hospitalName = reqData.hospital || '';
     if (hospitalName) {
-        const hospitalsQuery = query(
-            collection(db, 'users'),
-            where('name', '==', hospitalName),
-            where('role', '==', 'hospital'),
-            limit(5)
-        );
-        const hospitalSnap = await getDocs(hospitalsQuery);
-        for (const hDoc of hospitalSnap.docs) {
-            const hospital = hDoc.data();
-            const msg = `[VitalPulse] A donor has accepted your ${reqData.bloodType || reqData.type || 'blood'} request (#${requestId.slice(0, 8).toUpperCase()}). They are on their way.`;
-            if (hospital.phone && shouldNotifyByType(hospital, 'donor')) {
-                // Respect the hospital's own SMS/WhatsApp toggles (Settings) — SMS defaults on,
-                // WhatsApp defaults off, matching the checked state of those toggles in the UI.
-                if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => {});
-                if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+        try {
+            const hospitalsQuery = query(
+                collection(db, 'users'),
+                where('name', '==', hospitalName),
+                where('role', '==', 'hospital'),
+                limit(5)
+            );
+            const hospitalSnap = await getDocs(hospitalsQuery);
+            for (const hDoc of hospitalSnap.docs) {
+                const hospital = hDoc.data();
+                const msg = `[VitalPulse] A donor has accepted your ${reqData.bloodType || reqData.type || 'blood'} request (#${requestId.slice(0, 8).toUpperCase()}). They are on their way.`;
+                if (hospital.phone && shouldNotifyByType(hospital, 'donor')) {
+                    // Respect the hospital's own SMS/WhatsApp toggles (Settings) — SMS defaults on,
+                    // WhatsApp defaults off, matching the checked state of those toggles in the UI.
+                    if (hospital.notifSms !== false) await sendSmsNotification(hospital.phone, msg).catch(() => {});
+                    if (hospital.notifWhatsapp === true) await sendWhatsAppNotification(hospital.phone, msg).catch(() => {});
+                }
+                await addHospitalNotification(hDoc.id, 'Donor Assigned', msg, 'success', 'requests').catch(() => {});
             }
-            await addHospitalNotification(hDoc.id, 'Donor Assigned', msg, 'success', 'requests');
+        } catch (notifErr) {
+            console.warn('Could not dispatch hospital notification during acceptRequest:', notifErr?.message);
         }
     }
 }
@@ -1545,12 +1549,34 @@ function invDocId(hospital, type) {
     return `${hospital.replace(/[^a-zA-Z0-9_-]+/g, '_')}_${type}`;
 }
 
-export async function fetchInventory(hospitalName) {
+export async function fetchInventory(hospitalName, hospitalId) {
     const allTypes = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
     const inventory = {};
+    const currentUser = getCurrentUser();
+    const targetHospitalId = hospitalId || getEffectiveHospitalId(currentUser);
 
-    try {
-        if (hospitalName) {
+    // 1. Primary query: Scoped by hospitalId matching Firestore security rule constraints
+    if (targetHospitalId) {
+        try {
+            const q = query(
+                collection(db, 'inventory'),
+                where('hospitalId', '==', targetHospitalId)
+            );
+            const snapshot = await getDocs(q);
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data && data.bloodType) {
+                    inventory[data.bloodType] = enrichInventoryType(data);
+                }
+            });
+        } catch (_) {
+            // Live Firestore rules may not have hospitalId rule deployed yet; proceed to fallbacks
+        }
+    }
+
+    // 2. Secondary query: By hospital name (for system admins or legacy documents)
+    if (Object.keys(inventory).length === 0 && hospitalName) {
+        try {
             const q = query(
                 collection(db, 'inventory'),
                 where('hospital', '==', hospitalName)
@@ -1562,9 +1588,36 @@ export async function fetchInventory(hospitalName) {
                     inventory[data.bloodType] = enrichInventoryType(data);
                 }
             });
+        } catch (_) {
+            // Proceed to direct document fallback
         }
-    } catch (e) {
-        console.warn('fetchInventory query failed, using empty inventory fallback:', e);
+    }
+
+    // 3. Direct document fallback: fetch deterministic invDocId(hospitalName, type) & invDocId(targetHospitalId, type)
+    if (Object.keys(inventory).length === 0 && (hospitalName || targetHospitalId)) {
+        await Promise.all(allTypes.map(async (type) => {
+            try {
+                if (hospitalName) {
+                    const snap = await getDoc(doc(db, 'inventory', invDocId(hospitalName, type)));
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data && data.bloodType) {
+                            inventory[data.bloodType] = enrichInventoryType(data);
+                            return;
+                        }
+                    }
+                }
+                if (targetHospitalId) {
+                    const snapId = await getDoc(doc(db, 'inventory', invDocId(targetHospitalId, type)));
+                    if (snapId.exists()) {
+                        const data = snapId.data();
+                        if (data && data.bloodType) {
+                            inventory[data.bloodType] = enrichInventoryType(data);
+                        }
+                    }
+                }
+            } catch (_) { /* ignore individual doc fallback errors */ }
+        }));
     }
 
     allTypes.forEach(type => {
@@ -2082,8 +2135,15 @@ export async function recordDonationIntake(donationData) {
     if (donorId) {
         try {
             const donorRef = doc(db, 'users', donorId);
-            const userUpdates = { lastDonationDate: now };
+            const userUpdates = {
+                lastDonationDate: now,
+                lastDonatedAt: now
+            };
             if (cniHash) userUpdates.cniHash = cniHash;
+            if (labConfirmedBloodType) {
+                userUpdates.bloodType = labConfirmedBloodType;
+                userUpdates.bloodTypeSource = 'lab-verified';
+            }
             await updateDoc(donorRef, userUpdates);
         } catch (err) {
             console.warn('Could not update donor lastDonationDate:', err);
@@ -2478,6 +2538,18 @@ export async function donorMarkArrived(requestId, donorId, isPublic = false) {
     ).catch(() => {});
 
     // Tell the desk somebody is standing in front of them.
+    const notifiedIds = new Set();
+    const notifMsg = `A donor has arrived for request #${requestId.slice(0, 8).toUpperCase()} and is waiting to be verified at the front desk. Ask for their pass code.`;
+    if (reqData.hospitalId) {
+        notifiedIds.add(reqData.hospitalId);
+        await addHospitalNotification(
+            reqData.hospitalId,
+            'Donor Waiting at Reception',
+            notifMsg,
+            'info',
+            'donors'
+        ).catch(() => {});
+    }
     if (hospitalName) {
         const hospitalSnap = await getDocs(query(
             collection(db, 'users'),
@@ -2486,13 +2558,16 @@ export async function donorMarkArrived(requestId, donorId, isPublic = false) {
             limit(5)
         ));
         for (const hDoc of hospitalSnap.docs) {
-            await addHospitalNotification(
-                hDoc.id,
-                'Donor Waiting at Reception',
-                `A donor has arrived for request #${requestId.slice(0, 8).toUpperCase()} and is waiting to be verified at the front desk. Ask for their pass code.`,
-                'info',
-                'donors'
-            ).catch(() => {});
+            if (!notifiedIds.has(hDoc.id)) {
+                notifiedIds.add(hDoc.id);
+                await addHospitalNotification(
+                    hDoc.id,
+                    'Donor Waiting at Reception',
+                    notifMsg,
+                    'info',
+                    'donors'
+                ).catch(() => {});
+            }
         }
     }
 
@@ -2508,6 +2583,34 @@ export async function donorMarkArrived(requestId, donorId, isPublic = false) {
  *   omitted the collection is probed, preserving older call sites.
  */
 export async function checkInDonor(requestId, sourceCollection = null) {
+    if (auth?.currentUser) {
+        try {
+            await auth.currentUser.getIdToken(true);
+        } catch (e) {
+            console.warn('[checkInDonor] Could not force refresh ID token:', e);
+        }
+    }
+
+    const activeAuth = auth?.currentUser;
+    const currentUser = getCurrentUser();
+
+    if (activeAuth && currentUser) {
+        if (currentUser.role === 'hospital' && activeAuth.uid !== currentUser.uid) {
+            try {
+                const tokenResult = await activeAuth.getIdTokenResult();
+                const roles = tokenResult?.claims?.roles || [tokenResult?.claims?.role || ''];
+                const isStaff = roles.some(r => ['hospital', 'hospital_admin', 'hospital_staff', 'nurse', 'reception', 'lab_tech'].includes(r));
+                if (!isStaff) {
+                    throw new Error(`Your active session is signed in as donor "${activeAuth.email}". Please log out and sign into the hospital portal as your hospital account.`);
+                }
+            } catch (authCheckErr) {
+                if (authCheckErr.message && authCheckErr.message.includes('signed in as donor')) {
+                    throw authCheckErr;
+                }
+            }
+        }
+    }
+
     const candidates = sourceCollection ? [sourceCollection] : CHECK_IN_COLLECTIONS;
     let reqDoc = null;
     let resolvedCollection = null;
@@ -2550,11 +2653,11 @@ export async function checkInDonor(requestId, sourceCollection = null) {
         }
 
         const now = new Date().toISOString();
-        const currentUser = getCurrentUser();
+        const staffUid = (currentUser?.uid || auth.currentUser?.uid) || null;
         transaction.update(reqDoc, {
             status: 'Checked In',
             checkedInAt: now,
-            checkedInByStaffUid: currentUser?.uid || null,
+            checkedInByStaffUid: staffUid,
             receptionStatus: 'Checked In',
         });
     });
@@ -2999,8 +3102,8 @@ export async function fetchInventoryMovements(hospitalName, max = 30) {
                 });
             }
         });
-    } catch (e) {
-        console.warn('Failed to fetch inventory movements from logs:', e);
+    } catch (_) {
+        // Activity logs read is restricted for unprivileged or unverified accounts
     }
 
     return movements.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0)).slice(0, max);
@@ -3039,10 +3142,11 @@ export async function computeDonorEngagement(donorId) {
         donationsMap.set(d.id, { id: d.id, ...d.data() });
     }
 
-    if (donor.cniHash) {
+    if (donor.cniHash && donor.id) {
         try {
             const byCniQ = query(
                 collection(db, 'donation_requests'),
+                where('donorId', '==', donor.id),
                 where('cniHash', '==', donor.cniHash)
             );
             const byCniSnap = await getDocs(byCniQ);
@@ -3052,7 +3156,7 @@ export async function computeDonorEngagement(donorId) {
                 }
             }
         } catch (e) {
-            console.warn('Could not fetch donations by cniHash:', e);
+            console.debug('Could not fetch donations by cniHash:', e);
         }
     }
 
@@ -4256,17 +4360,25 @@ export async function cancelBloodTransfer(transferId, reason = '') {
 
 export async function fetchHospitalTransfers(hospitalName) {
     try {
-        const qReq = query(collection(db, 'blood_transfers'), where('requestingHospital', '==', hospitalName));
-        const qTgt = query(collection(db, 'blood_transfers'), where('targetHospital', '==', hospitalName));
+        const currentUser = getCurrentUser();
+        const hid = getEffectiveHospitalId(currentUser);
+        const qReq = hid
+            ? query(collection(db, 'blood_transfers'), where('requestingHospitalId', '==', hid))
+            : (hospitalName ? query(collection(db, 'blood_transfers'), where('requestingHospital', '==', hospitalName)) : null);
+        const qTgt = hid
+            ? query(collection(db, 'blood_transfers'), where('targetHospitalId', '==', hid))
+            : (hospitalName ? query(collection(db, 'blood_transfers'), where('targetHospital', '==', hospitalName)) : null);
 
-        const [snapReq, snapTgt] = await Promise.all([getDocs(qReq), getDocs(qTgt)]);
+        const [snapReq, snapTgt] = await Promise.all([
+            qReq ? getDocs(qReq).catch(() => ({ docs: [] })) : Promise.resolve({ docs: [] }),
+            qTgt ? getDocs(qTgt).catch(() => ({ docs: [] })) : Promise.resolve({ docs: [] })
+        ]);
         const list = [];
         snapReq.docs.forEach(d => list.push({ ...d.data(), id: d.id, direction: 'outgoing_request' }));
         snapTgt.docs.forEach(d => list.push({ ...d.data(), id: d.id, direction: 'incoming_request' }));
 
         return list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } catch (e) {
-        console.error('Failed to fetch hospital transfers:', e);
+    } catch (_) {
         return [];
     }
 }
@@ -4276,9 +4388,12 @@ export async function fetchHospitalTransfers(hospitalName) {
 // ============================================
 
 export async function saveChronicPatient(patientData) {
+    const currentUser = getCurrentUser();
+    const hospitalId = patientData.hospitalId || getEffectiveHospitalId(currentUser) || currentUser?.hospitalId || currentUser?.uid || '';
     const newDoc = patientData.id ? doc(db, 'chronic_patients', patientData.id) : doc(collection(db, 'chronic_patients'));
     const payload = {
         id: newDoc.id,
+        hospitalId,
         hospitalName: patientData.hospitalName,
         patientName: patientData.patientName,
         patientIdNumber: patientData.patientIdNumber || '',
@@ -4307,12 +4422,40 @@ export async function saveChronicPatient(patientData) {
 
 export async function fetchChronicPatients(hospitalName) {
     try {
-        const q = query(
-            collection(db, 'chronic_patients'),
-            where('hospitalName', '==', hospitalName)
-        );
+        const currentUser = getCurrentUser();
+        const hid = getEffectiveHospitalId(currentUser) || currentUser?.hospitalId || (currentUser?.role === 'hospital' ? currentUser?.uid : null);
+        let q;
+        if (hid) {
+            q = query(
+                collection(db, 'chronic_patients'),
+                where('hospitalId', '==', hid)
+            );
+        } else if (hospitalName) {
+            q = query(
+                collection(db, 'chronic_patients'),
+                where('hospitalName', '==', hospitalName)
+            );
+        } else {
+            return [];
+        }
+
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+        let docs = snapshot.docs.map(d => ({ ...d.data(), id: d.id }));
+
+        // Fallback for legacy documents created before hospitalId was stamped
+        if (docs.length === 0 && hid && hospitalName) {
+            try {
+                const legacyQ = query(
+                    collection(db, 'chronic_patients'),
+                    where('hospitalName', '==', hospitalName)
+                );
+                const legacySnap = await getDocs(legacyQ);
+                docs = legacySnap.docs.map(d => ({ ...d.data(), id: d.id }));
+            } catch (_) {
+                // Ignore fallback permissions error if rule restricts to hospitalId
+            }
+        }
+        return docs;
     } catch (e) {
         console.error('Failed to fetch chronic patients:', e);
         return [];

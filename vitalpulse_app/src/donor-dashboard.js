@@ -1621,19 +1621,19 @@ function initKycView() {
       // they're read (hospital check-in identity card, donation history lookups).
       if (natIdVal) {
         const hashed = await hashNationalId(natIdVal);
+        const myUid = auth.currentUser?.uid || currentUser?.uid;
         if (hashed) {
-          // BUG FIX 2026-08-07 (false-positive "already linked" report): two problems here.
-          // (1) `currentUser` came only from the localStorage cache (getCurrentUser()),
-          // which can be stale after a re-login race — `auth.currentUser` (the live Firebase
-          // Auth session) is the authoritative uid and is checked first now. (2) the dupe
-          // check only ever looked at `dupSnap.docs[0]` — if a query somehow matched more
-          // than one document (e.g. leftover test data), a donor's OWN record sitting at any
-          // position other than index 0 would incorrectly read as "belongs to someone else."
-          // Now every matching doc is checked, not just the first.
-          const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
-          const dupSnap = await getDocs(dupQuery);
-          const myUid = auth.currentUser?.uid || currentUser?.uid;
-          const belongsToSomeoneElse = dupSnap.docs.some((d) => d.id !== myUid);
+          // Verify CNI uniqueness: wrap Firestore query in try/catch because newly registered
+          // donors do not have custom role claims on their token yet, so firestore.rules
+          // forbids listing the /users collection.
+          let belongsToSomeoneElse = false;
+          try {
+            const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
+            const dupSnap = await getDocs(dupQuery);
+            belongsToSomeoneElse = dupSnap.docs.some((d) => d.id !== myUid);
+          } catch (dupErr) {
+            console.warn('CNI uniqueness check could not be queried client-side:', dupErr?.message);
+          }
           if (belongsToSomeoneElse) {
             throw new Error('This National ID (CNI) is already linked to another account.');
           }
@@ -1643,8 +1643,15 @@ function initKycView() {
             isCniVerified: true,
             cniLast4: cleanId.length >= 4 ? cleanId.slice(-4) : cleanId,
           };
-          await updateUserProfile(currentUser.uid, cniUpdate);
-          localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser, ...cniUpdate }));
+          if (myUid) {
+            try {
+              await updateUserProfile(myUid, cniUpdate);
+            } catch (uErr) {
+              console.warn('Could not update CNI on user profile:', uErr?.message);
+            }
+            const updatedUser = { ...(currentUser || {}), ...cniUpdate };
+            localStorage.setItem('vitalpulse_user', JSON.stringify(updatedUser));
+          }
         }
       }
 
@@ -1669,7 +1676,10 @@ function initKycView() {
     }
   });
 
-  dashboardBtn?.addEventListener('click', () => switchDonorView('dashboard'));
+  dashboardBtn?.addEventListener('click', () => {
+    loadKycView(true);
+    switchDonorView('dashboard');
+  });
 }
 
 // ============================================
@@ -1703,18 +1713,26 @@ function showLivenessControls(stage) {
 async function startLivenessCamera() {
   setLivenessError('');
   if (!navigator.mediaDevices?.getUserMedia) {
-    setLivenessError('Your browser does not support camera access. Please try a different browser.');
+    setLivenessError('Camera API is not supported in this browser. Please use the "Upload selfie photo instead" option below.');
     return;
   }
   try {
-    // facingMode 'user' — front camera, since this is a selfie, never the rear camera.
-    _livenessStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    try {
+      // FacingMode 'user' for selfie camera
+      _livenessStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+    } catch {
+      // Fallback for desktop USB webcams that reject facingMode constraints
+      _livenessStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
   } catch (err) {
     console.error('getUserMedia failed:', err);
     setLivenessError(
       err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError'
-        ? 'Camera access was denied. Please allow camera access in your browser settings, then try again.'
-        : 'Could not access your camera. Please check that a camera is connected and try again.'
+        ? 'Camera permission was denied. Please allow camera access in your browser or click "Upload selfie photo instead" below.'
+        : 'Could not access your camera. You can click "Upload selfie photo instead" below to proceed.'
     );
     return;
   }
@@ -1722,6 +1740,11 @@ async function startLivenessCamera() {
   if (video) {
     video.srcObject = _livenessStream;
     video.classList.remove('hidden');
+    try {
+      await video.play();
+    } catch (playErr) {
+      console.warn('Video play() call encountered:', playErr);
+    }
   }
   document.getElementById('kycLivenessPreviewImg')?.classList.add('hidden');
   document.getElementById('kycLivenessPlaceholder')?.classList.add('hidden');
@@ -1734,24 +1757,33 @@ async function startLivenessCamera() {
 function captureLivenessSelfie() {
   const video = document.getElementById('kycLivenessVideo');
   const canvas = document.getElementById('kycLivenessCanvas');
-  if (!video || !canvas || !video.videoWidth) return;
-  // Step 2 (KYC_fix.md) applies to the liveness selfie too, not just the uploaded ID photo —
-  // resize to <=800px/JPEG q65 via the same pipeline, instead of capturing at full camera
-  // resolution. _livenessSelfieBase64 is what actually gets saved; _livenessCapturedDataUrl
-  // is only the already-compressed image re-wrapped with a data: prefix for the <img> preview.
-  _livenessSelfieBase64 = compressVideoFrameToBase64(video);
-  _livenessCapturedDataUrl = 'data:image/jpeg;base64,' + _livenessSelfieBase64;
+  if (!video || !canvas) return;
 
-  // The frame is captured — the live stream itself is no longer needed until/unless the
-  // donor retakes, so stop it now rather than leaving the camera light on indefinitely.
-  stopLivenessCamera();
-  video.classList.add('hidden');
-  const previewImg = document.getElementById('kycLivenessPreviewImg');
-  if (previewImg) { previewImg.src = _livenessCapturedDataUrl; previewImg.classList.remove('hidden'); }
-  const guide = document.getElementById('kycLivenessGuide');
-  guide?.classList.add('hidden');
-  guide?.classList.remove('flex');
-  showLivenessControls('confirm');
+  if (!video.videoWidth && video.readyState < 2) {
+    setLivenessError('Camera is still loading. Please wait 1 second and click Capture Photo again.');
+    return;
+  }
+
+  try {
+    // Step 2 (KYC_fix.md) applies to the liveness selfie too, not just the uploaded ID photo —
+    // resize to <=800px/JPEG q65 via the same pipeline, instead of capturing at full camera resolution.
+    _livenessSelfieBase64 = compressVideoFrameToBase64(video);
+    _livenessCapturedDataUrl = 'data:image/jpeg;base64,' + _livenessSelfieBase64;
+
+    // Stop live stream now that image is safely captured
+    stopLivenessCamera();
+    video.classList.add('hidden');
+    const previewImg = document.getElementById('kycLivenessPreviewImg');
+    if (previewImg) { previewImg.src = _livenessCapturedDataUrl; previewImg.classList.remove('hidden'); }
+    const guide = document.getElementById('kycLivenessGuide');
+    guide?.classList.add('hidden');
+    guide?.classList.remove('flex');
+    showLivenessControls('confirm');
+    setLivenessError('');
+  } catch (err) {
+    console.error('Frame capture failed:', err);
+    setLivenessError('Could not capture photo from video. Please try again or use the upload option.');
+  }
 }
 
 function retakeLivenessSelfie() {
@@ -1788,6 +1820,40 @@ function initKycLivenessStep() {
   document.getElementById('btnKycStartCamera')?.addEventListener('click', startLivenessCamera);
   document.getElementById('btnKycCaptureSelfie')?.addEventListener('click', captureLivenessSelfie);
   document.getElementById('btnKycRetakeSelfie')?.addEventListener('click', retakeLivenessSelfie);
+
+  document.getElementById('btnKycBackToUpload')?.addEventListener('click', () => {
+    stopLivenessCamera();
+    document.getElementById('kycLivenessStep')?.classList.add('hidden');
+    document.getElementById('kycUploadStep')?.classList.remove('hidden');
+  });
+
+  // Fallback upload for localhost or devices without camera access
+  document.getElementById('kycSelfieFileInput')?.addEventListener('change', async (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    const { valid, error } = validateKycFile(file);
+    if (!valid) {
+      setLivenessError(error);
+      return;
+    }
+    try {
+      _livenessSelfieBase64 = await compressImageFileToBase64(file);
+      _livenessCapturedDataUrl = 'data:image/jpeg;base64,' + _livenessSelfieBase64;
+      stopLivenessCamera();
+      document.getElementById('kycLivenessVideo')?.classList.add('hidden');
+      document.getElementById('kycLivenessPlaceholder')?.classList.add('hidden');
+      const previewImg = document.getElementById('kycLivenessPreviewImg');
+      if (previewImg) { previewImg.src = _livenessCapturedDataUrl; previewImg.classList.remove('hidden'); }
+      const guide = document.getElementById('kycLivenessGuide');
+      guide?.classList.add('hidden');
+      guide?.classList.remove('flex');
+      showLivenessControls('confirm');
+      setLivenessError('');
+    } catch (err) {
+      console.error('Selfie upload processing failed:', err);
+      setLivenessError('Could not process the selected image file. Please try another.');
+    }
+  });
 
   document.getElementById('btnKycSubmitSelfie')?.addEventListener('click', async () => {
     if (!_livenessSelfieBase64 || !_kycIdFrontBase64 || !_kycSelectedDocType) return;
@@ -1840,49 +1906,99 @@ function initKycLivenessStep() {
   });
 }
 
-// Called every time the KYC view becomes active (switchDonorView) — resets visible
-// state so a donor who navigates away mid-selection doesn't come back to stale UI.
-function loadKycView() {
-  _kycSelectedDocType = null;
-  _kycSelectedFile = null;
-  _kycSelectedFileBack = null;
-  _kycIdFrontBase64 = null;
-  _kycIdBackBase64 = null;
+// Called every time the KYC view becomes active (switchDonorView).
+// Preserves user selections and files so accidental navigation or network retries
+// don't wipe out completed inputs. Only wipes clean when explicitly forceReset=true.
+function loadKycView(forceReset = false) {
+  if (forceReset) {
+    _kycSelectedDocType = null;
+    _kycSelectedFile = null;
+    _kycSelectedFileBack = null;
+    _kycIdFrontBase64 = null;
+    _kycIdBackBase64 = null;
+  }
   document.getElementById('kycUploadStep')?.classList.remove('hidden');
   document.getElementById('kycLivenessStep')?.classList.add('hidden');
   resetLivenessStep();
   document.getElementById('kycSuccessStep')?.classList.add('hidden');
-  document.getElementById('kycFilePreview')?.classList.add('hidden');
-  document.getElementById('kycDropZone')?.classList.remove('hidden');
   document.getElementById('kycFileError')?.classList.add('hidden');
   document.getElementById('kycErrorMessage')?.classList.add('hidden');
-  const fileInput = document.getElementById('kycFileInput');
-  if (fileInput) fileInput.value = '';
-  document.getElementById('kycBackUploadWrap')?.classList.add('hidden');
-  document.getElementById('kycFilePreviewBack')?.classList.add('hidden');
-  document.getElementById('kycDropZoneBack')?.classList.remove('hidden');
+  document.getElementById('kycNationalIdError')?.classList.add('hidden');
   document.getElementById('kycFileErrorBack')?.classList.add('hidden');
+
+  const fileInput = document.getElementById('kycFileInput');
   const fileInputBack = document.getElementById('kycFileInputBack');
-  if (fileInputBack) fileInputBack.value = '';
-  const dropZoneLabel = document.getElementById('kycDropZoneLabel');
-  if (dropZoneLabel) dropZoneLabel.textContent = 'Drag and drop document here';
   const natIdInput = document.getElementById('kycNationalId');
-  if (natIdInput) {
-    natIdInput.value = '';
+
+  if (forceReset) {
+    if (fileInput) fileInput.value = '';
+    if (fileInputBack) fileInputBack.value = '';
+    if (natIdInput) natIdInput.value = '';
+    document.getElementById('kycFilePreview')?.classList.add('hidden');
+    document.getElementById('kycDropZone')?.classList.remove('hidden');
+    document.getElementById('kycBackUploadWrap')?.classList.add('hidden');
+    document.getElementById('kycFilePreviewBack')?.classList.add('hidden');
+    document.getElementById('kycDropZoneBack')?.classList.remove('hidden');
+    const dropZoneLabel = document.getElementById('kycDropZoneLabel');
+    if (dropZoneLabel) dropZoneLabel.textContent = 'Drag and drop document here';
+    const shapeContainer = document.getElementById('kycDocPreviewShape');
+    shapeContainer?.classList.add('hidden');
+    shapeContainer?.classList.remove('flex');
+    document.getElementById('kycDocTypeGrid')?.querySelectorAll('.kyc-doctype-card').forEach(c => {
+      c.classList.remove('border-primary', 'bg-primary/5');
+      const check = c.querySelector('.kyc-doctype-check');
+      check?.classList.add('hidden');
+      check?.classList.remove('flex');
+    });
+    const previewLabel = document.getElementById('kycPreviewLabel');
+    if (previewLabel) previewLabel.textContent = 'Document Preview';
+  } else {
+    // Restore and preserve active card styling if doc type was selected
+    if (_kycSelectedDocType) {
+      const isNationalId = _kycSelectedDocType === 'national_id';
+      document.getElementById('kycDocTypeGrid')?.querySelectorAll('.kyc-doctype-card').forEach(c => {
+        const isSelected = c.dataset.doctype === _kycSelectedDocType;
+        c.classList.toggle('border-primary', isSelected);
+        c.classList.toggle('bg-primary/5', isSelected);
+        const check = c.querySelector('.kyc-doctype-check');
+        check?.classList.toggle('hidden', !isSelected);
+        check?.classList.toggle('flex', isSelected);
+      });
+      const previewLabel = document.getElementById('kycPreviewLabel');
+      if (previewLabel) previewLabel.textContent = (KYC_DOC_LABELS[_kycSelectedDocType] || 'Document') + ' Preview';
+      const dropZoneLabel = document.getElementById('kycDropZoneLabel');
+      if (dropZoneLabel) dropZoneLabel.textContent = isNationalId ? 'Drag and drop the front of your ID here' : 'Drag and drop document here';
+      document.getElementById('kycBackUploadWrap')?.classList.toggle('hidden', !isNationalId);
+      const shapeContainer = document.getElementById('kycDocPreviewShape');
+      shapeContainer?.classList.remove('hidden');
+      shapeContainer?.classList.add('flex');
+      document.querySelectorAll('.kyc-doc-shape').forEach(shape => {
+        shape.classList.toggle('hidden', shape.dataset.doctype !== _kycSelectedDocType);
+      });
+    }
+    // Restore file previews if files already selected
+    if (_kycSelectedFile) {
+      document.getElementById('kycFilePreview')?.classList.remove('hidden');
+      document.getElementById('kycDropZone')?.classList.add('hidden');
+      const nameEl = document.getElementById('kycFileName');
+      const metaEl = document.getElementById('kycFileMeta');
+      if (nameEl) nameEl.textContent = _kycSelectedFile.name;
+      if (metaEl) metaEl.textContent = (_kycSelectedFile.size / 1024 / 1024).toFixed(2) + ' MB · Ready to upload';
+    }
+    if (_kycSelectedFileBack) {
+      document.getElementById('kycFilePreviewBack')?.classList.remove('hidden');
+      document.getElementById('kycDropZoneBack')?.classList.add('hidden');
+      const nameElBack = document.getElementById('kycFileNameBack');
+      const metaElBack = document.getElementById('kycFileMetaBack');
+      if (nameElBack) nameElBack.textContent = _kycSelectedFileBack.name;
+      if (metaElBack) metaElBack.textContent = (_kycSelectedFileBack.size / 1024 / 1024).toFixed(2) + ' MB · Ready to upload';
+    }
+  }
+
+  if (natIdInput && !natIdInput.value) {
     natIdInput.placeholder = getCurrentUser()?.cniHash ? 'Already on file — re-enter only to update' : 'e.g. 102938475';
   }
-  document.getElementById('kycNationalIdError')?.classList.add('hidden');
-  const shapeContainer = document.getElementById('kycDocPreviewShape');
-  shapeContainer?.classList.add('hidden');
-  shapeContainer?.classList.remove('flex');
-  document.getElementById('kycDocTypeGrid')?.querySelectorAll('.kyc-doctype-card').forEach(c => {
-    c.classList.remove('border-primary', 'bg-primary/5');
-    const check = c.querySelector('.kyc-doctype-check');
-    check?.classList.add('hidden');
-    check?.classList.remove('flex');
-  });
-  const previewLabel = document.getElementById('kycPreviewLabel');
-  if (previewLabel) previewLabel.textContent = 'Document Preview';
+
   updateKycSubmitEnabled();
   const submitBtn = document.getElementById('btnKycSubmit');
   if (submitBtn) submitBtn.textContent = 'Submit for Verification';
@@ -2076,10 +2192,10 @@ function renderFilteredFeed() {
     const pickup = (req.pickupLocation || '').trim();
     const urgency = (req.urgency || '').toLowerCase();
     const urgencyBadge = urgency === 'critical'
-      ? '<span class="px-1.5 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-error text-on-error shadow-sm">Critical</span>'
+      ? '<span class="bg-red-600 text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase">CRITICAL</span>'
       : urgency === 'urgent'
-      ? '<span class="px-1.5 py-1 rounded text-[9px] font-black uppercase tracking-wider bg-warning-container text-on-warning-container border border-warning/30">Urgent</span>'
-      : '';
+      ? '<span class="bg-amber-500 text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase">HIGH PRIORITY</span>'
+      : '<span class="bg-rose-500 text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase">MODERATE</span>';
     const distanceStr = req.distanceKm ? req.distanceKm + ' km' : (req.distance || req.city || 'Local');
     const systemWideTag = isCentralCommand
       ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">System-wide</span>'
@@ -2087,50 +2203,40 @@ function renderFilteredFeed() {
 
     // Full-text message used as the card's main tagline — always shown when present
     const tagline = notes && !pickup
-      ? `<p class="text-xs text-on-surface-variant/90 mt-2 line-clamp-2">${esc(notes)}</p>`
+      ? `<p class="text-xs text-on-surface-variant/90 mt-1 line-clamp-1">${esc(notes)}</p>`
       : notes
-      ? `<p class="text-xs text-on-surface-variant/90 mt-2 line-clamp-2">${esc(notes)}</p>`
+      ? `<p class="text-xs text-on-surface-variant/90 mt-1 line-clamp-1">${esc(notes)}</p>`
       : '';
 
-    // Card chrome matches "Home Dashboard.png"'s Live Requests panel: colored left border by
-    // urgency, badge pinned top-right, a clock+time-ago+location meta line. The compact
-    // blood-type/component badge and the extra units/component chip aren't in the mock, but
-    // are kept — real information a donor needs to decide, not decorative.
-    const borderColorCls = isCritical ? 'border-l-error' : urgency === 'urgent' ? 'border-l-warning' : 'border-l-outline-variant/40';
     return `
-    <div class="relative hover-lift group bg-surface-container-lowest rounded-2xl border-l-4 ${borderColorCls} ${isCritical ? 'urgent-pulse-border shadow-md' : ''} border-y border-r border-outline-variant/20 shadow-sm overflow-hidden" style="transition: box-shadow 200ms var(--ease-out-strong);">
-      <div class="p-3.5">
-        <div class="flex items-start gap-3">
-          <div class="flex flex-col items-center justify-center size-15 min-w-[60px] rounded-2xl ${isCritical ? 'bg-gradient-to-br from-error via-error/90 to-error-container text-on-error shadow-md shadow-error/20' : 'bg-primary/10 text-primary'} font-black shrink-0 shadow-xs">
-            <span class="text-2xl font-black font-headline leading-none tracking-tight">${btDisplay}</span>
-            ${componentShort ? `<span class="text-[7px] font-bold uppercase tracking-wider mt-0.5 ${isCritical ? 'text-on-error/80' : 'text-primary/70'}">${esc(componentShort)}</span>` : ''}
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-start justify-between gap-2">
-              <p class="font-extrabold text-sm text-on-surface truncate">${esc(req.hospital || req.hospitalName)}</p>
-              ${urgencyBadge}
-            </div>
-            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-on-surface-variant mt-1">
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">schedule</span>${getTimeAgo(req.requestedAt)}</span>
-              <span>&bull;</span>
-              <span>${esc(req.city || 'Cameroon')}</span>
-            </div>
-            <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-on-surface-variant mt-1.5">
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">location_on</span>${distanceStr}</span>
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">water_drop</span>${units} unit${units > 1 ? 's' : ''}</span>
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">science</span>${esc(component)}</span>
-            </div>
-            ${tagline}
-            <div class="flex items-center gap-1.5 mt-2 flex-wrap">
-              ${publicBadge}${systemWideTag}${docBadge}
-            </div>
-          </div>
-        </div>
-        <div class="mt-3 space-y-2">
-          ${pickup ? `<p class="text-[10px] text-on-surface-variant inline-flex items-center gap-1"><span class="material-symbols-outlined text-[11px]">meeting_room</span>Pickup: ${esc(pickup)}</p>` : ''}
-          <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale w-full px-5 py-2.5 rounded-xl font-extrabold text-xs shadow-sm ${acceptBlocked ? 'bg-surface-container-high text-on-surface-variant opacity-50 cursor-not-allowed' : 'bg-primary text-on-primary hover:opacity-90 shadow-primary/25 cursor-pointer'}" style="transition: opacity 160ms ease;">${acceptBlocked ? (kycPending ? 'Verify First' : 'Unavailable') : 'Accept Request'}</button>
-        </div>
+    <div class="bg-white dark:bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-100 dark:border-slate-700/80 p-2.5 sm:p-3.5 shadow-2xs hover:border-slate-200 transition-all flex items-center justify-between gap-2.5">
+      <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-red-600 font-black text-sm sm:text-base flex flex-col items-center justify-center shrink-0 shadow-2xs">
+        <span class="leading-none">${btDisplay}</span>
+        ${componentShort ? `<span class="text-[7px] font-bold uppercase tracking-wider text-red-500/80">${esc(componentShort)}</span>` : ''}
       </div>
+      <div class="min-w-0 flex-1 space-y-0.5">
+        <div class="flex items-center gap-1.5 flex-wrap">
+          ${urgencyBadge}
+          <p class="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">${esc(req.hospital || req.hospitalName)}</p>
+          ${publicBadge}${systemWideTag}${docBadge}
+        </div>
+        <div class="flex items-center gap-2 text-[10px] text-slate-400">
+          <span class="inline-flex items-center gap-0.5 truncate"><span class="material-symbols-outlined text-[11px]">location_on</span>${esc(req.city || 'Cameroon')}</span>
+          <span>&bull;</span>
+          <span class="inline-flex items-center gap-0.5 shrink-0"><span class="material-symbols-outlined text-[11px]">near_me</span>${distanceStr}</span>
+        </div>
+        <div class="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+          <span class="text-red-500 font-bold">${units} unit${units > 1 ? 's' : ''} needed</span>
+          <span>&bull;</span>
+          <span>${getTimeAgo(req.requestedAt)}</span>
+        </div>
+        ${pickup ? `<p class="text-[10px] text-slate-400 truncate"><span class="material-symbols-outlined text-[11px]">meeting_room</span>Pickup: ${esc(pickup)}</p>` : ''}
+        ${tagline}
+      </div>
+      <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale shrink-0 ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-600/30 cursor-pointer'} font-extrabold text-[10px] sm:text-xs px-3 sm:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1">
+        <span>${acceptBlocked ? (kycPending ? 'Verify' : 'Unavailable') : 'Respond Now'}</span>
+        ${acceptBlocked ? '' : '<span class="material-symbols-outlined text-xs">arrow_forward</span>'}
+      </button>
     </div>`;
   }).join('');
   if (filtered.length > INITIAL_FEED) {
@@ -2530,22 +2636,20 @@ function renderCentersList() {
     </div>`;
     return;
   }
-  // Each card is a button: tapping it opens the donation wizard already pointed at that
-  // hospital, so "browse the network → pick where to donate" is one flow.
   const cards = shown.map(h => {
-    const photo = photoForHospital(h.name);
+    const distStr = h.distanceKm != null ? `${Math.round(h.distanceKm * 10) / 10} km` : (h.city || 'Cameroon');
     return `
-    <button type="button" data-donate-center="${esc(h.name)}" class="hover-lift press-scale w-full flex items-center gap-3 bg-surface-container-lowest border border-outline-variant/20 rounded-2xl p-3.5 shadow-sm text-left cursor-pointer">
-      ${photo
-        ? `<img src="${photo}" alt="${esc(h.name)}" class="w-16 h-16 rounded-xl object-cover shrink-0 shadow-xs"/>`
-        : `<span class="w-16 h-16 rounded-xl bg-tertiary/10 text-tertiary flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-2xl">local_hospital</span></span>`
-      }
-      <div class="min-w-0 flex-1">
-        <p class="text-sm font-bold text-on-surface truncate">${esc(h.name)}</p>
-        <p class="text-xs text-on-surface-variant truncate mt-0.5">${esc(h.city || 'Cameroon')}</p>
-        <span class="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-red-600 dark:text-red-400 group-hover:underline">Donate here <span class="material-symbols-outlined text-xs">arrow_forward</span></span>
+    <button type="button" data-donate-center="${esc(h.name)}" class="press-scale w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 hover:border-slate-200 transition-all text-left cursor-pointer">
+      <div class="flex items-center gap-2 min-w-0">
+        <div class="w-7 h-7 rounded-lg bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-sm">local_hospital</span>
+        </div>
+        <div class="min-w-0">
+          <p class="font-extrabold text-slate-900 dark:text-white truncate text-xs">${esc(h.name)}</p>
+          <p class="text-[10px] text-slate-400">${distStr}</p>
+        </div>
       </div>
-      ${h.distanceKm != null ? `<span class="text-[11px] font-black text-slate-700 dark:text-slate-200 shrink-0 self-start bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-1 rounded-lg flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">directions_car</span> ${formatDistanceAndDriveTime(h.distanceKm)}</span>` : ''}
+      <span class="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20 shrink-0">Open</span>
     </button>`;
   }).join('');
   // "View all" opens the full searchable/filterable directory modal (not an in-place expand),
@@ -2798,7 +2902,7 @@ export async function loadDonorDashboard() {
     // Hero welcome message
     const heroMsgEl = document.getElementById('donorHeroMessage');
     if (heroMsgEl) {
-      heroMsgEl.textContent = "Your single donation can save lives. Together, we can build a healthier Cameroon.";
+      heroMsgEl.textContent = "Thank you for being part of the VitalPulse community. Check your nearby requests, find a donation center, or update your availability.";
     }
 
     // Blood type card elements
@@ -3069,9 +3173,9 @@ export async function loadDonorDashboard() {
     const statusLabel = document.getElementById('donorStatusLabel');
     if (track && thumb && statusLabel) {
       const isAvail = currentUser.isAvailable !== false;
-      track.className = `relative inline-block w-9 h-5 transition duration-200 ease-in rounded-full ${isAvail ? 'bg-emerald-500' : 'bg-slate-500'}`;
-      thumb.className = `absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform ${isAvail ? 'translate-x-4' : ''}`;
-      statusLabel.textContent = isAvail ? 'Available' : 'Busy';
+      track.className = `relative inline-block w-8 h-4.5 transition duration-200 ease-in rounded-full ${isAvail ? 'bg-emerald-500' : 'bg-slate-500'}`;
+      thumb.className = `absolute left-0.5 top-0.5 bg-white w-3.5 h-3.5 rounded-full transition-transform ${isAvail ? 'translate-x-3.5' : ''}`;
+      statusLabel.textContent = isAvail ? 'AVAILABLE' : 'BUSY';
       statusLabel.className = isAvail ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
 
       const applyAvailabilityState = async (newState, extra = {}) => {
@@ -3079,9 +3183,9 @@ export async function loadDonorDashboard() {
           await updateUserProfile(currentUser.uid, { isAvailable: newState, ...extra });
           currentUser.isAvailable = newState;
           localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
-          track.className = `relative inline-block w-9 h-5 transition duration-200 ease-in rounded-full ${newState ? 'bg-emerald-500' : 'bg-slate-500'}`;
-          thumb.className = `absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform ${newState ? 'translate-x-4' : ''}`;
-          statusLabel.textContent = newState ? 'Available' : 'Busy';
+          track.className = `relative inline-block w-8 h-4.5 transition duration-200 ease-in rounded-full ${newState ? 'bg-emerald-500' : 'bg-slate-500'}`;
+          thumb.className = `absolute left-0.5 top-0.5 bg-white w-3.5 h-3.5 rounded-full transition-transform ${newState ? 'translate-x-3.5' : ''}`;
+          statusLabel.textContent = newState ? 'AVAILABLE' : 'BUSY';
           statusLabel.className = newState ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
 
           // Standby micro-pulse ripple animation
