@@ -141,6 +141,7 @@ service cloud.firestore {
       return signedIn()
              && (request.auth.token.get('roles', []).size() > 0
                  || request.auth.token.get('role', '') != ''
+                 || getUserField('role', '') == 'donor'
                  || isSystemAdmin()
                  || isHospitalRole());
     }
@@ -261,10 +262,10 @@ service cloud.firestore {
       allow update: if isSystemAdmin()
                     && unchangedExcept(['isVerified', 'isSuspended', 'rejected', 'rejectedAt', 'isActive', 'verifiedAt', 'statusChangedAt']);
 
-      // Clinical intake: Hospital staff recording a donation can update donor deferral timestamp and lab-confirmed blood type
+      // Clinical intake: Hospital staff recording a donation can update donor deferral timestamp, lab-confirmed blood type, and engagement metrics
       allow update: if isHospitalRole()
                     && ('role' in resource.data && resource.data.role == 'donor')
-                    && unchangedExcept(['lastDonationDate', 'lastDonatedAt', 'cniHash', 'bloodType', 'bloodTypeSource']);
+                    && unchangedExcept(['lastDonationDate', 'lastDonatedAt', 'cniHash', 'bloodType', 'bloodTypeSource', 'points', 'tier', 'donationCount', 'badges', 'updatedAt']);
 
       allow delete: if isSystemAdmin();
     }
@@ -540,7 +541,7 @@ service cloud.firestore {
                     || (isDonor() && request.resource.data.donorId == request.auth.uid);
       allow update: if isDonor() && resource.data.donorId == request.auth.uid
                     && unchangedExcept(['read']);
-      allow delete: if false;
+      allow delete: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
     }
 
     // ---------- Hospital notifications ----------
@@ -681,7 +682,7 @@ service cloud.firestore {
     // ---------- Donor engagement records (community features) ----------
     match /donor_engagement/{engagementId} {
       allow get, list, create, update: if hasRole();
-      allow delete: if false;
+      allow delete: if isSystemAdmin() || (isDonor() && resource.data.donorId == request.auth.uid);
     }
 
     // ---------- Phase 3: hemovigilance / reactions / forecasts / articles / certificates ----------
@@ -705,7 +706,9 @@ service cloud.firestore {
     match /myth_articles/{articleId} {
       allow get, list: if hasRole();
       allow create: if isSystemAdmin() || isHospitalRole();
-      allow update: if isSystemAdmin() || (isHospitalRole() && unchangedExcept(['status', 'updatedAt']));
+      allow update: if isSystemAdmin()
+                    || (isHospitalRole() && unchangedExcept(['status', 'updatedAt', 'likes']))
+                    || ((hasRole() || isDonor()) && unchangedExcept(['likes']));
       allow delete: if isSystemAdmin();
     }
     match /life_saver_certificates/{certId} {
@@ -715,6 +718,19 @@ service cloud.firestore {
     }
     match /care_reminders/{reminderId} {
       allow get, list, create, update, delete: if hasRole();
+    }
+    // ---------- Donor Pulse Points Reward Vouchers ----------
+    match /vouchers/{voucherId} {
+      allow get, list: if isSystemAdmin() || isHospitalRole()
+                       || (isDonor() && resource.data.donorId == request.auth.uid);
+      allow create: if isDonor()
+                    && request.resource.data.donorId == request.auth.uid
+                    && request.resource.data.status == 'active'
+                    && request.resource.data.costPoints is int
+                    && request.resource.data.costPoints > 0;
+      allow update: if isSystemAdmin()
+                    || (isHospitalRole() && unchangedExcept(['status', 'hospitalUsedAt', 'verifiedByHospital', 'verifiedByStaffUid', 'updatedAt']));
+      allow delete: if isSystemAdmin();
     }
     // ---------- Patient Transfusion Monitoring (Bedside 2-Person Check & Vitals) ----------
     match /patient_transfusions/{transfusionId} {

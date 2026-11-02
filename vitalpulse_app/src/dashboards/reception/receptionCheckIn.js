@@ -1,10 +1,11 @@
 import { doc, getDoc, updateDoc, collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase.js';
-import { logActivity, findRequestByCheckInToken, checkInDonor, getCheckInJourneyStage } from '../../db.js';
+import { logActivity, findRequestByCheckInToken, checkInDonor, getCheckInJourneyStage, findVoucherByCode, verifyAndRedeemDonorVoucher } from '../../db.js';
 import { getCurrentUser, getEffectiveHospitalName } from '../../auth.js';
 
 /**
- * verifyAndCheckInToken - Handles donor passcode (VP-XXXX) search and front-desk check-in.
+ * verifyAndCheckInToken - Handles donor passcode (VP-XXXX) search, front-desk check-in,
+ * and Pulse Points reward voucher (VP-VOUCHER-XXXXXX) verification.
  */
 export async function verifyAndCheckInToken(tokenInput, hospitalName = '') {
   const code = (tokenInput || '').trim().toUpperCase();
@@ -14,6 +15,27 @@ export async function verifyAndCheckInToken(tokenInput, hospitalName = '') {
 
   if (!hospitalName) {
     throw new Error('Your account is not linked to a hospital yet, so donors cannot be checked in here.');
+  }
+
+  // 0. Check if the code is a Pulse Points Reward Voucher (VP-VOUCHER-XXXXXX)
+  if (code.startsWith('VP-VOUCHER-')) {
+    const voucher = await findVoucherByCode(code);
+    if (!voucher) {
+      throw new Error(`No active reward voucher found for code "${code}".`);
+    }
+    const currentUser = getCurrentUser();
+    const redeemed = await verifyAndRedeemDonorVoucher(voucher.id, hospitalName, currentUser?.uid || null);
+    return {
+      success: true,
+      isVoucher: true,
+      voucherId: redeemed.id,
+      donorId: redeemed.donorId,
+      donorName: redeemed.donorName || 'Verified Donor',
+      rewardTitle: redeemed.rewardTitle || redeemed.rewardKey,
+      code: redeemed.voucherCode,
+      bloodType: redeemed.donorBloodType || 'Unknown',
+      checkedInAt: redeemed.hospitalUsedAt
+    };
   }
 
   // 1. Resolve the pass code across requests / public_requests / donation_requests,

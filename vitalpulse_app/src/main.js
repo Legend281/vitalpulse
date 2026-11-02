@@ -112,7 +112,7 @@ import { doc, getDoc, updateDoc, onSnapshot, collection, serverTimestamp } from 
 import { db } from './firebase';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall } from './db';
+import { REQUEST_ACTIVE_STATUSES, REQUEST_CLOSED_STATUSES, fetchActiveRequests, fetchPendingHospitals, fetchPendingDonorKycReviews, verifyHospital, rejectHospital, fetchClinicsOnlineCount, fetchRecentLogs, createEmergencyRequest, logActivity, logAuditTrail, fetchAllHospitals, fetchHospitalById, fetchAllDonors, fetchDonorById, suspendDonor, reactivateDonor, deleteUserAccount, deactivateHospital, reactivateHospital, fetchAllSystemRequests, fetchInventory, fetchGlobalInventory, updateInventoryStock, setInventoryThreshold, getBloodTypeDisplayInfo, getCompatibleBloodTypes, getCompatibleDonorTypes, fetchDonationRequestsForDonor, fetchAllDonationRequests, approveDonationRequest, rejectDonationRequest, completeDonationRequest, cancelDonationRequest, hospitalCancelBooking, cancelHospitalRequest, removeIncomingDonor, fetchSystemSettings, updateSystemSettings, updateUserProfile, fetchAllCampaigns, createCampaign, updateCampaign, deleteCampaign, fetchHospitalRequests, fetchIncomingDonors, completeDonorArrival, subscribeToRequests, issueBloodToPatient, deductInventoryStock, fetchInventoryMovements, computeDonorEngagement, sendSmsNotification, sendWhatsAppNotification, fetchNotificationLog, joinCampaign, leaveCampaign, fetchHospitalCampaigns, acceptRequest as acceptRequestDb, fetchHospitalNotifications, fetchUnreadHospitalNotificationCount, markHospitalNotificationRead, markAllHospitalNotificationsRead, subscribeToHospitalNotifications, submitHemovigilanceReport, fetchHemovigilanceReports, updateHemovigilanceReport, saveDemandForecast, fetchDemandForecasts, computeDemandForecast, fetchMythArticles, createMythArticle, likeMythArticle, generateLifeSaverCertificate, fetchHospitalIssuedCertificates, saveChronicPatient, fetchChronicPatients, deleteChronicPatient, checkNetworkInventory, createBloodTransferRequest, dispatchBloodTransfer, receiveBloodTransfer, cancelBloodTransfer, fetchHospitalTransfers, fetchPublicRequests, approvePublicRequest, flagPublicRequest, resolvePublicRequest, fetchShadowHospitals, updateShadowHospitalContact, sendPartnerInvitation, submitDonorReaction, fetchDonorReactions, updateDonorReaction, fetchAllDonorReactions, fetchAllHemovigilanceReports, getCoordinatesForLocation, calculateDistanceKm, resolveLabTest, fetchPendingLabTests, fetchDonationRequestsForHospital, fetchCampaignInterestedDonors, adminProxyCheckInDonor, clearAllActivityLogs, findRequestByCheckInToken, getCheckInJourneyStage, checkInDonor, clearHospitalActivityLogs, subscribeToAdminNotifications, markAdminNotificationRead, markAllAdminNotificationsRead, clearAllAdminNotifications, fetchAllResolvedRequests, fetchHospitalStaff, createStaffAccountCall, verifyStaffPinCall, findVoucherByCode, verifyAndRedeemDonorVoucher } from './db';
 import { initDonorNavigation, initDonorDonationFlow, loadDonorDashboard, switchDonorView, loadDonorDonations, esc } from './donor-dashboard.js';
 import { injectLangToggle, getLang } from './i18n';
 import { shouldShowOnboarding, startOnboarding, markOnboardingComplete } from './onboarding';
@@ -988,13 +988,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     const m = document.getElementById('emailVerificationModal');
                     if (m) m.classList.add('hidden');
                     sessionStorage.setItem('vp_verify_modal_dismissed', '1');
+                    try {
+                        localStorage.setItem('vp_verify_modal_dismissed_until', String(Date.now() + 24 * 60 * 60 * 1000));
+                    } catch (_) {}
                 };
                 window.handleModalResendVerification = async () => {
                     const btn = document.getElementById('btnModalResendEmail');
                     if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
                     try {
                         await sendEmailVerificationLink();
-                        showToast('Verification email sent! Check your inbox.');
+                        showToast('Verification email sent! Check your inbox (and spam folder).');
                     } catch (e) {
                         showToast(e.message || 'Failed to send verification email.', 'error');
                     } finally {
@@ -1002,18 +1005,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 };
                 window.handleModalCheckVerification = async () => {
+                    const btn = document.getElementById('btnModalCheckVerify');
+                    if (btn) { btn.disabled = true; btn.classList.add('opacity-50'); }
                     try {
                         const verified = await isEmailVerified();
                         if (verified) {
-                            showToast('Your email is verified! Welcome.');
+                            showToast('🎉 Your email is verified! Welcome to VitalPulse.');
                             window.closeEmailVerificationModal();
                             const pill = document.getElementById('donorEmailAlertPill');
                             if (pill) pill.classList.add('hidden');
                         } else {
-                            showToast('Email not verified yet. Please click the link in your inbox.', 'warning');
+                            showToast('Email not confirmed yet. Please click the link sent to your inbox.', 'warning');
                         }
                     } catch (e) {
                         showToast('Could not check verification status.', 'error');
+                    } finally {
+                        if (btn) { btn.disabled = false; btn.classList.remove('opacity-50'); }
                     }
                 };
 
@@ -1029,25 +1036,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 (async () => {
                     try {
+                        const urlParams = new URLSearchParams(window.location.search);
+                        const redirectedFromVerify = urlParams.get('emailVerified') === 'true';
+                        if (redirectedFromVerify) {
+                            try {
+                                const cleanUrl = window.location.pathname + window.location.hash;
+                                window.history.replaceState({}, document.title, cleanUrl);
+                            } catch (_) {}
+                        }
+
                         const verified = await isEmailVerified();
                         const pill = document.getElementById('donorEmailAlertPill');
                         const emailEl = document.getElementById('modalUserEmail');
                         const user = getCurrentUser();
                         if (emailEl && user?.email) emailEl.textContent = user.email;
 
+                        if (redirectedFromVerify && verified) {
+                            showToast('🎉 Email successfully verified! Welcome to VitalPulse.', 'success');
+                            if (pill) pill.classList.add('hidden');
+                            window.closeEmailVerificationModal();
+                            return;
+                        }
+
                         if (!verified) {
                             if (pill) {
                                 pill.classList.remove('hidden');
                                 pill.classList.add('inline-flex');
                             }
-                            // Auto popup modal on entry if not verified and not dismissed in this session
-                            if (!sessionStorage.getItem('vp_verify_modal_dismissed')) {
+                            const dismissedSession = sessionStorage.getItem('vp_verify_modal_dismissed');
+                            const dismissedUntil = Number(localStorage.getItem('vp_verify_modal_dismissed_until') || 0);
+                            const isDismissed = dismissedSession || (dismissedUntil && Date.now() < dismissedUntil);
+                            if (!isDismissed) {
                                 setTimeout(() => {
                                     window.openEmailVerificationModal();
                                 }, 650);
                             }
                         } else {
                             if (pill) pill.classList.add('hidden');
+                            const m = document.getElementById('emailVerificationModal');
+                            if (m) m.classList.add('hidden');
                         }
                     } catch (e) {
                         console.warn('Email verification check failed:', e);
@@ -2953,6 +2980,37 @@ function initDonorCheckInTokenLookup() {
             btn.disabled = true;
 
             try {
+                // Support Pulse Points Reward Vouchers (VP-VOUCHER-XXXXXX) at Hospital Reception / Lab Desk
+                if (token.toUpperCase().startsWith('VP-VOUCHER-')) {
+                    const voucher = await findVoucherByCode(token);
+                    if (!voucher) {
+                        await window.vpAlert({ type: 'error', title: 'Voucher not found', message: `No Pulse Points reward voucher found with code "${esc(token)}".` });
+                        return;
+                    }
+                    if (voucher.status === 'used') {
+                        await window.vpAlert({ type: 'warning', title: 'Voucher already redeemed', message: `This voucher (${esc(voucher.voucherCode)}) was already fulfilled at ${esc(voucher.verifiedByHospital || 'a partner hospital')}.` });
+                        return;
+                    }
+                    const confirmVoucher = await window.vpConfirm(`
+                        <div style="text-align:left">
+                            <p style="font-size:13px;font-weight:700;margin-bottom:12px;color:#1e293b">Verify Donor Reward Voucher</p>
+                            <table style="width:100%;font-size:12px;border-collapse:collapse">
+                                <tr><td style="padding:4px 8px;color:#64748b">Voucher Code</td><td style="padding:4px 8px;font-weight:700;font-family:monospace;color:#1e293b">${esc(voucher.voucherCode)}</td></tr>
+                                <tr><td style="padding:4px 8px;color:#64748b">Reward Benefit</td><td style="padding:4px 8px;font-weight:700;color:#d97706">${esc(voucher.rewardTitle || voucher.rewardKey)}</td></tr>
+                                <tr><td style="padding:4px 8px;color:#64748b">Donor Name</td><td style="padding:4px 8px;font-weight:700;color:#1e293b">${esc(voucher.donorName || 'Verified Donor')}</td></tr>
+                                <tr><td style="padding:4px 8px;color:#64748b">Blood Type</td><td style="padding:4px 8px;font-weight:700;color:#dc2626">${esc(voucher.donorBloodType || '—')}</td></tr>
+                                <tr><td style="padding:4px 8px;color:#64748b">Points Value</td><td style="padding:4px 8px;font-weight:700;color:#059669">${esc(String(voucher.costPoints || 0))} pts</td></tr>
+                            </table>
+                        </div>
+                    `, { title: 'Reward Voucher Verification', confirmText: '✓ Verify & Fulfill Voucher', danger: false });
+                    if (!confirmVoucher) return;
+
+                    await verifyAndRedeemDonorVoucher(voucher.id, hospitalName, getCurrentUser()?.uid || null);
+                    showToast(`🎁 Voucher ${voucher.voucherCode} verified and fulfilled!`);
+                    input.value = '';
+                    return;
+                }
+
                 // One lookup across requests / public_requests / donation_requests,
                 // scoped to this hospital and expiry-checked inside the helper.
                 // Scheduled bookings (donation_requests) are now reachable here —
@@ -3752,16 +3810,16 @@ export function showToast(message, type = 'info') {
     }
 
     if (type === 'error') {
-        toast.className = 'fixed bottom-6 right-6 z-50 bg-red-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0';
+        toast.className = 'fixed bottom-6 right-6 z-50 bg-red-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0 pointer-events-auto';
     } else if (type === 'warning') {
-        toast.className = 'fixed bottom-6 right-6 z-50 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0';
+        toast.className = 'fixed bottom-6 right-6 z-50 bg-amber-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0 pointer-events-auto';
     } else {
-        toast.className = 'fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0';
+        toast.className = 'fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-3 transform transition-all duration-500 opacity-100 translate-y-0 pointer-events-auto';
     }
 
     setTimeout(() => {
-        toast.classList.remove('opacity-100', 'translate-y-0');
-        toast.classList.add('opacity-0', 'translate-y-20');
+        toast.classList.remove('opacity-100', 'translate-y-0', 'pointer-events-auto');
+        toast.classList.add('opacity-0', 'translate-y-20', 'pointer-events-none');
     }, 3500);
 }
 window.showToast = showToast;
@@ -4698,6 +4756,15 @@ function initShadowHospitalIntake() {
         btn.disabled = true;
 
         try {
+            if (token.toUpperCase().startsWith('VP-VOUCHER-')) {
+                const voucher = await findVoucherByCode(token);
+                if (!voucher) { window.vpNotify('No reward voucher found with that code.'); return; }
+                if (!await window.vpConfirm(`Verify and fulfill reward voucher "${voucher.rewardTitle || voucher.rewardKey}" (${voucher.voucherCode}) for ${voucher.donorName || 'Donor'}?`)) return;
+                await verifyAndRedeemDonorVoucher(voucher.id, 'National Admin Desk', getCurrentUser()?.uid || null);
+                showToast(`🎁 Reward voucher ${voucher.voucherCode} fulfilled!`);
+                tokenInput.value = '';
+                return;
+            }
             const match = await findRequestByCheckInToken(token, 'public_requests');
             if (!match) { window.vpNotify('No public request found with that pass code.'); return; }
             if (match.status === 'Completed') { window.vpNotify('This donation has already been recorded.'); return; }

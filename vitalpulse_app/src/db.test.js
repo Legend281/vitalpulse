@@ -721,3 +721,115 @@ describe('submitPublicRequest & getPhoneTrustScore — public intake resilience'
     });
 });
 
+describe('Category B: Resilient index fallback queries for care_reminders, life_saver_certificates & vouchers', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('fetchCareReminders falls back to where-only query and sorts descending when composite index is building', async () => {
+        getDocs
+            .mockRejectedValueOnce(new Error('The query requires an index'))
+            .mockResolvedValueOnce(fakeSnapshot([
+                { id: 'r1', data: { donorId: 'd1', title: 'Older', createdAt: '2026-08-01T10:00:00.000Z' } },
+                { id: 'r2', data: { donorId: 'd1', title: 'Newer', createdAt: '2026-08-02T10:00:00.000Z' } },
+            ]));
+
+        const { fetchCareReminders } = await import('./db.js');
+        const reminders = await fetchCareReminders('d1');
+        expect(reminders.map(r => r.id)).toEqual(['r2', 'r1']);
+    });
+
+    it('fetchLifeSaverCertificates falls back to where-only query and sorts descending when composite index is building', async () => {
+        getDocs
+            .mockRejectedValueOnce(new Error('The query requires an index'))
+            .mockResolvedValueOnce(fakeSnapshot([
+                { id: 'c1', data: { donorId: 'd1', certificateNumber: 'VP-1', issuedDate: '2026-06-01T10:00:00.000Z' } },
+                { id: 'c2', data: { donorId: 'd1', certificateNumber: 'VP-2', issuedDate: '2026-09-01T10:00:00.000Z' } },
+            ]));
+
+        const { fetchLifeSaverCertificates } = await import('./db.js');
+        const certs = await fetchLifeSaverCertificates('d1');
+        expect(certs.map(c => c.id)).toEqual(['c2', 'c1']);
+    });
+
+    it('fetchDonorVouchers sorts redeemed vouchers by issuedAt descending', async () => {
+        getDocs.mockResolvedValueOnce(fakeSnapshot([
+            { id: 'v1', data: { donorId: 'd1', voucherCode: 'VP-VOUCHER-111111', issuedAt: '2026-07-01T10:00:00.000Z' } },
+            { id: 'v2', data: { donorId: 'd1', voucherCode: 'VP-VOUCHER-222222', issuedAt: '2026-10-01T10:00:00.000Z' } },
+        ]));
+
+        const { fetchDonorVouchers } = await import('./db.js');
+        const vouchers = await fetchDonorVouchers('d1');
+        expect(vouchers.map(v => v.voucherCode)).toEqual(['VP-VOUCHER-222222', 'VP-VOUCHER-111111']);
+    });
+});
+
+describe('Category C: Unified Pulse Points Formula & Hospital Voucher Verification', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('computeDonorEngagement calculates 150 pts per standard 1-unit donation and deducts redeemed vouchers', async () => {
+        // 1. getDoc(users/d1)
+        getDoc.mockResolvedValueOnce({
+            exists: () => true,
+            id: 'd1',
+            data: () => ({ name: 'Enow', email: 'enow@vp.cm', bloodType: 'O+' }),
+        });
+        // 2. donation_requests by donorId -> 3 completed 1-unit donations (3 * 150 = 450 pts)
+        getDocs.mockResolvedValueOnce(fakeSnapshot([
+            { id: 'don1', data: { donorId: 'd1', status: 'completed', units: 1 } },
+            { id: 'don2', data: { donorId: 'd1', status: 'completed', units: 1 } },
+            { id: 'don3', data: { donorId: 'd1', status: 'completed', units: 1 } },
+        ]));
+        // 3. donation_requests by email
+        getDocs.mockResolvedValueOnce(fakeSnapshot([]));
+        // 4. requests by matchedDonor
+        getDocs.mockResolvedValueOnce(fakeSnapshot([]));
+        // 5. public_requests by matchedDonor
+        getDocs.mockResolvedValueOnce(fakeSnapshot([]));
+        // 6. vouchers by donorId -> 1 redeemed 300-pt lab voucher
+        getDocs.mockResolvedValueOnce(fakeSnapshot([
+            { id: 'v1', data: { donorId: 'd1', costPoints: 300, status: 'active' } },
+        ]));
+
+        const { computeDonorEngagement } = await import('./db.js');
+        const eng = await computeDonorEngagement('d1');
+        expect(eng.donationCount).toBe(3);
+        expect(eng.tier).toBe('Silver');
+        expect(eng.earnedPoints).toBe(450);
+        expect(eng.spentPoints).toBe(300);
+        expect(eng.points).toBe(150);
+    });
+
+    it('verifyAndRedeemDonorVoucher marks an active voucher as used and notifies the donor', async () => {
+        getDoc.mockResolvedValueOnce({
+            exists: () => true,
+            id: 'v_123',
+            data: () => ({
+                voucherCode: 'VP-VOUCHER-654321',
+                donorId: 'd1',
+                donorName: 'Enow',
+                donorBloodType: 'O+',
+                rewardKey: 'lab_voucher',
+                rewardTitle: 'Complete Clinical Lab Panel',
+                costPoints: 300,
+                status: 'active',
+            }),
+        });
+        updateDoc.mockResolvedValueOnce(undefined);
+        addDoc.mockResolvedValue({ id: 'notif_1' });
+
+        const { verifyAndRedeemDonorVoucher } = await import('./db.js');
+        const res = await verifyAndRedeemDonorVoucher('v_123', 'Buea Regional Hospital', 'staff_9');
+        expect(res.status).toBe('used');
+        expect(res.verifiedByHospital).toBe('Buea Regional Hospital');
+        expect(updateDoc).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                status: 'used',
+                verifiedByHospital: 'Buea Regional Hospital',
+                verifiedByStaffUid: 'staff_9',
+            })
+        );
+    });
+});
+
+
+

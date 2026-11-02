@@ -247,20 +247,58 @@ async function sendVerificationEmailToUser(user) {
 }
 
 export async function sendEmailVerificationLink() {
-    const user = auth.currentUser;
+    let user = auth.currentUser;
+    if (!user) user = await waitForAuthUser().catch(() => null);
     if (!user) throw new Error('No authenticated user');
-    await sendVerificationEmailToUser(user);
+    const redirectUrl = typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin + '/donor.html?emailVerified=true'
+        : 'https://vitalpulse.cm/donor.html?emailVerified=true';
+    try {
+        await sendEmailVerification(user, { url: redirectUrl, handleCodeInApp: false });
+    } catch (_) {
+        await sendVerificationEmailToUser(user);
+    }
 }
 
 export async function isEmailVerified() {
-    const user = auth.currentUser;
-    if (!user) return false;
+    let user = auth.currentUser;
+    if (!user) {
+        user = await waitForAuthUser().catch(() => null);
+    }
+    if (!user) {
+        if (typeof localStorage !== 'undefined') {
+            const storedUser = localStorage.getItem('vitalpulse_user');
+            if (storedUser) {
+                try {
+                    const parsed = JSON.parse(storedUser);
+                    if (parsed.emailVerified === true) return true;
+                    if (parsed.uid && localStorage.getItem('vp_email_verified_' + parsed.uid) === 'true') return true;
+                } catch (_) {}
+            }
+        }
+        return false;
+    }
     try {
         await user.reload();
     } catch (e) {
         console.warn('Failed to reload user:', e);
     }
-    return user.emailVerified;
+    const verified = Boolean(user.emailVerified) || (typeof localStorage !== 'undefined' && localStorage.getItem('vp_email_verified_' + user.uid) === 'true');
+    if (verified && typeof localStorage !== 'undefined') {
+        localStorage.setItem('vp_email_verified_' + user.uid, 'true');
+        try {
+            const stored = localStorage.getItem('vitalpulse_user');
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed && !parsed.emailVerified) {
+                    parsed.emailVerified = true;
+                    localStorage.setItem('vitalpulse_user', JSON.stringify(parsed));
+                }
+            }
+            updateDoc(doc(db, 'users', user.uid), { emailVerified: true }).catch(() => {});
+        } catch (_) {}
+    }
+    return verified;
 }
 
 // ============================================

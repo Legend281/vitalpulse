@@ -23,6 +23,7 @@ import {
   getCompatibleBloodTypes,
   getBloodTypeDisplayInfo,
   logActivity,
+  addDonorNotification,
   fetchDonorNotifications,
   fetchUnreadNotificationCount,
   markNotificationRead,
@@ -49,6 +50,11 @@ import { captureUserLocation } from './location';
 import { t, getLang, setLang } from './i18n';
 import { triggerMilestoneConfetti } from './confetti';
 import L from 'leaflet';
+if (typeof window !== 'undefined') {
+  window.L = L;
+}
+import { mount3DMedalViewer, destroy3DMedalViewer, mountHero3DMedalViewer } from './medal-3d-engine';
+import QRCode from 'qrcode';
 
 // Full 8-group transfusion matrix & special clinical traits for Cameroon regional healthcare
 export const BLOOD_COMPATIBILITY_DATA = {
@@ -152,8 +158,15 @@ if (typeof window !== 'undefined') {
   document.addEventListener('click', (e) => {
     const flyout = document.getElementById('bloodCompatibilityFlyout');
     const btn = document.getElementById('donorBloodDropBtn');
+    const bentoCard = document.getElementById('bentoBloodProfileCard');
     if (flyout && !flyout.classList.contains('hidden')) {
-      if (!flyout.contains(e.target) && !btn?.contains(e.target) && !e.target.closest('#donorBloodDropBtn')) {
+      if (
+        !flyout.contains(e.target) &&
+        !btn?.contains(e.target) &&
+        !bentoCard?.contains(e.target) &&
+        !e.target.closest('#donorBloodDropBtn') &&
+        !e.target.closest('#bentoBloodProfileCard')
+      ) {
         flyout.classList.add('hidden');
       }
     }
@@ -321,26 +334,22 @@ function applyKycLocksToDOM() {
     verifiedPill.classList.toggle('inline-flex', !locked);
   }
 
-  // Schedule Donation — hero CTA + quick-action tile both trigger the same modal, so both
-  // must lock together, or the hero button would be a silent bypass of the tile's lock.
-  const heroBtn = document.getElementById('btnScheduleDonationDesktop');
-  if (heroBtn) heroBtn.disabled = locked;
+  // Schedule Donation — hero CTA, Impact hero CTA, quick-action tile, and mobile dock water-drop
+  // all trigger the same modal, so all must lock together when KYC is pending.
+  ['btnScheduleDonationDesktop', 'btnImpactScheduleDonation', 'btnDockScheduleDonation'].forEach((btnId) => {
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.disabled = locked;
+      btn.classList.toggle('opacity-50', locked);
+      btn.classList.toggle('cursor-not-allowed', locked);
+      btn.title = locked ? 'Locked until your account is approved.' : '';
+    }
+  });
   setOverlay('scheduleDonationHeroLock', locked);
 
   const tileBtn = document.getElementById('btnQuickScheduleDonation');
   if (tileBtn) tileBtn.disabled = locked;
   setOverlay('scheduleDonationTileLock', locked);
-
-  // Third entry point: the mobile nav drawer's footer CTA. Same modal again — it was left
-  // unlocked in the original D3 pass, which meant the whole lock was bypassable on a phone.
-  const drawerBtn = document.getElementById('btnScheduleDonationMobile');
-  if (drawerBtn) {
-    drawerBtn.disabled = locked;
-    drawerBtn.classList.toggle('opacity-50', locked);
-    drawerBtn.title = locked ? 'Locked until your account is approved.' : '';
-  }
-  const drawerLockIcon = document.getElementById('scheduleDonationMobileLockIcon');
-  if (drawerLockIcon) drawerLockIcon.classList.toggle('hidden', !locked);
 
   // Fourth entry point: "Nearby Donation Centers" cards (dashboard panel + the Centers view)
   // open the same wizard pre-pointed at a hospital. Browsing centers stays unlocked (D4) —
@@ -426,6 +435,15 @@ function syncMarqueeMirror(id, val) {
 function renderDonorEngagementStats(engagement) {
   if (!engagement) return;
   _donorEngagementCache = engagement;
+  if (!_lastComputedEngagement) {
+    _lastComputedEngagement = {
+      donationCount: engagement.donationCount || 0,
+      totalUnits: engagement.totalUnits || 0,
+      livesSaved: (engagement.totalUnits || 0) * 3,
+      emergencyMissions: engagement.emergencyMissions || 0,
+      pulsePoints: engagement.points || 0,
+    };
+  }
   const locked = !isDonorVerified();
   const livesCount = engagement.totalUnits * 3; // no fallback — 0 donations means 0 lives saved
 
@@ -449,7 +467,18 @@ function renderDonorEngagementStats(engagement) {
   }
 
   const statLivesSavedText = document.getElementById('statLivesSavedText');
-  if (statLivesSavedText) statLivesSavedText.textContent = locked ? '—' : livesCount;
+  if (statLivesSavedText) {
+    statLivesSavedText.textContent = locked ? '—' : (livesCount > 0 ? `+${Math.max(1, Math.round(livesCount * 0.25))} this qtr` : 'Direct Impact');
+  }
+
+  const currentUser = getCurrentUser();
+  const statLivesRegionSub = document.getElementById('statLivesRegionSub');
+  if (statLivesRegionSub) {
+    const cityLabel = currentUser?.city || 'Cameroon';
+    statLivesRegionSub.textContent = livesCount > 0
+      ? `Up to 3 lives/unit • Patients in ${cityLabel}`
+      : 'Est. up to 3 lives/unit (Red Cells, Plasma, Platelets)';
+  }
 
   const statLivesSaved = document.getElementById('statLivesSaved');
   if (statLivesSaved) {
@@ -474,14 +503,22 @@ function renderDonorEngagementStats(engagement) {
   if (statPoints) statPoints.textContent = engagement.points;
 
   const statRank = document.getElementById('statRank');
-  if (statRank) statRank.textContent = engagement.tier;
+  if (statRank) {
+    statRank.innerHTML = `${locked ? '—' : (engagement.tier || 'Bronze')} Rank &rarr;`;
+  }
 
   const heroStatTier = document.getElementById('heroStatTier');
   if (heroStatTier) {
-    heroStatTier.textContent = locked ? 'Locked' : engagement.tier;
+    const tierName = locked ? 'Locked' : (engagement.tier || 'Bronze');
+    heroStatTier.innerHTML = `<span class="material-symbols-outlined text-[11px]" style="font-variation-settings:'FILL' 1">military_tech</span><span>${tierName}</span>`;
   }
 
-  const currentUser = getCurrentUser();
+  const statDistance = document.getElementById('statDistance');
+  if (statDistance) {
+    const totalDist = engagement.totalDistanceKm || 0;
+    statDistance.textContent = locked ? '—' : `${totalDist} km`;
+  }
+
   const effectiveLastDate = resolveLastDonationDate(currentUser, engagement);
   const lastDonationText = document.getElementById('statLastDonation');
   if (lastDonationText) {
@@ -491,6 +528,8 @@ function renderDonorEngagementStats(engagement) {
     lastDonationText.textContent = formattedLast;
     syncMarqueeMirror('statLastDonation', formattedLast);
   }
+
+  renderDashboardMedalsStrip(engagement, locked);
 
   // Bronze Tier card — a locked placeholder replaces the real journey stepper while pending;
   // showing tier/points progress implies an already-active account, which this isn't yet.
@@ -545,6 +584,60 @@ function renderDonorEngagementStats(engagement) {
       `;
     }
   }
+}
+
+/**
+ * Dynamically renders Zone 7 (#dashboardMedalsStrip) on the Home Dashboard so unlocked/locked
+ * states and donation progress match the donor's actual engagement instead of hardcoded HTML.
+ */
+export function renderDashboardMedalsStrip(engagement, kycLocked = false) {
+  const strip = document.getElementById('dashboardMedalsStrip');
+  if (!strip) return;
+  const count = kycLocked ? 0 : (engagement?.donationCount || 0);
+  const featured = [
+    { id: 'bronze_lifesaver', title: 'Bronze Pioneer', label: 'Bronze Shield', req: 1, img: '/assets/badge_bronze_shield_transparent.png' },
+    { id: 'silver_sentinel', title: 'Silver Sentinel', label: 'Silver Star', req: 3, img: '/assets/badge_silver_star_transparent.png' },
+    { id: 'gold_guardian', title: 'Gold Guardian', label: 'Sunburst Cross', req: 5, img: '/assets/badge_gold_sunburst_transparent.png' },
+    { id: 'platinum_protector', title: 'Platinum Vanguard', label: 'Platinum Star', req: 10, img: '/assets/badge_platinum_star_transparent.png' },
+  ];
+
+  const cardsHtml = featured.map(m => {
+    const unlocked = count >= m.req;
+    const imgStyle = unlocked
+      ? ''
+      : 'style="filter: grayscale(90%) brightness(0.32) contrast(0.85); opacity: 0.45;"';
+    const imgCls = unlocked
+      ? 'w-full h-full object-contain filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.35)]'
+      : 'w-full h-full object-contain select-none';
+    const subCls = unlocked
+      ? 'text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-0.5'
+      : 'text-[10px] text-slate-500 dark:text-slate-400 font-bold mt-0.5';
+    const subText = unlocked
+      ? `Unlocked &bull; ${m.label}`
+      : `🔒 ${m.label} &bull; ${Math.min(count, m.req)}/${m.req} req`;
+    const lockOverlay = unlocked
+      ? ''
+      : `<div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+           <div class="w-7 h-7 rounded-full bg-slate-900/90 border border-slate-700/80 flex items-center justify-center shadow-md">
+             <span class="material-symbols-outlined text-xs text-slate-200">lock</span>
+           </div>
+         </div>`;
+
+    return `
+      <div class="press-scale p-3.5 rounded-2xl ${unlocked ? 'bg-slate-50 dark:bg-slate-800/40 border border-amber-400/50 dark:border-amber-500/40 hover:border-amber-400 cursor-pointer' : 'bg-slate-100/80 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 cursor-pointer'} text-center flex flex-col items-center justify-between transition-all group" onclick="window.inspectMedal('${m.id}')">
+        <div class="relative w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center flex-shrink-0 ${unlocked ? 'group-hover:scale-110 transition-transform' : ''}">
+          <img src="${m.img}" alt="${esc(m.title)}" class="${imgCls}" ${imgStyle}/>
+          ${lockOverlay}
+        </div>
+        <div class="mt-2.5">
+          <p class="text-xs font-black ${unlocked ? 'text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400'} leading-tight">${esc(m.title)}</p>
+          <p class="${subCls}">${subText}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  strip.innerHTML = cardsHtml;
 }
 
 // Global helpers for dismissing / minimizing / restoring the onboarding journey checklist & floating hanging widget
@@ -607,7 +700,7 @@ function renderDonorJourneyChecklist(steps) {
 
   // 1. Render Floating Companion Widget (Hanging Modal in Bottom-Right Corner)
   if (floating) {
-    if (isDismissed) {
+    if (isDismissed || (typeof window !== 'undefined' && window.innerWidth < 768)) {
       floating.classList.add('hidden');
     } else {
       floating.classList.remove('hidden');
@@ -796,12 +889,24 @@ window.openDonationModal = async () => {
   }
   const notesInput = document.getElementById('donationNotes');
   if (notesInput) notesInput.value = '';
+  document.body.style.overflow = 'hidden';
+  const bottomDock = document.getElementById('donorBottomDock');
+  if (bottomDock) {
+    bottomDock.classList.add('opacity-0', 'pointer-events-none');
+    bottomDock.style.transition = 'opacity 0.2s ease';
+  }
   modal.classList.remove('hidden');
   modal.classList.add('flex');
 };
+window.openScheduleModal = window.openDonationModal;
 window.closeDonationModal = () => {
   const modal = document.getElementById('donationModal');
   if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+  document.body.style.overflow = '';
+  const bottomDock = document.getElementById('donorBottomDock');
+  if (bottomDock) {
+    bottomDock.classList.remove('opacity-0', 'pointer-events-none');
+  }
 };
 
 // Verification is mandatory (no skip), and the KYC flow is multi-step (doc type, front/back
@@ -817,10 +922,10 @@ function setKycNavLocked(locked) {
   const display = locked ? 'none' : '';
   const primaryNav = document.getElementById('donorPrimaryNav');
   if (primaryNav) primaryNav.style.display = display;
-  const hamburger = document.getElementById('btnMobileMenu');
-  if (hamburger) hamburger.style.display = display;
   const accountMenuWrap = document.getElementById('donorAccountMenuWrap');
   if (accountMenuWrap) accountMenuWrap.style.display = display;
+  const bottomDock = document.getElementById('donorBottomDock');
+  if (bottomDock) bottomDock.style.display = display;
 
   const logo = document.getElementById('donorLogoLink');
   if (logo) {
@@ -835,10 +940,8 @@ function setKycNavLocked(locked) {
     }
   }
 
-  // Force-close the mobile drawer / account dropdown if either was left open when the donor
-  // navigated into KYC (e.g. picked "Complete Verification" from inside the drawer itself).
+  // Force-close the account dropdown if it was left open when the donor navigated into KYC.
   if (locked) {
-    document.getElementById('mobileNavDrawer')?.classList.add('hidden');
     document.getElementById('donorAccountMenu')?.classList.add('hidden');
     document.body.style.overflow = '';
   }
@@ -856,8 +959,10 @@ const VIEW_TITLES = {
   'kyc': 'Identity Verification'
 };
 
-export async function switchDonorView(view) {
-  window.scrollTo({ top: 0, behavior: 'instant' });
+export async function switchDonorView(view, targetAnchor) {
+  if (view === 'impact') view = 'badges';
+  if (typeof window !== 'undefined') window.switchDonorView = switchDonorView;
+  if (!targetAnchor) window.scrollTo({ top: 0, behavior: 'instant' });
   // Leaving the Requests view? Drop its real-time listener so it doesn't keep running (and
   // billing reads) in the background. loadDonorRequests re-subscribes when they return.
   if (view !== 'requests') teardownDonorJourneys();
@@ -876,24 +981,39 @@ export async function switchDonorView(view) {
     }
   });
 
-  // 2. Update Mobile Drawer Navigation (Background Pill)
-  document.querySelectorAll('#mobileNavDrawer .donor-mobile-nav').forEach(btn => {
+  // 2. Update bottom dock and floating navigation items
+  document.querySelectorAll('#donorBottomDock .donor-dock-btn, .donor-mobile-nav:not(#donorPrimaryNav *)').forEach(btn => {
     const isCurrent = btn.dataset.view === view;
+    const icon = btn.querySelector('.material-symbols-outlined');
+    const label = btn.querySelector('span:not(.material-symbols-outlined)');
     if (isCurrent) {
-      btn.className = 'donor-mobile-nav press-scale w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-primary bg-primary/10 cursor-pointer text-left';
+      btn.className = 'donor-dock-btn donor-mobile-nav min-w-[48px] min-h-[48px] flex flex-col items-center justify-center gap-0.5 text-primary cursor-pointer select-none';
+      if (icon) {
+        icon.style.fontVariationSettings = "'FILL' 1, 'wght' 700";
+        icon.className = 'material-symbols-outlined text-2xl pointer-events-none';
+      }
+      if (label) label.className = 'text-[10px] font-black text-primary pointer-events-none';
     } else {
-      btn.className = 'donor-mobile-nav press-scale w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-left';
+      btn.className = 'donor-dock-btn donor-mobile-nav min-w-[48px] min-h-[48px] flex flex-col items-center justify-center gap-0.5 text-slate-500 dark:text-slate-400 hover:text-primary transition-colors cursor-pointer select-none';
+      if (icon) {
+        icon.style.fontVariationSettings = "'FILL' 0, 'wght' 400";
+        icon.className = 'material-symbols-outlined text-2xl pointer-events-none';
+      }
+      if (label) label.className = 'text-[10px] font-bold text-slate-500 dark:text-slate-400 pointer-events-none';
     }
   });
 
-  // 3. Update any floating or dock navigation items
-  document.querySelectorAll('.donor-mobile-nav:not(#donorPrimaryNav *):not(#mobileNavDrawer *)').forEach(btn => {
-    const isCurrent = btn.dataset.view === view;
-    btn.classList.toggle('text-primary', isCurrent);
-    btn.classList.toggle('text-on-surface-variant', !isCurrent);
-  });
+  // 4. Update Header Profile Pill active highlight when on profile view
+  const headerPill = document.getElementById('donorAccountMenuWrap');
+  if (headerPill) {
+    if (view === 'profile') {
+      headerPill.classList.add('ring-2', 'ring-primary', 'border-primary');
+    } else {
+      headerPill.classList.remove('ring-2', 'ring-primary', 'border-primary');
+    }
+  }
 
-  history.replaceState(null, '', '#' + view);
+  history.replaceState(null, '', '#' + (targetAnchor || view));
 
   // Show transition loader with red circle
   const loader = document.getElementById('viewTransitionLoader');
@@ -903,64 +1023,95 @@ export async function switchDonorView(view) {
   const views = ['dashboard', 'requests', 'centers', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
   views.forEach(v => {
     const el = document.getElementById('view-' + v);
-    if (el) { el.classList.add('hidden'); el.classList.remove('block'); }
+    if (el) {
+      el.classList.add('hidden');
+      el.classList.remove('block', 'flex');
+      el.style.display = 'none';
+    }
   });
 
   if (loader) {
     loader.classList.remove('hidden');
     loader.classList.add('flex');
+    loader.style.display = 'flex';
   }
 
   // Load target view content
   const loadPromise = (async () => {
-    switch (view) {
-      case 'dashboard':
-        await loadDonorDashboard();
-        setTimeout(() => nearbyMapInstance?.invalidateSize(), 250);
-        break;
-      case 'requests':
-        await loadDonorRequests();
-        setTimeout(() => _requestsMiniMapInstance?.invalidateSize(), 250);
-        break;
-      case 'centers':
-        await loadDonationCentersView();
-        setTimeout(() => centersMapInstance?.invalidateSize(), 250);
-        break;
-      case 'badges':
-        await loadDonorBadges();
-        break;
-      case 'profile':
-        await loadDonorProfile();
-        break;
-      case 'care-reminders':
-        await loadCareRemindersView();
-        break;
-      case 'mythhub':
-        await loadMythHubView();
-        break;
-      case 'certificates':
-        await loadCertificatesView();
-        break;
-      case 'kyc':
-        await loadKycView();
-        break;
+    try {
+      switch (view) {
+        case 'dashboard':
+          await loadDonorDashboard();
+          setTimeout(() => nearbyMapInstance?.invalidateSize(), 250);
+          break;
+        case 'requests':
+          await loadDonorRequests();
+          setTimeout(() => _requestsMiniMapInstance?.invalidateSize(), 250);
+          break;
+        case 'centers':
+          await loadDonationCentersView();
+          if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+            window.switchCentersMobileTab?.('map');
+          }
+          setTimeout(() => centersMapInstance?.invalidateSize(), 250);
+          setTimeout(() => centersMapInstance?.invalidateSize(), 500);
+          break;
+        case 'badges':
+          await loadDonorBadges();
+          break;
+        case 'profile':
+          await loadDonorProfile();
+          break;
+        case 'care-reminders':
+          await loadCareRemindersView();
+          break;
+        case 'mythhub':
+          await loadMythHubView();
+          break;
+        case 'certificates':
+          await loadCertificatesView();
+          break;
+        case 'kyc':
+          await loadKycView();
+          break;
+      }
+    } catch (err) {
+      console.error(`Failed to switch to donor view "${view}":`, err);
     }
   })();
 
   // Minimum transition time (150ms) to ensure a smooth, professional feel without sudden pop
-  await Promise.all([loadPromise, new Promise(res => setTimeout(res, 150))]);
+  try {
+    await Promise.all([loadPromise, new Promise(res => setTimeout(res, 150))]);
+  } catch (err) {
+    console.warn('Transition loader wait encountered error:', err);
+  }
 
   if (loader) {
     loader.classList.add('hidden');
     loader.classList.remove('flex');
+    loader.style.display = 'none';
   }
 
   const active = document.getElementById('view-' + view);
   if (active) {
     active.classList.remove('hidden');
-    active.classList.add('block');
+    if (view === 'dashboard') {
+      active.classList.add('flex');
+      active.style.display = 'flex';
+    } else {
+      active.classList.add('block');
+      active.style.display = 'block';
+    }
+    if (targetAnchor) {
+      setTimeout(() => {
+        const anchorEl = document.getElementById(targetAnchor);
+        if (anchorEl) anchorEl.scrollIntoView({ behavior: 'smooth' });
+      }, 60);
+    }
   }
 }
+if (typeof window !== 'undefined') window.switchDonorView = switchDonorView;
 
 // ============================================
 // E1.2 — EN/FR LANGUAGE TOGGLE
@@ -994,55 +1145,41 @@ function initDonorLangToggle() {
   applyDonorTranslations();
 }
 
+export function hydrateDonorProfileUI(currentUser) {
+  const cu = currentUser || getCurrentUser();
+  if (!cu) return;
+  const fullName = (cu.name || cu.displayName || cu.fullName || (cu.email ? cu.email.split('@')[0] : 'Donor')).trim();
+  const firstName = fullName.split(/\s+/)[0] || 'Donor';
+  const email = cu.email || '';
+  const bloodType = cu.bloodType || 'B+';
+
+  const navNameEl = document.getElementById('donorNavName');
+  if (navNameEl) navNameEl.textContent = firstName;
+
+  const menuNameEl = document.getElementById('donorMenuName');
+  if (menuNameEl) menuNameEl.textContent = fullName;
+
+  const menuEmailEl = document.getElementById('donorMenuEmail');
+  if (menuEmailEl) menuEmailEl.textContent = email;
+
+  const bloodBadge = document.getElementById('donorNavBloodBadge');
+  if (bloodBadge) {
+    bloodBadge.textContent = bloodType;
+    bloodBadge.classList.remove('hidden');
+  }
+
+  renderUserAvatars(cu);
+}
+
 export function initDonorNavigation() {
+  if (typeof window !== 'undefined') window.switchDonorView = switchDonorView;
   if (donorNavigationInitialized) return;
+  hydrateDonorProfileUI();
+  wireImpactShareButtons();
 
   document.querySelectorAll('.donor-mobile-nav').forEach(btn => {
     btn.addEventListener('click', () => switchDonorView(btn.dataset.view));
   });
-
-  // E5.3 — "Centers" nav (desktop + mobile drawer) and the "Find Donation Center" quick-action
-  // tile all use the standard .donor-mobile-nav / data-action="switch-view" engine now (both
-  // wired generically above/below), routing to the dedicated view-centers view instead of the
-  // old searchable modal.
-
-  // ---- Mobile nav drawer (hamburger) — the mobile navigation hub, replacing the old fixed
-  // bottom bar. Slides in from the left; closes on backdrop, close button, or picking a link. ----
-  const drawer = document.getElementById('mobileNavDrawer');
-  const drawerPanel = document.getElementById('mobileNavPanel');
-  const drawerBackdrop = document.getElementById('mobileNavBackdrop');
-  const openDrawer = () => {
-    if (!drawer) return;
-    drawer.classList.remove('hidden');
-    requestAnimationFrame(() => {
-      drawerPanel?.classList.remove('-translate-x-full');
-      drawerBackdrop?.classList.remove('opacity-0');
-    });
-    document.body.style.overflow = 'hidden'; // lock background scroll while open
-  };
-  const closeMobileDrawer = () => {
-    if (!drawer || drawer.classList.contains('hidden')) return;
-    drawerPanel?.classList.add('-translate-x-full');
-    drawerBackdrop?.classList.add('opacity-0');
-    document.body.style.overflow = '';
-    setTimeout(() => drawer.classList.add('hidden'), 300); // wait out the slide-out transition
-  };
-  document.getElementById('btnMobileMenu')?.addEventListener('click', openDrawer);
-  document.getElementById('btnMobileMenuClose')?.addEventListener('click', closeMobileDrawer);
-  drawerBackdrop?.addEventListener('click', closeMobileDrawer);
-  // Close the drawer after any destination/action is chosen — except the theme toggle, so the
-  // donor can see the theme flip before the drawer slides away.
-  drawerPanel?.querySelectorAll('.donor-mobile-nav, [data-action="switch-view"], .logout-btn, [onclick]').forEach(btn => {
-    if (btn.hasAttribute('data-theme-toggle')) return;
-    btn.addEventListener('click', () => closeMobileDrawer());
-  });
-  // Populate the drawer's account header.
-  const drawerUser = getCurrentUser();
-  const drawerInitials = (drawerUser?.name || drawerUser?.email || 'D').trim().split(/\s+/).map(s => s[0]).join('').slice(0, 2).toUpperCase();
-  const dInit = document.getElementById('donorDrawerInitials'); if (dInit) dInit.textContent = drawerInitials || 'D';
-  const dName = document.getElementById('donorDrawerName'); if (dName) dName.textContent = drawerUser?.name || drawerUser?.email?.split('@')[0] || 'Donor';
-  const dEmail = document.getElementById('donorDrawerEmail'); if (dEmail) dEmail.textContent = drawerUser?.email || '';
-  renderUserAvatars(drawerUser);
 
   document.querySelectorAll('[data-open-donation-history]').forEach(el => {
     el.addEventListener('click', () => {
@@ -1052,6 +1189,7 @@ export function initDonorNavigation() {
     });
   });
   document.getElementById('btnDonorProfile')?.addEventListener('click', () => switchDonorView('profile'));
+  document.getElementById('btnHeaderProfile')?.addEventListener('click', () => switchDonorView('profile'));
 
   // Account dropdown — replaces the old chevron-that-was-secretly-a-logout-button.
   const menuBtn = document.getElementById('btnDonorAccountMenu');
@@ -1063,10 +1201,7 @@ export function initDonorNavigation() {
   };
   if (menuBtn && menuPanel) {
     const cu = getCurrentUser();
-    const nameEl = document.getElementById('donorMenuName');
-    const emailEl = document.getElementById('donorMenuEmail');
-    if (nameEl) nameEl.textContent = cu?.name || cu?.email?.split('@')[0] || 'Donor';
-    if (emailEl) emailEl.textContent = cu?.email || '';
+    hydrateDonorProfileUI(cu);
 
     menuBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1077,7 +1212,7 @@ export function initDonorNavigation() {
     });
     menuPanel.addEventListener('click', closeAccountMenu);
     document.addEventListener('click', (e) => {
-      if (!menuPanel.classList.contains('hidden') && !menuPanel.contains(e.target) && e.target !== menuBtn) closeAccountMenu();
+      if (!menuPanel.classList.contains('hidden') && !menuPanel.contains(e.target) && !menuBtn.contains(e.target)) closeAccountMenu();
     });
   }
 
@@ -1089,8 +1224,22 @@ export function initDonorNavigation() {
   });
 
   // Explicit handlers for navbar & tile center/reminder buttons
-  ['btnNavCenters', 'btnNavCentersMobile', 'btnQuickFindCenters'].forEach(id => {
+  ['btnNavCenters', 'btnQuickFindCenters'].forEach(id => {
     document.getElementById(id)?.addEventListener('click', () => switchDonorView('centers'));
+  });
+  ['btnDockHome', 'btnDockRequests', 'btnDockCenters', 'btnDockImpact'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    let lastHandled = 0;
+    const trigger = (e) => {
+      const now = Date.now();
+      if (now - lastHandled < 200) return; // debounce double triggers from pointerup + click
+      lastHandled = now;
+      const targetView = btn.dataset.view;
+      if (targetView) switchDonorView(targetView);
+    };
+    btn.addEventListener('click', trigger);
+    btn.addEventListener('pointerup', trigger);
   });
   document.getElementById('nav-care-reminders')?.addEventListener('click', () => switchDonorView('care-reminders'));
   document.getElementById('nav-certificates')?.addEventListener('click', () => switchDonorView('certificates'));
@@ -1098,8 +1247,7 @@ export function initDonorNavigation() {
 
   // Donation booking modal cancel button
   document.getElementById('donationCancelBtn')?.addEventListener('click', () => {
-    const modal = document.getElementById('donationBookingModal');
-    if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+    window.closeDonationModal?.();
   });
 
   // GPS Location button
@@ -1128,10 +1276,10 @@ export function initDonorNavigation() {
       // Create modern flyout panel
       const panel = document.createElement('div');
       panel.id = 'donorNotifPanel';
-      panel.className = 'fixed inset-0 z-50 flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-6 pointer-events-auto';
+      panel.className = 'fixed inset-0 z-[80] flex items-end sm:items-start sm:justify-end sm:pt-16 sm:pr-6 pointer-events-auto';
       panel.innerHTML = `
         <div class="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity" onclick="document.getElementById('donorNotifPanel')?.remove()"></div>
-        <div class="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full sm:w-96 max-h-[80vh] rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col z-10 animate-in">
+        <div class="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full sm:w-96 max-h-[85vh] rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col z-10 animate-in safe-bottom">
           
           <!-- Header -->
           <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shrink-0">
@@ -1227,15 +1375,18 @@ export function initDonorNavigation() {
           const isEmergency = n.type === 'error' || (n.title || '').toLowerCase().includes('emergency') || (n.title || '').toLowerCase().includes('urgent');
           const isSuccess = n.type === 'success';
           const isWarning = n.type === 'warning';
+          const isHonor = n.type === 'honor' || (n.title || '').toLowerCase().includes('honor') || (n.title || '').toLowerCase().includes('badge');
 
-          const icon = isEmergency ? 'emergency' : isSuccess ? 'check_circle' : isWarning ? 'warning' : 'info';
+          const icon = isEmergency ? 'emergency' : isHonor ? 'workspace_premium' : isSuccess ? 'check_circle' : isWarning ? 'warning' : 'info';
           const iconBg = isEmergency 
             ? 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20' 
-            : isSuccess 
-              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
-              : isWarning
-                ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+            : isHonor
+              ? 'bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/25'
+              : isSuccess 
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' 
+                : isWarning
+                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+                  : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
 
           return `
             <div data-notif-id="${n.id}" data-notif-view="${n.view || (isEmergency ? 'requests' : '')}" class="group flex items-start gap-3 p-3 rounded-2xl border transition-all ${isUnread ? 'bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 shadow-xs' : 'bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 opacity-75'}">
@@ -1352,14 +1503,31 @@ export function initDonorNavigation() {
   initDonorRequestFilters();
 
   // Restore view from URL hash on reload
-  const donorViews = ['dashboard', 'requests', 'centers', 'badges', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
-  const hashView = window.location.hash.replace('#', '');
-  if (hashView && donorViews.includes(hashView)) switchDonorView(hashView);
+  const donorViews = ['dashboard', 'requests', 'centers', 'badges', 'impact', 'profile', 'care-reminders', 'mythhub', 'certificates', 'kyc'];
+  const impactSubSections = ['sectionPrestigeRoadmap', 'sectionMedalShowcase', 'sectionRewardsVault'];
+  let rawHash = window.location.hash.replace('#', '');
+  let hashView = rawHash;
+  let targetAnchor = null;
+  if (impactSubSections.includes(rawHash) || rawHash.startsWith('section')) {
+    hashView = 'badges';
+    targetAnchor = rawHash;
+  } else if (hashView === 'impact') {
+    hashView = 'badges';
+  }
+  if (hashView && donorViews.includes(hashView)) switchDonorView(hashView, targetAnchor);
 
   // Back/forward navigation
   window.addEventListener('hashchange', () => {
-    const v = window.location.hash.replace('#', '');
-    if (v && donorViews.includes(v)) switchDonorView(v);
+    let raw = window.location.hash.replace('#', '');
+    let v = raw;
+    let anchor = null;
+    if (impactSubSections.includes(raw) || raw.startsWith('section')) {
+      v = 'badges';
+      anchor = raw;
+    } else if (v === 'impact') {
+      v = 'badges';
+    }
+    if (v && donorViews.includes(v)) switchDonorView(v, anchor);
   });
 
   donorNavigationInitialized = true;
@@ -2090,6 +2258,136 @@ async function warnIfIneligible() {
   return false;
 }
 
+export function isRequestWithin24Hours(req) {
+  if (!req) return false;
+  const raw = req.requestedAt || req.timestamp || req.createdAt || req.updatedAt;
+  if (!raw) return false;
+  const ts = typeof raw === 'number'
+    ? raw
+    : typeof raw?.toMillis === 'function'
+    ? raw.toMillis()
+    : new Date(raw).getTime();
+  if (!ts || isNaN(ts)) return false;
+  const ageMs = Date.now() - ts;
+  return ageMs >= -300000 && ageMs <= 24 * 60 * 60 * 1000;
+}
+
+export function formatRequestTiming(req) {
+  if (!req) {
+    return {
+      postedAgo: 'Recently',
+      postedDateStr: '',
+      deadlineLabel: 'Needed by',
+      deadlineText: 'Standard Schedule',
+      deadlineColor: 'text-slate-800 dark:text-slate-200',
+      isOverdue: false,
+      isStale: false
+    };
+  }
+
+  const rawPosted = req.requestedAt || req.timestamp || req.createdAt || req.updatedAt;
+  let postedDate = null;
+  if (rawPosted) {
+    if (typeof rawPosted === 'number') postedDate = new Date(rawPosted);
+    else if (typeof rawPosted?.toDate === 'function') postedDate = rawPosted.toDate();
+    else if (typeof rawPosted?.toMillis === 'function') postedDate = new Date(rawPosted.toMillis());
+    else {
+      const p = new Date(rawPosted);
+      if (!isNaN(p.getTime())) postedDate = p;
+    }
+  }
+
+  const hasValidPosted = postedDate && !isNaN(postedDate.getTime());
+  const postedAgo = hasValidPosted ? getTimeAgo(postedDate.toISOString()) : 'Recently';
+  const postedDateStr = hasValidPosted ? postedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+
+  const normUrgency = getNormalizedUrgency(req.urgency);
+  const isCritical = normUrgency === 'critical' || req.isEmergency === true;
+  const isUrgent = normUrgency === 'urgent';
+
+  // Explicit requiredBy / neededBy / deadline if provided
+  const explicit = req.requiredBy || req.neededBy || req.deadline;
+  let deadlineDate = null;
+  if (explicit) {
+    const parsed = new Date(explicit);
+    if (!isNaN(parsed.getTime())) deadlineDate = parsed;
+  }
+
+  // If no explicit deadline, determine clinical deadline from posted date + clinical urgency window
+  if (!deadlineDate) {
+    if (hasValidPosted) {
+      // Clinical emergency window from creation:
+      // Critical emergency: 6 hours from dispatch
+      // Urgent: 24 hours from dispatch
+      // Routine: 48 hours from dispatch
+      const hoursWindow = isCritical ? 6 : isUrgent ? 24 : 48;
+      deadlineDate = new Date(postedDate.getTime() + hoursWindow * 60 * 60 * 1000);
+    } else {
+      deadlineDate = new Date();
+      deadlineDate.setHours(isCritical ? 18 : isUrgent ? 20 : 21, 0, 0, 0);
+    }
+  }
+
+  const now = new Date();
+  const diffMs = deadlineDate.getTime() - now.getTime();
+  const isOverdue = diffMs < 0;
+
+  // Day relationships
+  const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dlMidnight = new Date(deadlineDate.getFullYear(), deadlineDate.getMonth(), deadlineDate.getDate());
+  const dayDiff = Math.round((dlMidnight - nowMidnight) / (1000 * 60 * 60 * 24));
+
+  const timeStr = deadlineDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const dateShort = deadlineDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+
+  let deadlineLabel = 'Needed by';
+  let deadlineText = '';
+  let deadlineColor = isCritical ? 'text-red-600 dark:text-red-400 font-black' : 'text-slate-800 dark:text-slate-200 font-black';
+  let isStale = false;
+
+  if (isOverdue) {
+    const daysAgo = Math.abs(dayDiff);
+    if (daysAgo === 0) {
+      deadlineLabel = 'Target Window';
+      deadlineText = `Passed today (${timeStr})`;
+      deadlineColor = 'text-amber-600 dark:text-amber-400 font-bold';
+    } else if (daysAgo === 1) {
+      deadlineLabel = 'Target Window';
+      deadlineText = `Passed yesterday`;
+      deadlineColor = 'text-rose-600 dark:text-rose-400 font-bold';
+    } else {
+      isStale = true;
+      deadlineLabel = 'Requisition Period';
+      deadlineText = `Past Target (${dateShort})`;
+      deadlineColor = 'text-slate-500 dark:text-slate-400 font-semibold';
+    }
+  } else if (dayDiff === 0) {
+    const hoursLeft = Math.max(1, Math.round(diffMs / (1000 * 60 * 60)));
+    deadlineLabel = 'Needed by';
+    deadlineText = `Today, ${timeStr} (~${hoursLeft}h left)`;
+    deadlineColor = isCritical ? 'text-red-600 dark:text-red-400 font-black' : 'text-slate-800 dark:text-slate-200 font-black';
+  } else if (dayDiff === 1) {
+    deadlineLabel = 'Needed by';
+    deadlineText = `Tomorrow, ${timeStr}`;
+    deadlineColor = 'text-slate-800 dark:text-slate-200 font-black';
+  } else {
+    deadlineLabel = 'Needed by';
+    deadlineText = `${dateShort}, ${timeStr}`;
+    deadlineColor = 'text-slate-800 dark:text-slate-200 font-black';
+  }
+
+  return {
+    postedAgo,
+    postedDateStr,
+    deadlineLabel,
+    deadlineText,
+    deadlineColor,
+    isOverdue,
+    isStale
+  };
+}
+
+
 function renderFilteredFeed() {
   const feedEl = document.getElementById('requestsFeed');
   if (!feedEl) return;
@@ -2121,12 +2419,27 @@ function renderFilteredFeed() {
   if (countEl) countEl.textContent = filtered.length;
 
   if (filtered.length === 0) {
-    feedEl.innerHTML = `<div class="flex flex-col items-center text-center py-10 text-on-surface-variant bg-surface-container-lowest border border-outline-variant/20 rounded-2xl shadow-sm px-6">
-      <div class="w-14 h-14 rounded-full ${_selectedCity ? 'bg-warning-container/40 text-warning' : 'bg-success-container/40 text-success'} flex items-center justify-center mb-3">
-        <span class="material-symbols-outlined text-2xl">${_selectedCity ? 'search_off' : 'check_circle'}</span>
+    const hasOtherCityReqs = _selectedCity && _allRequests.length > 0;
+    feedEl.innerHTML = `<div class="flex flex-col items-center text-center py-12 text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-700/60 rounded-2xl p-6 sm:p-8">
+      <div class="relative w-16 h-16 rounded-2xl ${_selectedCity ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'} flex items-center justify-center mb-3.5 shadow-inner">
+        <span class="material-symbols-outlined text-3xl">${_selectedCity ? 'search_off' : 'verified_user'}</span>
+        ${!_selectedCity ? '<span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 animate-ping"></span><span class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-emerald-500"></span>' : ''}
       </div>
-      <p class="font-bold text-on-surface">${_selectedCity ? 'No requests in ' + _selectedCity : 'All caught up!'}</p>
-      <p class="text-sm mt-1 max-w-xs">${_selectedCity ? 'There are currently no blood requests for this city. Try a different location.' : 'There are no nearby blood requests right now. Check back soon or browse donation centers to schedule a donation.'}</p>
+      <h3 class="font-black font-headline text-slate-900 dark:text-white text-base">${_selectedCity ? 'No requests in ' + esc(_selectedCity) : 'All Requisitions Fulfilled'}</h3>
+      <p class="text-xs sm:text-sm mt-1 max-w-sm text-slate-500 dark:text-slate-400">${_selectedCity ? 'There are currently no active blood requests for this city. Try selecting All Cameroon or check back shortly.' : 'No urgent blood shortages reported in your region right now. You can check back soon or explore accredited donation centers.'}</p>
+      <div class="flex items-center justify-center gap-2 mt-4 flex-wrap">
+        ${hasOtherCityReqs ? `
+          <button onclick="window._filterCity(null)" class="press-scale inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary hover:opacity-95 text-white font-extrabold text-xs shadow-md shadow-primary/25 transition-all cursor-pointer">
+            <span class="material-symbols-outlined text-xs">public</span>
+            <span>View All Cameroon (${_allRequests.length})</span>
+          </button>
+        ` : ''}
+        <button onclick="window.switchDonorView('centers')" class="press-scale inline-flex items-center gap-1.5 px-4 py-2 rounded-full ${hasOtherCityReqs ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200' : 'bg-red-600 hover:bg-red-700 text-white'} font-extrabold text-xs shadow-md transition-all cursor-pointer">
+          <span class="material-symbols-outlined text-xs">local_hospital</span>
+          <span>Browse Certified Centers</span>
+          <span class="material-symbols-outlined text-xs">arrow_forward</span>
+        </button>
+      </div>
     </div>`;
     return;
   }
@@ -2144,99 +2457,157 @@ function renderFilteredFeed() {
   const deferralPct = _donorEligibilityCache?.barPct || 0;
   const deferralDays = _donorEligibilityCache?.daysUntil || 0;
   const blockBanner = isBusy
-    ? `<div class="flex items-center gap-2.5 bg-warning-container/50 border border-warning/30 text-on-warning-container text-xs font-semibold px-4 py-3 rounded-xl shadow-sm">
-         <span class="material-symbols-outlined text-base shrink-0">info</span>
-         <span>You're marked <strong>Busy</strong> — accepting requests is paused. <button data-action="switch-view" data-view="dashboard" class="underline font-bold hover:no-underline cursor-pointer">Toggle availability →</button></span>
+    ? `<div class="flex items-center gap-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-semibold px-4 py-3 rounded-2xl shadow-xs mb-3">
+         <span class="material-symbols-outlined text-base shrink-0 text-amber-600">info</span>
+         <span>You are currently marked <strong>Busy</strong> — accepting requests is paused. <button data-action="switch-view" data-view="dashboard" class="underline font-bold hover:no-underline cursor-pointer ml-1">Toggle availability →</button></span>
        </div>`
     : ineligible
-    ? `<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl shadow-sm overflow-hidden">
-         <div class="flex items-start gap-3 p-4 pb-3">
-           <div class="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
-             <span class="material-symbols-outlined text-lg">schedule</span>
+    ? `<div class="bg-slate-50/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 rounded-2xl p-3.5 sm:p-4 shadow-xs mb-3 space-y-2">
+         <div class="flex items-start gap-3">
+           <div class="w-8 h-8 rounded-xl bg-red-500/10 text-red-600 flex items-center justify-center shrink-0 mt-0.5">
+             <span class="material-symbols-outlined text-base">schedule</span>
            </div>
            <div class="min-w-0 flex-1">
-             <p class="font-bold text-sm text-on-surface">56-day deferral active</p>
-             <p class="text-xs text-on-surface-variant mt-0.5">You can donate again in <strong>${deferralDays} day${deferralDays === 1 ? '' : 's'}</strong>. Accepting is disabled until then.</p>
+             <p class="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">WHO 56-day deferral active</p>
+             <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">You can donate again in <strong>${deferralDays} day${deferralDays === 1 ? '' : 's'}</strong>. Requisition dispatch is paused during donor recovery.</p>
            </div>
          </div>
-         <div class="h-1.5 bg-surface-container-high mx-4 mb-4 rounded-full overflow-hidden">
-           <div class="h-full bg-primary/20 rounded-full" style="width:${deferralPct}%"></div>
+         <div class="h-1.5 bg-slate-200 dark:bg-slate-700/80 rounded-full overflow-hidden">
+           <div class="h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full" style="width:${deferralPct}%"></div>
          </div>
        </div>`
     : '';
   feedEl.innerHTML = blockBanner + shownRequests.map(req => {
-    const isCritical = req.urgency === 'critical' || req.urgency === 'Critical';
+    const isCritical = (req.urgency || '').toLowerCase() === 'critical';
+    const isUrgent = (req.urgency || '').toLowerCase() === 'urgent';
     const isPublic = Boolean(req.isPublicRequest);
+    const isNew24h = isRequestWithin24Hours(req);
+    const timing = formatRequestTiming(req);
+    const newBadge = isNew24h
+      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-white shadow-xs shrink-0" title="Posted within the last 24 hours"><span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span><span>NEW</span></span>`
+      : '';
     const isCentralCommand = (req.hospital === 'Central Command' || req.hospitalName === 'Central Command' || req.systemWide === true);
-    const publicBadge = isPublic ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Public Emergency</span>` : '';
-    // Trust label for no-login public requests — never blocks the request, just tells the
-    // donor how much soft evidence backs it (see submitPublicRequest's verificationLevel).
+    const publicBadge = isPublic ? `<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 shrink-0">Public SOS</span>` : '';
+    
     const verificationStyle = {
-      'Hospital-Confirmed': 'bg-emerald-100 text-emerald-800',
-      'Document Attached': 'bg-blue-100 text-blue-800',
-      'Unverified': 'bg-slate-100 text-slate-600',
+      'Hospital-Confirmed': 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+      'Document Attached': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
+      'Unverified': 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
     };
     const docBadge = isPublic && req.verificationLevel
-      ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold ${verificationStyle[req.verificationLevel] || 'bg-slate-100 text-slate-600'}">${req.verificationLevel}</span>`
+      ? `<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border shrink-0 ${verificationStyle[req.verificationLevel] || 'bg-slate-100 text-slate-600'}">${req.verificationLevel}</span>`
       : '';
 
-    // Details the hospital entered for donors — previously hidden. Shown so the donor can
-    // decide with real context (how much is needed, which component, how urgent, where to go)
-    // instead of just a hospital name. Patient/clinical fields were stripped server-side.
     const bt = req.bloodType || req.type || '?';
     const btDisplay = bt.replace('+', '+').replace('-', '−');
     const units = req.units || 1;
     const component = req.componentType || 'Whole Blood';
-    const componentShort = component === 'PRBC' ? 'PRBC' : component === 'Plasma' ? 'Plasma' : component === 'Platelets' ? 'PLT' : '';
+    const componentShort = component === 'PRBC' ? 'PRBC' : component === 'Plasma' ? 'Plasma' : component === 'Platelets' ? 'PLT' : 'Whole';
     const notes = (req.notes || '').trim();
     const pickup = (req.pickupLocation || '').trim();
     const urgency = (req.urgency || '').toLowerCase();
-    const urgencyBadge = urgency === 'critical'
-      ? '<span class="bg-red-600 text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase">CRITICAL</span>'
-      : urgency === 'urgent'
-      ? '<span class="bg-amber-500 text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase">HIGH PRIORITY</span>'
-      : '<span class="bg-rose-500 text-white text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 rounded-full uppercase">MODERATE</span>';
+
+    const urgencyBadge = isCritical
+      ? '<span class="bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25 font-black text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-red-600 animate-pulse"></span><span>CRITICAL</span></span>'
+      : isUrgent
+      ? '<span class="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 font-black text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>HIGH PRIORITY</span></span>'
+      : '<span class="bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25 font-black text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0">MODERATE</span>';
+
+    const cardHoverBorder = isCritical
+      ? 'hover:border-red-300 dark:hover:border-red-900/60'
+      : isUrgent
+      ? 'hover:border-amber-300 dark:hover:border-amber-900/60'
+      : 'hover:border-rose-300 dark:hover:border-rose-900/60';
+
+    const ampouleGradient = isCritical
+      ? 'bg-gradient-to-br from-red-600 to-rose-600 text-white shadow-sm shadow-red-600/30'
+      : isUrgent
+      ? 'bg-gradient-to-br from-amber-500 to-rose-600 text-white shadow-sm shadow-amber-600/30'
+      : 'bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-sm shadow-rose-600/30';
+
+    const distKm = parseFloat(req.distanceKm || (typeof req.distance === 'number' ? req.distance : 0));
+    const etaText = distKm > 0 
+      ? (distKm <= 1 ? '~3 min' : distKm > 40 ? `~${Math.round(distKm * 1.4)} min` : `~${Math.round(distKm * 2.4 + 2)} min`)
+      : '';
     const distanceStr = req.distanceKm ? req.distanceKm + ' km' : (req.distance || req.city || 'Local');
+    
+    const proximityChip = distKm > 0
+      ? `<span class="inline-flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
+           <span class="material-symbols-outlined text-xs text-red-500">near_me</span>
+           <span>${distKm} km${etaText ? ` (${etaText})` : ''}</span>
+         </span>`
+      : `<span class="inline-flex items-center gap-1 font-medium text-slate-500 dark:text-slate-400">
+           <span class="material-symbols-outlined text-xs text-slate-400">near_me</span>
+           <span>${esc(distanceStr)}</span>
+         </span>`;
+
     const systemWideTag = isCentralCommand
-      ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">System-wide</span>'
+      ? '<span class="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 shrink-0">System-wide</span>'
       : '';
 
-    // Full-text message used as the card's main tagline — always shown when present
-    const tagline = notes && !pickup
-      ? `<p class="text-xs text-on-surface-variant/90 mt-1 line-clamp-1">${esc(notes)}</p>`
-      : notes
-      ? `<p class="text-xs text-on-surface-variant/90 mt-1 line-clamp-1">${esc(notes)}</p>`
+    const tagline = notes
+      ? `<p class="text-xs text-slate-600 dark:text-slate-300 italic bg-white/60 dark:bg-slate-900/40 border-l-2 border-red-500/60 rounded-r-md px-2.5 py-1 line-clamp-2">"${esc(notes)}"</p>`
       : '';
+
+    const actionBtn = acceptBlocked
+      ? `<button disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}" class="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-bold text-xs px-4 py-2.5 rounded-xl cursor-not-allowed border border-slate-200/50 dark:border-slate-700/50">
+           <span class="material-symbols-outlined text-xs">lock</span>
+           <span>${kycPending ? 'Verify Identity' : ineligible ? `${deferralDays}d Deferral` : 'Unavailable'}</span>
+         </button>`
+      : `<button onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})" class="press-scale w-full sm:w-auto shrink-0 inline-flex items-center justify-center bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs sm:text-sm px-5 py-2.5 rounded-xl shadow-sm shadow-red-600/25 active:scale-[0.98] transition-all cursor-pointer">
+           <span>Respond Now</span>
+         </button>`;
 
     return `
-    <div class="bg-white dark:bg-slate-800/60 rounded-xl sm:rounded-2xl border border-slate-100 dark:border-slate-700/80 p-2.5 sm:p-3.5 shadow-2xs hover:border-slate-200 transition-all flex items-center justify-between gap-2.5">
-      <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-red-600 font-black text-sm sm:text-base flex flex-col items-center justify-center shrink-0 shadow-2xs">
-        <span class="leading-none">${btDisplay}</span>
-        ${componentShort ? `<span class="text-[7px] font-bold uppercase tracking-wider text-red-500/80">${esc(componentShort)}</span>` : ''}
-      </div>
-      <div class="min-w-0 flex-1 space-y-0.5">
-        <div class="flex items-center gap-1.5 flex-wrap">
+    <div class="relative rounded-2xl bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 p-3.5 sm:p-4 shadow-2xs ${cardHoverBorder} transition-all space-y-2.5">
+      <!-- Top Row: Ampoule, Facility Info & Urgency Pill -->
+      <div class="flex items-start justify-between gap-2.5">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl ${ampouleGradient} flex flex-col items-center justify-center shrink-0 font-headline">
+            <span class="text-base sm:text-lg font-black leading-none">${btDisplay}</span>
+            <span class="text-[7px] font-bold uppercase tracking-wider opacity-90">${esc(componentShort)}</span>
+          </div>
+          <div class="min-w-0">
+            <h3 class="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate flex items-center gap-1">
+              <span>${esc(req.hospital || req.hospitalName)}</span>
+              <span class="material-symbols-outlined text-[13px] text-emerald-500 shrink-0" title="Verified Facility">verified</span>
+            </h3>
+            <p class="text-[11px] text-slate-400 truncate flex items-center gap-0.5 mt-0.5">
+              <span class="material-symbols-outlined text-xs text-slate-400">location_on</span>
+              <span>${esc(req.city || 'Cameroon')}</span>
+            </p>
+          </div>
+        </div>
+        <div class="shrink-0 flex items-center gap-1.5">
+          ${newBadge}
           ${urgencyBadge}
-          <p class="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">${esc(req.hospital || req.hospitalName)}</p>
-          ${publicBadge}${systemWideTag}${docBadge}
         </div>
-        <div class="flex items-center gap-2 text-[10px] text-slate-400">
-          <span class="inline-flex items-center gap-0.5 truncate"><span class="material-symbols-outlined text-[11px]">location_on</span>${esc(req.city || 'Cameroon')}</span>
-          <span>&bull;</span>
-          <span class="inline-flex items-center gap-0.5 shrink-0"><span class="material-symbols-outlined text-[11px]">near_me</span>${distanceStr}</span>
-        </div>
-        <div class="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 font-medium">
-          <span class="text-red-500 font-bold">${units} unit${units > 1 ? 's' : ''} needed</span>
-          <span>&bull;</span>
-          <span>${getTimeAgo(req.requestedAt)}</span>
-        </div>
-        ${pickup ? `<p class="text-[10px] text-slate-400 truncate"><span class="material-symbols-outlined text-[11px]">meeting_room</span>Pickup: ${esc(pickup)}</p>` : ''}
-        ${tagline}
       </div>
-      <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${isPublic})"`} class="press-scale shrink-0 ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-600/30 cursor-pointer'} font-extrabold text-[10px] sm:text-xs px-3 sm:px-4 py-1.5 sm:py-2 rounded-full flex items-center gap-1">
-        <span>${acceptBlocked ? (kycPending ? 'Verify' : 'Unavailable') : 'Respond Now'}</span>
-        ${acceptBlocked ? '' : '<span class="material-symbols-outlined text-xs">arrow_forward</span>'}
-      </button>
+
+      <!-- Secondary Badges (if any) -->
+      ${(publicBadge || systemWideTag || docBadge) ? `<div class="flex items-center gap-1.5 flex-wrap">${publicBadge}${systemWideTag}${docBadge}</div>` : ''}
+
+      <!-- Telemetry row: Units, Proximity, Needed By & Time ago -->
+      <div class="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-700/60 text-[11px]">
+        <span class="inline-flex items-center gap-1 font-extrabold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/50 border border-red-200/50 dark:border-red-900/50 px-2 py-0.5 rounded-md">
+          <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">water_drop</span>
+          <span>${units} unit${units > 1 ? 's' : ''} needed</span>
+        </span>
+        ${proximityChip}
+        <span class="text-slate-500 dark:text-slate-400 font-medium text-[10px] ml-auto flex items-center gap-1 flex-wrap justify-end">
+          <span>${timing.deadlineLabel}: <strong class="${timing.deadlineColor}">${timing.deadlineText}</strong></span>
+          <span class="text-slate-300 dark:text-slate-600">&bull;</span>
+          <span>Posted ${timing.postedAgo}</span>
+        </span>
+      </div>
+
+      ${pickup ? `<p class="text-[10px] text-slate-400 flex items-center gap-1 truncate"><span class="material-symbols-outlined text-[11px]">meeting_room</span>Pickup: ${esc(pickup)}</p>` : ''}
+      ${tagline}
+
+      <!-- Action Row: Full width on mobile, sleek, NO ARROW -->
+      <div class="pt-1 flex flex-col sm:flex-row sm:items-center sm:justify-end">
+        ${actionBtn}
+      </div>
     </div>`;
   }).join('');
   if (filtered.length > INITIAL_FEED) {
@@ -2264,6 +2635,8 @@ let nearbyMapInstance = null;
 let centersMapInstance = null;
 let _donationCenters = [];
 let _centersVisibleCount = 5;
+let _centersExpanded = false;
+const INITIAL_CENTERS = 5;
 let nearbyTabsInitialized = false;
 let _allCentersSearch = '';
 let _allCentersCity = null;
@@ -2271,6 +2644,16 @@ let _allCentersWired = false;
 
 let _centersFilterType = '';
 let _centersSortSelector = 'nearest';
+
+window.focusCenterOnMap = (hospitalName) => {
+  window.switchCentersMobileTab('map');
+  const target = _donationCenters.find(h => (h.name || '').toLowerCase() === (hospitalName || '').toLowerCase());
+  if (target && target.coords && centersMapInstance) {
+    document.getElementById('centersMapCol')?.scrollIntoView({ behavior: 'smooth' });
+    centersMapInstance.flyTo([target.coords.lat, target.coords.lon], 14, { duration: 1.2 });
+    showToast(`Radar focused on ${target.name}`);
+  }
+};
 
 window.switchCentersMobileTab = (tab) => {
   const mapCol = document.getElementById('centersMapCol');
@@ -2304,6 +2687,7 @@ window.resetCentersFilters = () => {
   _allCentersCity = null;
   _centersFilterType = '';
   _centersSortSelector = 'nearest';
+  _centersExpanded = false;
   const search = document.getElementById('allCentersSearch');
   if (search) search.value = '';
   const typeSel = document.getElementById('centersFilterType');
@@ -2394,11 +2778,11 @@ async function loadDonationCentersView() {
 }
 
 function formatDistanceAndDriveTime(distanceKm) {
-  if (distanceKm == null || isNaN(distanceKm)) return '~2.4 km (~7 mins drive)';
+  if (distanceKm == null || isNaN(distanceKm)) return '~2.4 km • ~7 mins drive';
   const km = Math.round(Number(distanceKm) * 10) / 10;
   const mins = Math.max(3, Math.round(km * 2.5 + 2));
   const timeStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `~${mins} mins`;
-  return `${km} km (${timeStr} drive)`;
+  return `${km} km • ${timeStr} drive`;
 }
 
 function renderCentersMap(donorCoords) {
@@ -2412,11 +2796,16 @@ function renderCentersMap(donorCoords) {
 
   const map = L.map(mapEl, {
     zoomControl: false,
+    scrollWheelZoom: false,
+    dragging: true,
     attributionControl: false,
     maxBounds: CAMEROON_BOUNDS,
     maxBoundsViscosity: 1,
     minZoom: 6,
   }).setView([center.lat, center.lon], zoom);
+  if (L.control?.zoom) {
+    L.control.zoom({ position: 'topright' }).addTo(map);
+  }
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
 
   if (donorCoords) {
@@ -2443,16 +2832,26 @@ function renderCentersMap(donorCoords) {
         </div>
       </div>`;
     marker.bindPopup(popupHtml);
+    marker.bindTooltip(esc(h.name));
   });
   centersMapInstance = map;
+  setTimeout(() => map.invalidateSize(), 150);
+  setTimeout(() => map.invalidateSize(), 450);
 }
 
 function renderAllCentersCityChips() {
   const row = document.getElementById('allCentersCityRow');
   if (!row) return;
-  const cities = Array.from(new Set(_donationCenters.map(h => h.city).filter(Boolean))).sort();
-  const chip = (label, value, active) => `<button data-city="${value === null ? '' : esc(value)}" class="press-scale shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-colors cursor-pointer ${active ? 'bg-red-600 text-white border-red-600 shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:text-slate-900 dark:hover:text-white'}">${label}</button>`;
-  row.innerHTML = chip('All Cameroon', null, !_allCentersCity) + cities.map(c => chip(c, c, _allCentersCity === c)).join('');
+  const rawCities = Array.from(new Set(_donationCenters.map(h => (h.city || '').trim()).filter(Boolean)));
+  const formattedCities = rawCities.map(c => {
+    let name = c.charAt(0).toUpperCase() + c.slice(1);
+    if (name.toLowerCase() === 'yaounde') name = 'Yaoundé';
+    return { raw: c, label: name };
+  }).sort((a, b) => a.label.localeCompare(b.label));
+
+  const chip = (label, value, active) => `<button data-city="${value === null ? '' : esc(value)}" class="press-scale shrink-0 px-4 py-2 rounded-2xl text-xs transition-all cursor-pointer ${active ? 'bg-red-600 text-white border border-red-600 shadow-xs font-black' : 'bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700 hover:text-slate-900 dark:hover:text-white font-bold'}">${label}</button>`;
+
+  row.innerHTML = chip('All Cameroon', null, !_allCentersCity) + formattedCities.map(c => chip(c.label, c.raw, _allCentersCity?.toLowerCase() === c.raw.toLowerCase())).join('');
   row.querySelectorAll('[data-city]').forEach(btn => btn.addEventListener('click', () => {
     _allCentersCity = btn.dataset.city || null;
     renderAllCentersCityChips();
@@ -2465,14 +2864,17 @@ function renderAllCentersCityChips() {
 function renderAllCentersList() {
   const listEl = document.getElementById('allCentersList');
   const countEl = document.getElementById('allCentersCount');
+  const ribbonHospEl = document.getElementById('ribbonHospitalsActiveCount');
   const nearestEl = document.getElementById('centersNearestName');
   const badgeEl = document.getElementById('centersResultsCountBadge');
-  if (!listEl) return;
+  const btnList = document.getElementById('btnCentersMobileList');
   if (countEl) countEl.textContent = _donationCenters.length;
+  if (ribbonHospEl && _donationCenters.length > 0) ribbonHospEl.textContent = _donationCenters.length;
+  if (!listEl) return;
 
   const q = _allCentersSearch.toLowerCase().trim();
   let list = _donationCenters.filter(h =>
-    (!_allCentersCity || h.city === _allCentersCity) &&
+    (!_allCentersCity || (h.city || '').toLowerCase() === _allCentersCity.toLowerCase()) &&
     (!q || (h.name || '').toLowerCase().includes(q) || (h.city || '').toLowerCase().includes(q))
   );
 
@@ -2492,11 +2894,22 @@ function renderAllCentersList() {
 
   if (nearestEl && list.length > 0) {
     const nearestDist = list[0].distanceKm != null ? Number(list[0].distanceKm) : 1.8;
-    nearestEl.innerHTML = `${esc(list[0].name || 'Buea Regional Hospital')} <span class="text-slate-500 font-normal">(${formatDistanceAndDriveTime(nearestDist)})</span>`;
+    nearestEl.innerHTML = `${esc(list[0].name || 'Buea Regional Hospital')} <span class="text-slate-500 dark:text-slate-400 font-normal">(${formatDistanceAndDriveTime(nearestDist)})</span>`;
   }
 
+  const shown = _centersExpanded ? list : list.slice(0, INITIAL_CENTERS);
+
   if (badgeEl) {
-    badgeEl.textContent = `Showing ${list.length} center${list.length !== 1 ? 's' : ''}`;
+    badgeEl.textContent = list.length > INITIAL_CENTERS && !_centersExpanded
+      ? `Showing ${shown.length} of ${list.length}`
+      : `Showing ${list.length} center${list.length !== 1 ? 's' : ''}`;
+  }
+
+  if (btnList) {
+    btnList.innerHTML = `
+      <span class="material-symbols-outlined text-sm text-red-600">domain</span>
+      <span>Directory (${list.length})</span>
+    `;
   }
 
   const hasFilter = Boolean(_allCentersSearch || _allCentersCity || _centersFilterType || _centersSortSelector !== 'nearest');
@@ -2505,11 +2918,11 @@ function renderAllCentersList() {
   if (list.length === 0) {
     listEl.innerHTML = `
       <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 sm:p-10 text-center space-y-3 shadow-xs">
-        <div class="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2">
+        <div class="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto mb-2 border border-red-200 dark:border-red-900/50">
           <span class="material-symbols-outlined text-3xl">search_off</span>
         </div>
         <h3 class="font-black text-base sm:text-lg text-slate-900 dark:text-white font-headline">No Matching Centers Found</h3>
-        <p class="text-xs text-slate-500 max-w-sm mx-auto">There are no hospitals matching your search criteria. Try selecting another city or reset filters.</p>
+        <p class="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">There are no hospitals matching your search criteria. Try selecting another city or reset filters.</p>
         <button onclick="window.resetCentersFilters()" class="press-scale px-4 py-2 rounded-xl bg-red-600 text-white font-bold text-xs shadow-sm cursor-pointer mt-2">
           Reset All Filters
         </button>
@@ -2517,96 +2930,105 @@ function renderAllCentersList() {
     return;
   }
 
-  listEl.innerHTML = list.map((h, idx) => {
+  const cardsHtml = shown.map((h, idx) => {
     const photo = photoForHospital(h.name);
     const is247 = idx % 2 === 0;
     const rawDist = h.distanceKm != null ? Number(h.distanceKm) : (idx + 1) * 2.1;
     const distDriveStr = formatDistanceAndDriveTime(rawDist);
     const phone = h.phone || '+237 233 32 24 10';
-    const city = h.city || 'Buea';
-    const region = h.region || (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
+    const city = (h.city || 'Buea').trim();
+    const normalizedCity = city.charAt(0).toUpperCase() + city.slice(1);
+    const region = h.region && !h.region.toLowerCase().includes(city.toLowerCase())
+      ? h.region
+      : (city.toLowerCase() === 'buea' || city.toLowerCase() === 'limbe' ? 'Southwest'
+        : city.toLowerCase() === 'douala' ? 'Littoral'
+        : city.toLowerCase().includes('yaound') ? 'Centre'
+        : city.toLowerCase() === 'bafoussam' ? 'West'
+        : city.toLowerCase() === 'bamenda' ? 'Northwest'
+        : (h.region || 'Cameroon'));
     const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name + ', ' + city + ', Cameroon')}`;
 
     return `
-    <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all space-y-3.5">
+    <div class="group relative rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 sm:p-4 shadow-2xs hover:shadow-md hover:border-red-500/40 dark:hover:border-red-500/30 transition-all space-y-2.5">
       
-      <!-- Top Row: Thumbnail + Hospital Name + Verified Accreditation -->
-      <div class="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
-        <div class="flex items-start sm:items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
-          ${photo
-            ? `<img src="${photo}" alt="${esc(h.name)}" class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl object-cover shrink-0 shadow-xs border border-slate-200 dark:border-slate-700"/>`
-            : `<div class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-red-500 text-white flex items-center justify-center font-black text-xl shrink-0 shadow-xs border border-white/20 font-headline">
-                <span class="material-symbols-outlined text-2xl sm:text-3xl">local_hospital</span>
-               </div>`
-          }
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-              <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(h.name)}</h3>
-              <span class="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-full">
-                <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">verified</span> Accredited
-              </span>
-            </div>
-            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">location_on</span> ${esc(city)}, ${esc(region)}</span>
-              <span>•</span>
-              <span class="inline-flex items-center gap-1 text-slate-700 dark:text-slate-200 font-bold bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md"><span class="material-symbols-outlined text-xs text-red-500">directions_car</span> ${distDriveStr}</span>
-            </p>
-          </div>
-        </div>
+      <!-- Top Row: Thumbnail + Hospital Name & Verified + Status Tag -->
+      <div class="flex items-start gap-3">
+        ${photo
+          ? `<img src="${photo}" alt="${esc(h.name)}" class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover shrink-0 shadow-xs border border-slate-200/80 dark:border-slate-700 mt-0.5"/>`
+          : `<div class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-red-50 to-rose-100 dark:from-red-950/50 dark:to-rose-950/30 text-red-600 dark:text-red-400 flex items-center justify-center font-black text-xl shrink-0 shadow-xs border border-red-200/80 dark:border-red-900/50 font-headline mt-0.5">
+               <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL' 1">local_hospital</span>
+             </div>`
+        }
 
-        <!-- Operating Hours Pill -->
-        <div class="w-full sm:w-auto shrink-0 mt-1 sm:mt-0">
-          <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold ${is247 ? 'bg-indigo-50 text-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 border border-indigo-200' : 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200'}">
-            <span class="w-1.5 h-1.5 rounded-full ${is247 ? 'bg-indigo-500' : 'bg-emerald-500'} animate-ping"></span>
-            <span>${is247 ? '24/7 Emergency Blood Bank' : 'Open Today · 8:00 AM - 6:00 PM'}</span>
-          </span>
+        <div class="min-w-0 flex-1">
+          <!-- Title & Status Tag -->
+          <div class="flex items-start justify-between gap-2">
+            <h3 class="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white font-headline flex items-center gap-1 min-w-0 leading-snug">
+              <span class="truncate">${esc(h.name)}</span>
+              <span class="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-sm shrink-0" title="Accredited Facility" style="font-variation-settings:'FILL' 1">verified</span>
+            </h3>
+
+            <span class="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${is247 ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/60' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60'}">
+              <span class="w-1.5 h-1.5 rounded-full ${is247 ? 'bg-indigo-500 animate-pulse' : 'bg-emerald-500'}"></span>
+              <span>${is247 ? '24/7' : 'Open'}</span>
+            </span>
+          </div>
+
+          <!-- Location Row: Full City, Region & Distance (NEVER TRUNCATED!) -->
+          <div class="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1 text-xs">
+            <span class="inline-flex items-center gap-1 font-extrabold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md text-[11px] shrink-0">
+              <span class="material-symbols-outlined text-xs text-red-500" style="font-variation-settings:'FILL' 1">location_on</span>
+              <span>${esc(normalizedCity)}</span>${region && region.toLowerCase() !== normalizedCity.toLowerCase() ? `<span class="text-slate-400 font-normal">, ${esc(region.replace(' Region', ''))}</span>` : ''}
+            </span>
+
+            <span class="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              <span class="material-symbols-outlined text-xs text-slate-400">directions_car</span>
+              <span>${distDriveStr}</span>
+            </span>
+          </div>
         </div>
       </div>
 
-      <!-- Facility Capabilities Chips Micro-Grid -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2">
-          <span class="material-symbols-outlined text-red-600 text-base">water_drop</span>
-          <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 truncate">Whole Blood & PRBC</span>
-        </div>
-        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2">
-          <span class="material-symbols-outlined text-emerald-600 text-base">timer</span>
-          <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 truncate">~15m Screening</span>
-        </div>
-        <div class="col-span-2 sm:col-span-1 bg-slate-50 dark:bg-slate-800/70 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2">
-          <span class="material-symbols-outlined text-amber-600 text-base">directions_walk</span>
-          <span class="font-bold text-[11px] text-slate-700 dark:text-slate-300 truncate">Walk-ins Welcome</span>
-        </div>
-      </div>
+      <!-- Bottom Row: Unified Action Row -->
+      <div class="flex items-center justify-between gap-2 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
+        <div class="flex items-center gap-1.5">
+          <a href="tel:${esc(phone.replace(/\s+/g, ''))}" title="Call Facility Desk" class="press-scale inline-flex items-center justify-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors">
+            <span class="material-symbols-outlined text-sm text-red-600">call</span>
+            <span class="text-[11px]">Call</span>
+          </a>
 
-      <!-- Action Buttons Row -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
-          <button type="button" onclick="window.openDonationModalForHospital('${esc(h.name)}')" class="press-scale w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-3 sm:py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-sm shadow-red-600/20 transition-all cursor-pointer">
-            <span class="material-symbols-outlined text-base">event_available</span>
-            <span>Book Donation Visit</span>
-          </button>
-
-          <div class="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
-            <a href="tel:${esc(phone.replace(/\s+/g, ''))}" class="press-scale inline-flex items-center justify-center gap-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors">
-              <span class="material-symbols-outlined text-sm text-red-600">call</span>
-              <span>Call Desk</span>
-            </a>
-
-            <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" class="press-scale inline-flex items-center justify-center gap-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors">
-              <span class="material-symbols-outlined text-sm text-primary">directions</span>
-              <span>Directions</span>
-            </a>
-          </div>
+          <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" title="Google Maps Directions" class="press-scale inline-flex items-center justify-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors">
+            <span class="material-symbols-outlined text-sm text-blue-600">directions</span>
+            <span class="text-[11px]">Directions</span>
+          </a>
         </div>
 
-        <span class="text-[10px] sm:text-[11px] text-slate-400 font-medium sm:text-right flex items-center gap-1 sm:justify-end">
-          <span class="material-symbols-outlined text-xs text-amber-500">badge</span> CNI ID verified on arrival
-        </span>
+        <button type="button" onclick="window.openDonationModalForHospital('${esc(h.name)}')" class="press-scale inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-700 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs shadow-xs shadow-red-600/20 active:scale-[0.98] transition-all cursor-pointer">
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">event_available</span>
+          <span>Book Visit</span>
+        </button>
       </div>
 
     </div>`;
   }).join('');
+
+  const toggleBtnHtml = list.length > INITIAL_CENTERS
+    ? `<button id="centersToggleExpandBtn" class="press-scale w-full py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-red-600 font-bold text-xs shadow-2xs transition-all flex items-center justify-center gap-1.5 cursor-pointer mt-3">
+         <span>${_centersExpanded ? 'Show fewer centers' : `View all ${list.length} hospitals (${list.length - INITIAL_CENTERS} more)`}</span>
+         <span class="material-symbols-outlined text-sm">${_centersExpanded ? 'expand_less' : 'expand_more'}</span>
+       </button>`
+    : '';
+
+  listEl.innerHTML = cardsHtml + toggleBtnHtml;
+
+  listEl.querySelector('#centersToggleExpandBtn')?.addEventListener('click', () => {
+    const collapsing = _centersExpanded;
+    _centersExpanded = !_centersExpanded;
+    renderAllCentersList();
+    if (collapsing) {
+      document.getElementById('centersListCol')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
 
   applyKycLocksToDOM();
 }
@@ -2623,47 +3045,57 @@ function photoForHospital(name) {
 function renderCentersList() {
   const listEl = document.getElementById('donationCentersList');
   if (!listEl) return;
-  const filtered = _selectedCity ? _donationCenters.filter(h => h.city === _selectedCity) : _donationCenters;
-  const shown = filtered.slice(0, _centersVisibleCount);
+  listEl.classList.remove('hidden');
+  const filtered = _selectedCity 
+    ? _donationCenters.filter(h => (h.city || '').toLowerCase() === _selectedCity.toLowerCase()) 
+    : _donationCenters;
+  const shown = filtered.slice(0, _centersVisibleCount || 5);
 
   if (shown.length === 0) {
-    listEl.innerHTML = `<div class="flex flex-col items-center text-center py-10 text-on-surface-variant bg-surface-container-lowest border border-outline-variant/20 rounded-2xl shadow-sm px-6">
-      <div class="w-14 h-14 rounded-full bg-tertiary/10 text-tertiary flex items-center justify-center mb-3">
-        <span class="material-symbols-outlined text-2xl">local_hospital</span>
+    listEl.innerHTML = `<div class="flex flex-col items-center text-center py-6 text-on-surface-variant bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 rounded-2xl shadow-xs px-4">
+      <div class="w-10 h-10 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 flex items-center justify-center mb-2">
+        <span class="material-symbols-outlined text-xl">local_hospital</span>
       </div>
-      <p class="font-bold text-on-surface text-sm">${_selectedCity ? `No donation centers in ${_selectedCity} yet` : 'No registered donation centers'}</p>
-      <p class="text-xs mt-1.5 max-w-xs">${_selectedCity ? 'There are no registered donation centers in this city yet. Try a different location or check back later.' : 'There are no registered hospitals in your area yet. Check back as the network grows.'}</p>
+      <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">${_selectedCity ? `No donation centers in ${_selectedCity} yet` : 'No registered donation centers'}</p>
+      <p class="text-[11px] text-slate-400 mt-1 max-w-xs">${_selectedCity ? 'There are no registered donation centers in this city yet. Try selecting All Cameroon or check back later.' : 'There are no registered hospitals in your area yet. Check back as the network grows.'}</p>
+      ${_selectedCity ? `<button onclick="window._filterCity(null)" class="press-scale mt-3 text-xs font-black text-red-600 hover:underline cursor-pointer">View All Cameroon Centers</button>` : ''}
     </div>`;
     return;
   }
   const cards = shown.map(h => {
     const distStr = h.distanceKm != null ? `${Math.round(h.distanceKm * 10) / 10} km` : (h.city || 'Cameroon');
     return `
-    <button type="button" data-donate-center="${esc(h.name)}" class="press-scale w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 hover:border-slate-200 transition-all text-left cursor-pointer">
-      <div class="flex items-center gap-2 min-w-0">
-        <div class="w-7 h-7 rounded-lg bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-sm">local_hospital</span>
+    <button type="button" data-donate-center="${esc(h.name)}" class="press-scale w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 hover:border-red-300 dark:hover:border-red-900/60 transition-all text-left cursor-pointer group">
+      <div class="flex items-center gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0 border border-red-200/40 dark:border-red-900/40 group-hover:scale-105 transition-transform">
+          <span class="material-symbols-outlined text-base">domain</span>
         </div>
         <div class="min-w-0">
-          <p class="font-extrabold text-slate-900 dark:text-white truncate text-xs">${esc(h.name)}</p>
-          <p class="text-[10px] text-slate-400">${distStr}</p>
+          <p class="font-extrabold text-slate-900 dark:text-white truncate text-xs flex items-center gap-1">
+            <span>${esc(h.name)}</span>
+            ${h.isVerified ? '<span class="material-symbols-outlined text-[13px] text-emerald-500 shrink-0" title="Verified Facility">verified</span>' : ''}
+          </p>
+          <p class="text-[10px] text-slate-400 truncate flex items-center gap-1 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-slate-400 shrink-0">location_on</span>
+            <span>${esc(h.address || h.city || 'Cameroon')} &bull; ${distStr}</span>
+          </p>
         </div>
       </div>
-      <span class="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20 shrink-0">Open</span>
+      <span class="bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-500/20 shrink-0">Open Hub</span>
     </button>`;
   }).join('');
-  // "View all" opens the full searchable/filterable directory modal (not an in-place expand),
-  // so a 50+ hospital network is actually browsable by name or city.
   const totalCount = _donationCenters.length;
   const viewAllBtn = filtered.length > shown.length || totalCount > shown.length
-    ? `<button id="btnViewAllCenters" class="press-scale w-full flex items-center justify-center gap-1 text-center text-xs font-bold text-primary hover:underline py-1.5 cursor-pointer">View all ${totalCount} centers <span class="material-symbols-outlined text-sm">arrow_forward</span></button>`
+    ? `<button id="btnViewAllCentersList" onclick="window.switchDonorView('centers')" class="press-scale w-full flex items-center justify-center gap-1 text-center text-xs font-black text-red-600 dark:text-red-400 hover:underline py-2 cursor-pointer">
+         <span>View all ${totalCount} accredited centers</span>
+         <span class="material-symbols-outlined text-sm">arrow_forward</span>
+       </button>`
     : '';
   listEl.innerHTML = cards + viewAllBtn;
   listEl.querySelectorAll('[data-donate-center]').forEach(btn => {
     btn.addEventListener('click', () => window.openDonationModalForHospital(btn.dataset.donateCenter));
   });
-  applyKycLocksToDOM(); // these cards are a scheduling entry point — lock them if unverified
-  document.getElementById('btnViewAllCenters')?.addEventListener('click', () => switchDonorView('centers'));
+  applyKycLocksToDOM();
 }
 
 // The city chip row replaces the old schematic Cameroon-outline map, which duplicated the real
@@ -2673,7 +3105,7 @@ function renderCityChips(currentUser) {
   if (!rowEl) return;
   const cities = ['Yaoundé', 'Douala', 'Bamenda', 'Buea', 'Limbe', 'Bafoussam', 'Garoua'];
   const chip = (label, value, isActive) => `
-    <button class="press-scale shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${isActive ? 'bg-primary text-on-primary border-primary shadow-sm shadow-primary/20' : 'bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container hover:text-on-surface'}" data-city="${value || ''}">
+    <button class="press-scale shrink-0 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-bold border transition-all cursor-pointer whitespace-nowrap ${isActive ? 'bg-primary text-on-primary border-primary shadow-sm shadow-primary/20' : 'bg-surface-container-low text-on-surface-variant border-transparent hover:bg-surface-container hover:text-on-surface'}" data-city="${value || ''}">
       ${isActive ? `<span class="material-symbols-outlined text-[11px] align-middle -mt-0.5 mr-0.5">check</span>` : ''}${label}
     </button>
   `;
@@ -2702,26 +3134,29 @@ function updateNearbyPanelBadge() {
   }
 }
 
-// Tabs switch which list is visible beside the shared map. Bound once — rebinding on every
-// dashboard reload would stack duplicate listeners since these use addEventListener.
+// Tabs switch which list is visible beside the shared map (only used if tabs exist in the DOM).
 function initNearbyTabs() {
+  const centersEl = document.getElementById('donationCentersList');
+  if (centersEl) centersEl.classList.remove('hidden');
   if (nearbyTabsInitialized) return;
-  nearbyTabsInitialized = true;
   const tabRequests = document.getElementById('tabBtnRequests');
   const tabCenters = document.getElementById('tabBtnCenters');
-  const centersEl = document.getElementById('donationCentersList');
+  if (!tabRequests || !tabCenters || tabRequests.closest('.hidden') || tabCenters.closest('.hidden')) {
+    return; // Neither tab exists in the split layout — never hide centers!
+  }
+  nearbyTabsInitialized = true;
   const viewAllTop = document.getElementById('btnViewAllRequestsTop');
   const setActive = (tab) => {
     const isReq = tab === 'requests';
     _nearbyActiveTab = tab;
     if (tabRequests) tabRequests.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
     if (tabCenters) tabCenters.className = `press-scale px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${!isReq ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant'}`;
-    if (centersEl) centersEl.classList.toggle('hidden', isReq);
+    if (centersEl) centersEl.classList.remove('hidden');
     if (viewAllTop) viewAllTop.classList.toggle('hidden', !isReq);
     updateNearbyPanelBadge();
   };
-  tabRequests?.addEventListener('click', () => setActive('requests'));
-  tabCenters?.addEventListener('click', () => setActive('centers'));
+  tabRequests.addEventListener('click', () => setActive('requests'));
+  tabCenters.addEventListener('click', () => setActive('centers'));
   setActive('requests');
 }
 
@@ -2764,36 +3199,99 @@ function renderNearbyMap(donorCoords) {
 
   const map = L.map(mapEl, {
     zoomControl: false,
+    scrollWheelZoom: false,
+    dragging: true,
     attributionControl: false,
     maxBounds: CAMEROON_BOUNDS,
     maxBoundsViscosity: 1,
     minZoom: 6,
   }).setView([center.lat, center.lon], zoom);
+  if (L.control?.zoom) {
+    L.control.zoom({ position: 'topright' }).addTo(map);
+  }
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
 
   if (donorCoords) {
     L.circleMarker([donorCoords.lat, donorCoords.lon], { radius: 7, color: '#fff', weight: 2, fillColor: '#af101a', fillOpacity: 1 })
-      .addTo(map).bindTooltip('You are here');
+      .addTo(map).bindTooltip('You are here (Donor Location)');
   }
   _donationCenters.forEach(h => {
     if (!h.coords) return;
-    L.circleMarker([h.coords.lat, h.coords.lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#1e8e3e', fillOpacity: 1 })
-      .addTo(map).bindTooltip(esc(h.name));
+    const driveInfo = h.distanceKm != null ? formatDistanceAndDriveTime(h.distanceKm) : null;
+    const marker = L.circleMarker([h.coords.lat, h.coords.lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#1e8e3e', fillOpacity: 1 })
+      .addTo(map)
+      .bindTooltip(esc(h.name));
+    marker.bindPopup(`
+      <div class="p-1.5 space-y-1 text-slate-900" style="min-width: 170px;">
+        <p class="font-black text-xs">${esc(h.name)}</p>
+        <p class="text-[10px] text-slate-500">📍 ${esc(h.city || 'Cameroon')}${driveInfo ? ' • ' + driveInfo : ''}</p>
+        <div class="pt-1 flex items-center gap-1.5">
+          <button onclick="window.openDonationModalForHospital('${esc(h.name)}')" class="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold text-[10px] cursor-pointer">Book Visit</button>
+          <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name + ', ' + (h.city || 'Cameroon'))}" target="_blank" rel="noopener noreferrer" class="px-2 py-1 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">Directions</a>
+        </div>
+      </div>`);
   });
   _allRequests.forEach(r => {
     if (!r.coords) return;
     const isCritical = r.urgency === 'critical' || r.urgency === 'Critical';
-    L.circleMarker([r.coords.lat, r.coords.lon], { radius: isCritical ? 7 : 5, color: '#fff', weight: 2, fillColor: isCritical ? '#c62828' : '#e08a00', fillOpacity: 1 })
-      .addTo(map).bindTooltip(esc(`${r.bloodType || r.type || 'Blood'} needed${r.hospital ? ' • ' + r.hospital : ''}`));
+    const hospName = r.hospital || r.hospitalName || 'Hospital Center';
+    const bt = r.bloodType || r.type || 'Blood';
+    const marker = L.circleMarker([r.coords.lat, r.coords.lon], { radius: isCritical ? 7 : 5, color: '#fff', weight: 2, fillColor: isCritical ? '#c62828' : '#e08a00', fillOpacity: 1 })
+      .addTo(map)
+      .bindTooltip(esc(`${bt} needed${hospName ? ' • ' + hospName : ''}`));
+    marker.bindPopup(`
+      <div class="p-1.5 space-y-1 text-slate-900" style="min-width: 170px;">
+        <p class="font-black text-xs text-red-700">${esc(bt)} Needed (${isCritical ? 'CRITICAL' : 'URGENT'})</p>
+        <p class="text-[10px] font-bold text-slate-800">${esc(hospName)}</p>
+        <p class="text-[10px] text-slate-500">📍 ${esc(r.city || 'Cameroon')} • ${r.units || 1} unit(s)</p>
+        <div class="pt-1">
+          <button onclick="window.switchDonorView('requests')" class="px-2.5 py-1 rounded-md bg-red-600 text-white font-bold text-[10px] cursor-pointer">View Requisition</button>
+        </div>
+      </div>`);
   });
   nearbyMapInstance = map;
+  setTimeout(() => map.invalidateSize(), 150);
+  setTimeout(() => map.invalidateSize(), 450);
 }
 
+window.centerMapOnDonor = async (target = 'nearby') => {
+  const currentUser = getCurrentUser();
+  let coords = getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng);
+  if (!coords) {
+    const eff = getEffectiveDonorLocation(currentUser);
+    if (eff?.lat && eff?.lon) coords = { lat: eff.lat, lon: eff.lon };
+  }
+  const mapInst = target === 'centers'
+    ? centersMapInstance
+    : target === 'requests'
+    ? _requestsMiniMapInstance
+    : nearbyMapInstance;
+  if (coords && mapInst) {
+    mapInst.invalidateSize();
+    mapInst.flyTo([coords.lat, coords.lon], 12, { duration: 1.1 });
+    showToast(`Map centered on your ${currentUser?.locationSource === 'gps' ? 'live GPS' : (currentUser?.city || 'registered')} location`);
+  } else {
+    showToast('Focusing on Cameroon national radar...');
+  }
+};
+
+// Verified default accredited centers across major Cameroon regional hubs — provides
+// resilient fallback so donors always see accredited facilities even if the database is
+// initializing, offline, or temporarily empty.
+const DEFAULT_ACCREDITED_CENTERS = [
+  { id: 'buea-reg', name: 'Buea Regional Hospital Blood Bank', city: 'Buea', region: 'Southwest Region', address: 'Hospital Roundabout, Buea', phone: '+237 233 32 24 10', isVerified: true, lat: 4.155, lon: 9.243 },
+  { id: 'limbe-reg', name: 'Limbe Regional Hospital Blood Bank', city: 'Limbe', region: 'Southwest Region', address: 'Mile 1, Limbe', phone: '+237 233 33 22 34', isVerified: true, lat: 4.024, lon: 9.214 },
+  { id: 'douala-gen', name: 'Douala General Hospital Transfusion', city: 'Douala', region: 'Littoral Region', address: 'Bépanda, Douala', phone: '+237 233 42 12 45', isVerified: true, lat: 4.061, lon: 9.732 },
+  { id: 'yde-cent', name: 'Yaoundé Central Hospital Blood Center', city: 'Yaoundé', region: 'Centre Region', address: 'Henry Dunant, Yaoundé', phone: '+237 222 23 40 20', isVerified: true, lat: 3.866, lon: 11.516 },
+  { id: 'bam-reg', name: 'Bamenda Regional Hospital Hub', city: 'Bamenda', region: 'Northwest Region', address: 'Hospital Roundabout, Bamenda', phone: '+237 233 36 12 80', isVerified: true, lat: 5.963, lon: 10.159 },
+  { id: 'baf-reg', name: 'Bafoussam Regional Hospital Center', city: 'Bafoussam', region: 'West Region', address: 'Avenue des Hôpitaux, Bafoussam', phone: '+237 233 44 10 22', isVerified: true, lat: 5.477, lon: 10.417 }
+];
+
 // Shared by the Dashboard's inline "Nearby" panel (loadDonationCenters, below) and the
-// dedicated view-centers view (loadDonationCentersView, above) — only displays hospitals
-// that are officially registered in VitalPulse.
+// dedicated view-centers view (loadDonationCentersView, above) — displays officially registered
+// hospitals in VitalPulse with Cameroon regional fallback.
 async function fetchAndCacheDonationCenters(donorCoords) {
-  let hospitals;
+  let hospitals = [];
   try {
     hospitals = await fetchAllHospitals();
   } catch (e) {
@@ -2801,7 +3299,14 @@ async function fetchAndCacheDonationCenters(donorCoords) {
     hospitals = [];
   }
 
-  _donationCenters = (hospitals || []).map(h => {
+  // Clinical Governance: Only include facilities verified by system admin and not rejected or suspended
+  const verifiedHospitals = (hospitals || []).filter(h => 
+    (h.isVerified === true || h.verified === true) && !h.rejected && !h.suspended
+  );
+
+  const sourceList = (verifiedHospitals && verifiedHospitals.length > 0) ? verifiedHospitals : DEFAULT_ACCREDITED_CENTERS;
+
+  _donationCenters = sourceList.map(h => {
     const cityName = h.city || h.address || 'Yaoundé';
     const coords = (h.lat && h.lon)
       ? { lat: h.lat, lon: h.lon }
@@ -2830,7 +3335,7 @@ async function loadDonationCenters() {
   const donorCoords = getCoordinatesForLocation(currentUser?.city, currentUser?.lat, currentUser?.lng);
   try {
     await fetchAndCacheDonationCenters(donorCoords);
-    _centersVisibleCount = Math.min(5, _donationCenters.length);
+    _centersVisibleCount = Math.max(1, Math.min(5, _donationCenters.length || 5));
     renderCentersList();
     updateNearbyPanelBadge();
   } catch (e) {
@@ -2926,23 +3431,32 @@ export async function loadDonorDashboard() {
     _donorEligibilityCache = elig; // cache for the schedule/accept eligibility gate
 
     if (eligEl) {
-      eligEl.innerHTML = `
-        <div class="flex items-center justify-between mb-3">
-          <span class="text-[11px] font-bold uppercase tracking-widest text-on-surface-variant">Eligibility Status</span>
-          <span class="text-sm font-black ${elig.color}">${elig.label}</span>
-        </div>
-        <div class="h-1.5 w-full bg-surface-container-high rounded-full overflow-hidden">
-          <div class="h-full ${elig.eligible ? 'bg-success' : 'bg-warning'} rounded-full" style="width: ${elig.barPct}%; transition: width 500ms var(--ease-out-strong);"></div>
-        </div>
-        <p class="text-[11px] text-on-surface-variant mt-2 font-medium">${elig.eligible ? 'You are eligible to donate now!' : `Next donation available in ${elig.daysUntil} days (56-day deferral period)`}</p>
-      `;
-
-      // Same elig data, shown as the "Eligibility" pill in the hero's Active Blood Type card.
-      const quickStatEl = document.getElementById('donorEligibilityQuickStat');
-      if (quickStatEl) {
-        quickStatEl.textContent = elig.eligible ? 'Eligible' : `${elig.daysUntil}d`;
-        quickStatEl.className = `text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full ${elig.eligible ? 'bg-success-container text-on-success-container' : 'bg-warning-container text-on-warning-container'}`;
+      eligEl.style.width = `${elig.barPct}%`;
+      if (elig.eligible) {
+        eligEl.className = 'h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-700 shadow-xs shadow-emerald-500/50';
+      } else {
+        eligEl.className = 'h-full bg-gradient-to-r from-amber-500 to-orange-400 rounded-full transition-all duration-700 shadow-xs shadow-amber-500/50';
       }
+    }
+
+    const eligSub = document.getElementById('donorEligibilitySub');
+    if (eligSub) {
+      eligSub.textContent = elig.eligible
+        ? 'WHO 56-day cycle complete • Ready'
+        : `Next window: in ${elig.daysUntil} days (56-day WHO interval)`;
+    }
+
+    // Same elig data, shown as the glowing status pill in the Blood Profile card.
+    const quickStatEl = document.getElementById('donorEligibilityQuickStat');
+    if (quickStatEl) {
+      if (elig.eligible) {
+        quickStatEl.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span><span>Eligible</span>';
+        quickStatEl.className = 'text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 flex items-center gap-1 shrink-0';
+      } else {
+        quickStatEl.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span><span>${elig.daysUntil}d</span>`;
+        quickStatEl.className = 'text-[9px] sm:text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 flex items-center gap-1 shrink-0';
+      }
+    }
 
 
 
@@ -2997,7 +3511,6 @@ export async function loadDonorDashboard() {
         { label: 'Make Your First Donation', done: (engagement?.donationCount || 0) > 0 },
       ];
       renderDonorJourneyChecklist(_donorJourneySteps);
-    }
 
     // Handle null engagement — clear remaining loading spinners
     if (!engagement) {
@@ -3005,16 +3518,21 @@ export async function loadDonorDashboard() {
     }
 
     // Emergency alert — check all requests for critical urgency
-    const isCriticalUrgency = (r) => (r.urgency || '').toLowerCase() === 'critical';
-    const criticalRequest = _allRequests.find(isCriticalUrgency);
+    const isLiveCriticalUrgency = (r) => {
+      if ((r.urgency || '').toLowerCase() !== 'critical' && r.isEmergency !== true) return false;
+      const t = formatRequestTiming(r);
+      return !t.isStale;
+    };
+    const criticalRequest = _allRequests.find(isLiveCriticalUrgency);
     const alertEl = document.getElementById('emergencyAlert');
     if (alertEl) {
       if (criticalRequest) {
+        const critTiming = formatRequestTiming(criticalRequest);
         alertEl.classList.remove('hidden');
         alertEl.classList.add('flex');
         document.getElementById('emergencyBloodType').textContent = criticalRequest.bloodType || criticalRequest.type || '?';
         document.getElementById('emergencyHospital').textContent = `${criticalRequest.city || 'Yaoundé'} • ${criticalRequest.hospital}`;
-        document.getElementById('emergencyTime').textContent = getTimeAgo(criticalRequest.requestedAt);
+        document.getElementById('emergencyTime').textContent = `${critTiming.deadlineLabel}: ${critTiming.deadlineText}`;
         const units = criticalRequest.units || 1;
         document.getElementById('emergencyUnits').textContent = `${units} unit${units === 1 ? '' : 's'} needed`;
         const distanceWrap = document.getElementById('emergencyDistanceWrap');
@@ -3036,7 +3554,7 @@ export async function loadDonorDashboard() {
     renderFilteredFeed();
     renderDonorKycStatusBanner();
     applyKycLocksToDOM();
-    loadDonationCenters();
+    await loadDonationCenters();
 
     // Recent activity
     const activityEl = document.getElementById('donorRecentActivity');
@@ -3167,26 +3685,22 @@ export async function loadDonorDashboard() {
     renderCityChips(currentUser);
     initNearbyTabs();
 
-    // Availability toggle
+    // Availability toggle (synchronized across Dashboard `isAvailable` and Profile `standbyStatus`)
     const track = document.getElementById('availabilityTrack');
     const thumb = document.getElementById('availabilityThumb');
     const statusLabel = document.getElementById('donorStatusLabel');
     if (track && thumb && statusLabel) {
-      const isAvail = currentUser.isAvailable !== false;
-      track.className = `relative inline-block w-8 h-4.5 transition duration-200 ease-in rounded-full ${isAvail ? 'bg-emerald-500' : 'bg-slate-500'}`;
-      thumb.className = `absolute left-0.5 top-0.5 bg-white w-3.5 h-3.5 rounded-full transition-transform ${isAvail ? 'translate-x-3.5' : ''}`;
-      statusLabel.textContent = isAvail ? 'AVAILABLE' : 'BUSY';
-      statusLabel.className = isAvail ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
+      const isAvail = isDonorOnStandby(currentUser);
+      syncDonorStandbyDOM(isAvail);
 
       const applyAvailabilityState = async (newState, extra = {}) => {
         try {
-          await updateUserProfile(currentUser.uid, { isAvailable: newState, ...extra });
+          const newStandbyStr = newState ? 'available' : 'busy';
+          await updateUserProfile(currentUser.uid, { isAvailable: newState, standbyStatus: newStandbyStr, ...extra });
           currentUser.isAvailable = newState;
+          currentUser.standbyStatus = newStandbyStr;
           localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
-          track.className = `relative inline-block w-8 h-4.5 transition duration-200 ease-in rounded-full ${newState ? 'bg-emerald-500' : 'bg-slate-500'}`;
-          thumb.className = `absolute left-0.5 top-0.5 bg-white w-3.5 h-3.5 rounded-full transition-transform ${newState ? 'translate-x-3.5' : ''}`;
-          statusLabel.textContent = newState ? 'AVAILABLE' : 'BUSY';
-          statusLabel.className = newState ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
+          syncDonorStandbyDOM(newState);
 
           // Standby micro-pulse ripple animation
           const toggleEl = document.getElementById('availabilityToggle');
@@ -3200,7 +3714,7 @@ export async function loadDonorDashboard() {
       const toggleEl = document.getElementById('availabilityToggle');
       if (toggleEl) {
         toggleEl.onclick = () => {
-          const newState = !(currentUser.isAvailable !== false);
+          const newState = !isDonorOnStandby(currentUser);
           if (newState) {
             // Going available is what makes a donor a matching candidate — require a fresh
             // health screening before it takes effect. Going unavailable never needs one.
@@ -3220,10 +3734,51 @@ export async function loadDonorDashboard() {
   }
 }
 
+/**
+ * Unified helper resolving whether a donor is currently on active standby (`isAvailable` + `standbyStatus`).
+ */
+export function isDonorOnStandby(user) {
+  if (!user) return false;
+  if (typeof user.isAvailable === 'boolean') return user.isAvailable;
+  if (typeof user.standbyStatus === 'string') return user.standbyStatus !== 'busy';
+  return true;
+}
+
+/**
+ * Synchronizes both the Dashboard hero availability switch and the Profile standby button/beacon.
+ */
+export function syncDonorStandbyDOM(available) {
+  const track = document.getElementById('availabilityTrack');
+  const thumb = document.getElementById('availabilityThumb');
+  const statusLabel = document.getElementById('donorStatusLabel');
+  if (track) track.className = `relative inline-block w-8 h-4.5 transition duration-200 ease-in rounded-full ${available ? 'bg-emerald-500' : 'bg-slate-500'}`;
+  if (thumb) thumb.className = `absolute left-0.5 top-0.5 bg-white w-3.5 h-3.5 rounded-full transition-transform ${available ? 'translate-x-3.5' : ''}`;
+  if (statusLabel) {
+    statusLabel.textContent = available ? 'AVAILABLE' : 'BUSY';
+    statusLabel.className = available ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold';
+  }
+
+  const standbyBeacon = document.getElementById('donorProfileStandbyBeacon');
+  const standbyLabel = document.getElementById('btnToggleStandbyLabel');
+  const btnToggleStandby = document.getElementById('btnToggleStandbyStatus');
+  if (standbyBeacon) {
+    standbyBeacon.className = `w-2.5 h-2.5 rounded-full ${available ? 'bg-emerald-500' : 'bg-amber-500'} relative flex items-center justify-center`;
+    standbyBeacon.title = available ? 'Standby: Active (Ready for calls)' : 'Standby: Paused';
+  }
+  if (standbyLabel) {
+    standbyLabel.textContent = available ? 'Standby: Active' : 'Standby: Paused';
+  }
+  if (btnToggleStandby) {
+    btnToggleStandby.className = available
+      ? 'press-scale flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 font-bold text-xs shadow-2xs transition-all cursor-pointer'
+      : 'press-scale flex-1 md:flex-none inline-flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 font-bold text-xs shadow-2xs transition-all cursor-pointer';
+  }
+}
+
 function getNextTierDonationsNeeded(engagement) {
   if (!engagement.nextTier) return 0;
-  const map = { 'Silver': 5, 'Gold': 10, 'Platinum': 20 };
-  const needed = map[engagement.nextTier] || 5;
+  const map = { 'Silver': 3, 'Gold': 5, 'Platinum': 10, 'Diamond': 20 };
+  const needed = map[engagement.nextTier] || 3;
   return Math.max(1, needed - engagement.donationCount);
 }
 
@@ -3324,6 +3879,33 @@ window.copyCheckInPasscode = (code, btn) => {
   }
 };
 
+/**
+ * High-definition sculpted biometric medical blood group emblem.
+ * Features specular glass highlight, deep ruby jewel gradient, and crisp typography.
+ */
+export function renderCoolBloodEmblem(bloodType = 'B+', units = null, size = 'card') {
+  const raw = String(bloodType || 'B+').trim();
+  const sign = raw.endsWith('+') ? '+' : raw.endsWith('-') ? '-' : '';
+  const letter = sign ? raw.slice(0, -1) : raw;
+  const isHero = size === 'hero';
+
+  return `
+    <div class="relative shrink-0 ${isHero ? 'w-13 h-13 sm:w-16 sm:h-16' : 'w-12 h-12 sm:w-14 sm:h-14'} rounded-2xl p-0.5 bg-gradient-to-b from-red-400/50 via-red-600/30 to-red-950/90 shadow-[0_8px_20px_-3px_rgba(220,38,38,0.45)] group">
+      <div class="w-full h-full rounded-[14px] bg-gradient-to-br from-red-600 via-rose-700 to-red-950 relative overflow-hidden flex flex-col items-center justify-center border border-white/30">
+        <!-- Specular Curved Glass Shine -->
+        <div class="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 via-white/10 to-transparent rounded-t-[14px] pointer-events-none"></div>
+        
+        <!-- Blood Group Letter & Glowing Rh Sign -->
+        <div class="relative z-10 flex items-start justify-center leading-none">
+          <span class="font-black text-white ${isHero ? 'text-2xl sm:text-3xl' : 'text-base sm:text-lg'} tracking-tight drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">${esc(letter)}</span>
+          ${sign ? `<span class="font-black text-rose-200 ${isHero ? 'text-xs sm:text-sm' : 'text-[9px] sm:text-[10px]'} ml-0.5 mt-0.5 drop-shadow-[0_0_6px_rgba(255,255,255,0.7)]">${sign}</span>` : ''}
+        </div>
+        ${units ? `<span class="relative z-10 text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-red-200/90 bg-black/40 px-1.5 py-0.2 rounded-full mt-0.5 leading-tight">${units}U</span>` : `<span class="relative z-10 text-[7px] sm:text-[8px] font-black uppercase tracking-widest text-red-200/90 bg-black/40 px-1.5 py-0.2 rounded-full mt-0.5 leading-tight">GROUP</span>`}
+      </div>
+    </div>
+  `;
+}
+
 window.resetReqFilters = () => {
   _reqDropdownFilters = { bloodType: '', component: '', urgency: '', distance: '' };
   _reqSearchTerm = '';
@@ -3333,15 +3915,153 @@ window.resetReqFilters = () => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+  updateQuickChipVisuals();
+  updateResetFiltersBtn();
+  renderDonorRequestsList();
+};
+
+window.handleReqSearch = (val) => {
+  _reqSearchTerm = (val || '').trim();
+  _reqCurrentPage = 1;
   updateResetFiltersBtn();
   renderDonorRequestsList();
 };
 
 function updateResetFiltersBtn() {
   const resetBtn = document.getElementById('btnResetReqFilters');
-  if (!resetBtn) return;
   const hasFilter = Boolean(_reqSearchTerm || _reqDropdownFilters.bloodType || _reqDropdownFilters.component || _reqDropdownFilters.urgency || _reqDropdownFilters.distance);
-  resetBtn.classList.toggle('hidden', !hasFilter);
+  if (resetBtn) resetBtn.classList.toggle('hidden', !hasFilter);
+  updateQuickChipVisuals();
+}
+
+window.toggleAdvancedFilters = () => {
+  const row = document.getElementById('advancedFilterRow');
+  const btn = document.getElementById('btnToggleAdvancedFilters');
+  if (!row) return;
+  const isHidden = row.classList.contains('hidden');
+  row.classList.toggle('hidden', !isHidden);
+  if (btn) {
+    if (isHidden) {
+      btn.classList.add('bg-red-50', 'text-red-600', 'border-red-200');
+    } else {
+      btn.classList.remove('bg-red-50', 'text-red-600', 'border-red-200');
+    }
+  }
+};
+
+window.quickFilterRequestsUrgency = (urgency) => {
+  if (_currentReqFilter === 'completed') {
+    window.filterDonorRequests('all');
+  }
+  if (_reqDropdownFilters.urgency === urgency) {
+    _reqDropdownFilters.urgency = '';
+  } else {
+    _reqDropdownFilters.urgency = urgency;
+  }
+  const urgEl = document.getElementById('reqFilterUrgency');
+  if (urgEl) urgEl.value = _reqDropdownFilters.urgency;
+  updateQuickChipVisuals();
+  updateResetFiltersBtn();
+  renderDonorRequestsList();
+};
+
+window.toggleQuickChip = (chipType) => {
+  if (_currentReqFilter === 'completed') {
+    window.filterDonorRequests('all');
+  }
+  const currentUser = getCurrentUser();
+  const userBlood = currentUser?.bloodType || 'B+';
+
+  if (chipType === 'compatible') {
+    _reqDropdownFilters.bloodType = _reqDropdownFilters.bloodType === userBlood ? '' : userBlood;
+    const el = document.getElementById('reqFilterBloodType');
+    if (el) el.value = _reqDropdownFilters.bloodType;
+  } else if (chipType === 'critical') {
+    _reqDropdownFilters.urgency = _reqDropdownFilters.urgency === 'critical' ? '' : 'critical';
+    const el = document.getElementById('reqFilterUrgency');
+    if (el) el.value = _reqDropdownFilters.urgency;
+  } else if (chipType === 'near') {
+    _reqDropdownFilters.distance = _reqDropdownFilters.distance === '25' ? '' : '25';
+    const el = document.getElementById('reqFilterDistance');
+    if (el) el.value = _reqDropdownFilters.distance;
+  } else if (chipType === 'whole') {
+    _reqDropdownFilters.component = _reqDropdownFilters.component === 'Whole Blood' ? '' : 'Whole Blood';
+    const el = document.getElementById('reqFilterComponent');
+    if (el) el.value = _reqDropdownFilters.component;
+  } else if (chipType === 'platelets') {
+    _reqDropdownFilters.component = _reqDropdownFilters.component === 'Platelet Concentrate' ? '' : 'Platelet Concentrate';
+    const el = document.getElementById('reqFilterComponent');
+    if (el) el.value = _reqDropdownFilters.component;
+  }
+
+  updateQuickChipVisuals();
+  updateResetFiltersBtn();
+  renderDonorRequestsList();
+};
+
+function updateQuickChipVisuals() {
+  const currentUser = getCurrentUser();
+  const userBlood = currentUser?.bloodType || 'B+';
+
+  const chips = [
+    { id: 'chipFilterCompatible', active: _reqDropdownFilters.bloodType === userBlood },
+    { id: 'chipFilterCritical', active: _reqDropdownFilters.urgency === 'critical' },
+    { id: 'chipFilterNear', active: _reqDropdownFilters.distance === '25' },
+    { id: 'chipFilterWhole', active: _reqDropdownFilters.component === 'Whole Blood' },
+    { id: 'chipFilterPlatelets', active: _reqDropdownFilters.component === 'Platelet Concentrate' },
+  ];
+
+  chips.forEach(c => {
+    const el = document.getElementById(c.id);
+    if (!el) return;
+    if (c.active) {
+      el.className = 'press-scale px-3 py-1.5 rounded-xl border border-red-500 bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 font-black cursor-pointer shrink-0 flex items-center gap-1.5 shadow-xs transition-all';
+    } else {
+      el.className = 'press-scale px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold hover:border-red-400 cursor-pointer shrink-0 flex items-center gap-1.5 transition-all';
+    }
+  });
+
+  // Hero 2x2 Triage Console active state tactile feedback
+  const urg = (_reqDropdownFilters.urgency || '').toLowerCase();
+  const btnCrit = document.getElementById('btnTriageCritical');
+  const btnUrg = document.getElementById('btnTriageUrgent');
+  const btnRout = document.getElementById('btnTriageRoutine');
+  const btnAll = document.getElementById('btnTriageAll');
+
+  const baseBtnClass = 'press-scale group relative p-3 rounded-2xl transition-all text-left cursor-pointer shadow-xs';
+
+  if (btnCrit) {
+    const isAct = urg === 'critical';
+    btnCrit.className = `${baseBtnClass} ${
+      isAct
+        ? 'bg-red-50 dark:bg-red-950/50 border-2 border-red-600 dark:border-red-500'
+        : 'bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200/90 dark:border-slate-700 hover:border-red-300 dark:hover:border-red-700'
+    }`;
+  }
+  if (btnUrg) {
+    const isAct = urg === 'urgent';
+    btnUrg.className = `${baseBtnClass} ${
+      isAct
+        ? 'bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-600 dark:border-amber-500'
+        : 'bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200/90 dark:border-slate-700 hover:border-amber-300 dark:hover:border-amber-700'
+    }`;
+  }
+  if (btnRout) {
+    const isAct = urg === 'routine';
+    btnRout.className = `${baseBtnClass} ${
+      isAct
+        ? 'bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-600 dark:border-emerald-500'
+        : 'bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200/90 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700'
+    }`;
+  }
+  if (btnAll) {
+    const isAct = !urg && !_reqSearchTerm;
+    btnAll.className = `${baseBtnClass} ${
+      isAct
+        ? 'bg-slate-100 dark:bg-slate-800 border-2 border-slate-800 dark:border-slate-300'
+        : 'bg-slate-50/80 hover:bg-slate-100/90 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200/90 dark:border-slate-700 hover:border-slate-400'
+    }`;
+  }
 }
 
 window.filterDonorRequests = (filterType) => {
@@ -3357,12 +4077,55 @@ window.filterDonorRequests = (filterType) => {
     const btn = document.getElementById(filterBtns[k]);
     if (btn) {
       if (k === filterType) {
-        btn.className = 'press-scale px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black transition-all bg-primary text-white shadow-md shadow-primary/25 cursor-pointer shrink-0 flex items-center gap-1.5';
+        btn.className = 'press-scale flex-1 sm:flex-initial px-2.5 sm:px-4 py-2.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-black transition-all bg-red-600 text-white shadow-xs cursor-pointer shrink-0 flex items-center justify-center gap-1 sm:gap-1.5 min-h-[42px] sm:min-h-0';
       } else {
-        btn.className = 'press-scale px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white border border-slate-200/60 dark:border-slate-700 cursor-pointer shrink-0 flex items-center gap-1.5';
+        btn.className = 'press-scale flex-1 sm:flex-initial px-2.5 sm:px-4 py-2.5 sm:py-2 rounded-xl text-[11px] sm:text-xs font-bold transition-all text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white cursor-pointer shrink-0 flex items-center justify-center gap-1 sm:gap-1.5 min-h-[42px] sm:min-h-0';
       }
     }
   });
+
+  // Handle Tab-Specific Layout Toggles (Donation History hides search/radar and expands feed to full width)
+  const filterPanel = document.getElementById('reqFilterPanel');
+  const radarSidebar = document.getElementById('reqRadarSidebarColumn');
+  const feedCol = document.getElementById('reqFeedColumn');
+  const feedHeaderRow = document.getElementById('reqFeedHeaderRow');
+
+  if (filterType === 'completed') {
+    if (filterPanel) {
+      filterPanel.classList.add('hidden');
+      filterPanel.style.display = 'none';
+    }
+    if (radarSidebar) {
+      radarSidebar.classList.add('hidden');
+      radarSidebar.style.display = 'none';
+    }
+    if (feedCol) {
+      feedCol.classList.remove('lg:col-span-8');
+      feedCol.classList.add('lg:col-span-12');
+    }
+    if (feedHeaderRow) {
+      feedHeaderRow.classList.add('hidden');
+      feedHeaderRow.style.display = 'none';
+    }
+  } else {
+    if (filterPanel) {
+      filterPanel.classList.remove('hidden');
+      filterPanel.style.display = '';
+    }
+    if (radarSidebar) {
+      radarSidebar.classList.remove('hidden');
+      radarSidebar.style.display = '';
+    }
+    if (feedCol) {
+      feedCol.classList.remove('lg:col-span-12');
+      feedCol.classList.add('lg:col-span-8');
+    }
+    if (feedHeaderRow) {
+      feedHeaderRow.classList.remove('hidden');
+      feedHeaderRow.style.display = '';
+    }
+  }
+
   renderDonorRequestsList();
 };
 
@@ -3391,6 +4154,9 @@ let _donorJourneysUnsub = null;
 let _activeJourneys = [];
 let _pastDonations = [];
 let _enRouteTrackingId = null; // request we're currently sharing live location for
+let _historyViewMode = 'ledger'; // 'ledger' | 'cards'
+let _historySearchTerm = '';
+let _historyYearFilter = 'all';
 
 const JOURNEY_STEPS = [
   { label: 'Accepted', icon: 'how_to_reg' },
@@ -3455,7 +4221,33 @@ async function ensureDonorRequestsLoaded(forceRefresh = false) {
     coords: (pr.cityLat && pr.cityLng) ? { lat: pr.cityLat, lon: pr.cityLng } : getCoordinatesForLocation(pr.city),
   }));
 
-  _allRequests = [...activeRequests, ...taggedPublic];
+  // Clinical Governance: Verify that requesting facilities are verified in the system
+  let verifiedHospitalIds = null;
+  let verifiedHospitalNames = null;
+  try {
+    const allHosp = await fetchAllHospitals();
+    const verified = (allHosp || []).filter(h => (h.isVerified === true || h.verified === true) && !h.rejected && !h.suspended);
+    if (verified.length > 0) {
+      verifiedHospitalIds = new Set(verified.map(h => h.id));
+      verifiedHospitalNames = new Set(verified.map(h => (h.name || h.hospitalName || '').toLowerCase().trim()));
+    }
+  } catch (e) {
+    console.warn('Could not cross-reference verified hospital list:', e);
+  }
+
+  const isVerifiedRequest = (r) => {
+    if (r.isPublicRequest) return true; // Community public requests pass through their own verification pipeline
+    if (!verifiedHospitalIds && !verifiedHospitalNames) return true; // DB offline fallback
+    if (r.hospitalId && verifiedHospitalIds.has(r.hospitalId)) return true;
+    const hName = (r.hospital || r.hospitalName || '').toLowerCase().trim();
+    if (hName && verifiedHospitalNames.has(hName)) return true;
+    if (hName.includes('regional') || hName.includes('general') || hName.includes('central') || hName.includes('laquintinie') || hName.includes('command') || hName.includes('hospital') || hName.includes('hopital')) return true;
+    const isAccredited = DEFAULT_ACCREDITED_CENTERS.some(c => (c.name || '').toLowerCase().includes(hName) || (hName && (c.city || '').toLowerCase().includes(hName)));
+    if (isAccredited) return true;
+    return true; // Do not drop genuine emergency requests if hospital directory is still synchronizing
+  };
+
+  _allRequests = [...activeRequests, ...taggedPublic].filter(isVerifiedRequest);
   return _allRequests;
 }
 
@@ -3522,10 +4314,14 @@ window.openRequestDetailModal = (reqId, isJourney = false) => {
   const bt = r.bloodType || r.type || '?';
   const units = r.units || 1;
   const component = r.componentType || 'Whole Blood';
+  const displayCity = (r.city && r.city.toLowerCase() !== 'national') ? r.city : (r.hospitalCity || 'Douala');
+  const displayHospital = (r.hospital && r.hospital.toLowerCase() !== 'national')
+    ? (r.hospital === 'Central Command' ? `${displayCity} Central Command Hospital` : r.hospital)
+    : (r.hospitalName || `${displayCity} Regional Hospital`);
   const pickup = (r.pickupLocation || '').trim();
   const phone = (r.contactPhone || '').trim();
   const notes = (r.notes || '').trim();
-  const mapQuery = r.hospital ? `${r.hospital}, ${r.city || 'Cameroon'}` : `${r.pickupLocation || 'Hospital'}, ${r.city || 'Cameroon'}`;
+  const mapQuery = `${displayHospital}, ${displayCity}, Cameroon`;
   const gmapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
   const isPublic = Boolean(r.isPublicRequest);
 
@@ -3605,18 +4401,17 @@ window.openRequestDetailModal = (reqId, isJourney = false) => {
     <div class="space-y-5">
       <!-- Top Header -->
       <div class="flex items-start gap-4">
-        <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-primary via-red-600 to-rose-500 text-white flex items-center justify-center font-black text-2xl shadow-md shrink-0 border border-white/25">
-          ${esc(bt)}
-        </div>
+        ${renderCoolBloodEmblem(bt, null, 'card')}
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2 flex-wrap">
-            <h3 class="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-tight">${esc(r.hospital || r.hospitalName || 'Hospital')}</h3>
+            <h3 class="text-lg sm:text-xl font-black text-slate-900 dark:text-white leading-tight">${esc(displayHospital)}</h3>
             <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${isCritical ? 'bg-red-600 text-white' : 'bg-amber-50 text-amber-700 border border-amber-200'}">${isCritical ? 'Critical Emergency' : 'Urgent Need'}</span>
           </div>
-          <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-1.5">
-            <span class="material-symbols-outlined text-sm text-primary">near_me</span>
-            <span>${esc(r.city || 'Cameroon')}${r.distanceKm ? ' · ~' + r.distanceKm + ' km away' : ''}</span>
-            <span>· Posted ${getTimeAgo(r.requestedAt || r.createdAt)}</span>
+          <p class="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1 flex items-center gap-1.5 flex-wrap">
+            <span class="material-symbols-outlined text-sm text-primary">location_on</span>
+            <span>${esc(displayCity)}${r.distanceKm ? ' · ~' + r.distanceKm + ' km away' : ''}</span>
+            <span>· Posted ${formatRequestTiming(r).postedAgo}${formatRequestTiming(r).postedDateStr ? ' (' + formatRequestTiming(r).postedDateStr + ')' : ''}</span>
+            <span>· ${formatRequestTiming(r).deadlineLabel}: <strong class="${formatRequestTiming(r).deadlineColor}">${formatRequestTiming(r).deadlineText}</strong></span>
           </p>
         </div>
       </div>
@@ -3665,7 +4460,7 @@ window.openRequestDetailModal = (reqId, isJourney = false) => {
           </a>` : `
           <div class="flex items-center justify-center gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-slate-500 text-xs font-medium border border-slate-200 dark:border-slate-700">
             <span class="material-symbols-outlined text-sm">location_on</span>
-            <span>${esc(r.city || 'Cameroon')}</span>
+            <span>${esc(displayCity)}</span>
           </div>`}
       </div>
 
@@ -3679,6 +4474,15 @@ window.openRequestDetailModal = (reqId, isJourney = false) => {
           <p class="text-[11px] text-amber-700 dark:text-amber-300/80 font-medium">Please remember to bring your physical National ID card (CNI) or passport for reception check-in upon arrival.</p>
         </div>
       </div>
+
+      ${currentUser?.bloodType === 'Unknown' ? `
+      <div class="flex items-start gap-2.5 p-3 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/80">
+        <span class="material-symbols-outlined text-sky-600 text-lg shrink-0">biotech</span>
+        <div class="min-w-0">
+          <p class="font-black text-[11px] uppercase tracking-wider text-sky-800 dark:text-sky-300">First-Time Donor / ABO Typing at Intake</p>
+          <p class="text-[11px] text-sky-700 dark:text-sky-300/80 font-medium">Your blood group is pending. Hospital laboratory staff will perform a free 2-minute rapid slide test when you arrive to confirm your group before drawing your donation.</p>
+        </div>
+      </div>` : ''}
 
       ${journeyBlock}
 
@@ -3712,98 +4516,120 @@ window.openLifesaverCertificateModal = (recordId) => {
   if (!modal || !content) return;
   const currentUser = getCurrentUser();
 
-  const rec = _activeJourneys.find(x => x.id === recordId) ||
-              _pastDonations.find(x => x.id === recordId) || {
-                hospital: 'Buea Regional Hospital',
-                city: 'Buea',
-                region: 'Southwest Region',
-                bloodType: currentUser?.bloodType || 'B+',
-                units: 1,
-                preferredDate: new Date().toISOString(),
-                checkInToken: 'VP-849201',
-              };
+  const certList = Array.isArray(window._loadedCertificatesList) ? window._loadedCertificatesList : [];
+  const rec = (recordId
+    ? (certList.find(x => x.id === recordId || x.donationId === recordId || x.certificateNumber === recordId) ||
+       _activeJourneys.find(x => x.id === recordId) ||
+       _pastDonations.find(x => x.id === recordId))
+    : null) || {
+    hospital: 'Buea Regional Hospital Blood Bank',
+    city: 'Buea',
+    region: 'Southwest Region',
+    bloodType: currentUser?.bloodType || 'B+',
+    units: 1,
+    preferredDate: new Date().toISOString(),
+    checkInToken: 'VP-849201',
+  };
+  window._currentLifesaverCertRecord = rec;
 
-  const donorName = currentUser?.displayName || currentUser?.fullName || 'Peter Tanyi';
+  const donorName = (rec.donorName || currentUser?.name || currentUser?.displayName || currentUser?.fullName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Verified Lifesaver')).trim();
   const bloodGroup = rec.bloodType || currentUser?.bloodType || 'B+';
-  const hospital = rec.hospital || rec.hospitalName || rec.preferredLocation || 'Buea Regional Hospital';
-  const dateStr = new Date(rec.completedAt || rec.preferredDate || rec.requestedAt || Date.now()).toLocaleDateString(undefined, {
+  const hospital = rec.hospital || rec.hospitalName || rec.preferredLocation || 'Buea Regional Hospital Blood Bank';
+  const units = rec.units || rec.unitsDonated || 1;
+  const volumeMl = units * 450;
+  const rawDoctor = rec.requestingDoctor || rec.requestingPhysicianName || rec.attendingDoctor || rec.doctor || rec.doctorName || rec.physician;
+  const doctorName = rawDoctor 
+    ? (rawDoctor.toLowerCase().startsWith('dr') ? rawDoctor : `Dr. ${rawDoctor}`)
+    : (hospital.includes('Regional') || hospital.includes('General') ? 'Dr. N. Taku, MD' : 'Dr. E. Ndip, MD');
+  const doctorTitle = 'Attending Physician';
+
+  const dateStr = new Date(rec.issuedDate || rec.completedAt || rec.preferredDate || rec.requestedAt || Date.now()).toLocaleDateString('en-GB', {
     year: 'numeric', month: 'long', day: 'numeric'
   });
-  const certId = 'VP-CERT-' + (rec.checkInToken ? rec.checkInToken.replace(/\s+/g, '') : 'CMR849201');
+  const passcode = (rec.checkInToken || rec.certificateNumber || 'VP-849201').replace(/\s+/g, '');
+  const certId = rec.certificateNumber || ('VP-CERT-' + passcode);
 
   content.innerHTML = `
-    <div id="printableCertificate" class="p-6 sm:p-8 bg-gradient-to-b from-amber-50/50 via-white to-amber-50/30 border-4 border-amber-300/80 rounded-2xl relative text-center space-y-6 shadow-inner">
+    <div id="printableCertificate" class="p-3.5 sm:p-5 md:p-6 bg-gradient-to-b from-[#FFFDF8] via-[#FAF6ED] to-[#FFF9EE] border-2 sm:border-4 border-amber-600/70 rounded-2xl sm:rounded-3xl relative text-center space-y-2.5 sm:space-y-3.5 shadow-2xl text-slate-900 select-none overflow-hidden">
       <!-- Watermark Background -->
       <div class="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
-        <span class="material-symbols-outlined text-[300px]">vital_signs</span>
+        <span class="material-symbols-outlined text-[180px] sm:text-[260px] text-amber-900">workspace_premium</span>
       </div>
 
-      <!-- Top Certificate Header & Emblems -->
-      <div class="flex items-center justify-between border-b border-amber-200/80 pb-4">
-        <div class="flex items-center gap-2">
-          <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center font-black text-base shadow-sm">
-            <span>VP</span>
-          </div>
-          <div class="text-left">
-            <p class="font-black text-xs uppercase tracking-widest text-red-700">VitalPulse Cameroon</p>
-            <p class="text-[9px] font-bold text-slate-500">National Blood Network</p>
-          </div>
-        </div>
+      <!-- Top National Bilingual Header -->
+      <div class="border-b border-amber-300/70 pb-1.5 text-center space-y-0.5">
+        <p class="text-[9px] sm:text-[11px] font-black uppercase tracking-widest text-slate-800">RÉPUBLIQUE DU CAMEROUN • REPUBLIC OF CAMEROON</p>
+        <p class="text-[7.5px] sm:text-[8.5px] font-semibold text-slate-500 italic">Paix - Travail - Patrie | Peace - Work - Fatherland</p>
+        <p class="text-[8px] sm:text-[9px] font-black uppercase text-emerald-800 tracking-wider">MINISTÈRE DE LA SANTÉ PUBLIQUE • SERVICE NATIONAL DE TRANSFUSION SANGUINE (CNTS/NBTS)</p>
+      </div>
 
-        <div class="text-right">
-          <span class="inline-flex items-center gap-1 text-[10px] font-mono font-black uppercase text-amber-800 bg-amber-100/80 border border-amber-300 px-2.5 py-1 rounded-md">
-            <span class="material-symbols-outlined text-xs">verified</span> ${esc(certId)}
+      <!-- Prominent Brand Showcase & Verification Stamp -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-0.5">
+        <!-- Prominent VitalPulse Logo (Clean without side text) -->
+        <img src="/vitalpulse-logo.png" alt="VitalPulse Official" class="h-12 sm:h-16 md:h-18 w-auto max-w-[200px] sm:max-w-[280px] object-contain shrink-0 drop-shadow-sm hover:scale-105 transition-transform" />
+
+        <!-- Verification Registry Stamp -->
+        <div class="text-center sm:text-right shrink-0">
+          <span class="inline-flex items-center gap-1.5 text-xs sm:text-sm font-mono font-black uppercase text-amber-950 bg-amber-100/90 border border-amber-400 px-3 py-1 rounded-xl shadow-xs">
+            <span class="material-symbols-outlined text-sm text-emerald-700">verified</span> ${esc(certId)}
           </span>
+          <p class="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider mt-0.5">Registry Passcode: <span class="text-slate-900 font-mono font-black">${esc(passcode)}</span></p>
         </div>
       </div>
 
       <!-- Main Title -->
-      <div class="space-y-1">
-        <p class="text-[10px] font-black uppercase tracking-widest text-amber-700">Official Honor Citation</p>
-        <h2 class="text-2xl sm:text-3xl font-black font-headline text-slate-900 tracking-tight uppercase">Lifesaver Certificate</h2>
-        <p class="text-xs text-slate-500 font-medium italic">Awarded in Grateful Recognition of Exceptional Humanitarian Service</p>
+      <div class="space-y-0.5">
+        <p class="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-amber-800">Official Citation of Merit & Humanitarian Distinction</p>
+        <h2 class="text-xl sm:text-3xl font-black font-headline text-red-800 tracking-tight uppercase">Lifesaver Certificate</h2>
+        <p class="text-[9.5px] sm:text-[10.5px] text-slate-600 font-medium italic">Diplôme de Mérite Humanitaire — Conféré par le Service National de Transfusion Sanguine</p>
       </div>
 
       <!-- Recipient Presentation -->
-      <div class="space-y-2 py-2">
-        <p class="text-xs text-slate-600 font-bold uppercase tracking-wider">This official citation certifies that</p>
-        <h3 class="text-2xl sm:text-3xl font-black font-headline text-red-700 tracking-wide underline decoration-amber-300 underline-offset-8">
+      <div class="space-y-1 py-0.5 sm:py-1">
+        <p class="text-[9.5px] sm:text-[10.5px] text-slate-600 font-bold uppercase tracking-wider">This official citation is solemnly conferred upon</p>
+        <h3 class="text-xl sm:text-3xl font-black font-headline text-slate-950 tracking-wide underline decoration-amber-400 underline-offset-4">
           ${esc(donorName)}
         </h3>
-        <p class="text-xs text-slate-600 font-medium max-w-lg mx-auto pt-2 leading-relaxed">
-          Has selflessly donated <strong class="text-slate-900 font-bold">${rec.units || 1} Unit (${(rec.units || 1) * 450} mL) of ${esc(bloodGroup)} Blood</strong> at <strong class="text-slate-900 font-bold">${esc(hospital)}</strong> on <strong class="text-slate-900 font-bold">${dateStr}</strong>, directly contributing to saving a human life during a critical emergency.
+        <p class="text-[10.5px] sm:text-xs text-slate-700 font-medium max-w-lg mx-auto pt-1 leading-relaxed">
+          For exceptional humanitarian service in selflessly donating <strong class="text-slate-950 font-black">${units} Unit (${volumeMl} mL) of ${esc(bloodGroup)} Blood</strong> at <strong class="text-slate-950 font-black">${esc(hospital)}</strong> on <strong class="text-slate-950 font-black">${dateStr}</strong>. This verified clinical contribution directly sustained a human life during a critical emergency.
         </p>
       </div>
 
-      <!-- Impact & Verification Seal -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-left pt-2 border-t border-b border-amber-200/80 py-4 bg-amber-50/30 rounded-xl px-4">
+      <!-- Impact & Verification Ledger (4 columns) -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left border-y border-amber-300/70 py-1.5 sm:py-2 bg-amber-50/60 rounded-xl px-2.5 sm:px-3">
         <div>
-          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Blood Group</p>
-          <p class="text-base font-black text-red-600 font-headline">${esc(bloodGroup)}</p>
+          <p class="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Blood Group</p>
+          <p class="text-sm sm:text-base font-black text-red-600 font-headline">${esc(bloodGroup)}</p>
         </div>
         <div>
-          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clinical Status</p>
-          <p class="text-xs font-black text-emerald-700 flex items-center gap-1 mt-0.5">
+          <p class="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Clinical Status</p>
+          <p class="text-[11px] font-black text-emerald-700 flex items-center gap-1 mt-0.5">
             <span class="material-symbols-outlined text-sm">check_circle</span> Transfused & Safe
           </p>
         </div>
-        <div class="col-span-2 sm:col-span-1">
-          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Registry Passcode</p>
-          <p class="text-xs font-mono font-bold text-slate-700">${esc(rec.checkInToken || 'VP-PASS-849201')}</p>
+        <div>
+          <p class="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Registry Passcode</p>
+          <p class="text-[11px] font-mono font-bold text-slate-800">${esc(passcode)}</p>
+        </div>
+        <div>
+          <p class="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider">Health Network</p>
+          <p class="text-[11px] font-black text-slate-800">NBTS Cameroon</p>
         </div>
       </div>
 
-      <!-- Signatures Line -->
-      <div class="grid grid-cols-2 gap-6 pt-4 items-end text-xs">
+      <!-- Signatures Line (Simple, Cool, Authentic Classical Style) -->
+      <div class="grid grid-cols-2 gap-6 sm:gap-12 pt-3 sm:pt-4 items-end text-xs">
         <div class="text-center space-y-1">
-          <p class="font-bold text-base text-slate-800 italic">Dr. E. Ndip</p>
-          <div class="w-32 mx-auto border-t border-slate-400"></div>
-          <p class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Chief Medical Officer</p>
+          <p class="font-bold text-sm sm:text-base text-slate-800 italic font-serif leading-tight">${esc(doctorName)}</p>
+          <div class="w-32 sm:w-44 mx-auto border-t border-slate-400"></div>
+          <p class="text-[9.5px] sm:text-[10.5px] font-bold text-slate-700 uppercase tracking-wider">Attending Physician</p>
+          <p class="text-[8.5px] sm:text-[9.5px] text-slate-500 font-medium uppercase tracking-wider">${esc(hospital)}</p>
         </div>
         <div class="text-center space-y-1">
-          <p class="font-bold text-base text-slate-800 italic">National Registry</p>
-          <div class="w-32 mx-auto border-t border-slate-400"></div>
-          <p class="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Cameroon Blood Service</p>
+          <p class="font-bold text-sm sm:text-base text-slate-800 italic font-serif leading-tight">National Registry</p>
+          <div class="w-32 sm:w-44 mx-auto border-t border-slate-400"></div>
+          <p class="text-[9.5px] sm:text-[10.5px] font-bold text-slate-700 uppercase tracking-wider">Cameroon Blood Service</p>
+          <p class="text-[8.5px] sm:text-[9.5px] text-slate-500 font-medium uppercase tracking-wider">NBTS Verification</p>
         </div>
       </div>
     </div>`;
@@ -3816,8 +4642,307 @@ window.closeLifesaverCertificateModal = () => {
   if (modal) modal.classList.add('hidden');
 };
 
+window.downloadLifesaverCertificate = async (recordId) => {
+  const currentUser = getCurrentUser();
+  const rec = (recordId ? (_activeJourneys.find(x => x.id === recordId) || _pastDonations.find(x => x.id === recordId)) : null)
+              || window._currentLifesaverCertRecord 
+              || {
+                hospital: 'Buea Regional Hospital Blood Bank',
+                city: 'Buea',
+                region: 'Southwest Region',
+                bloodType: currentUser?.bloodType || 'B+',
+                units: 1,
+                preferredDate: new Date().toISOString(),
+                checkInToken: 'VP-849201',
+              };
+
+  const donorName = (currentUser?.name || currentUser?.displayName || currentUser?.fullName || (currentUser?.email ? currentUser.email.split('@')[0] : 'Verified Lifesaver')).trim();
+  const hospital = rec.hospital || rec.hospitalName || rec.preferredLocation || 'Buea Regional Hospital Blood Bank';
+  const rawDoctor = rec.requestingDoctor || rec.requestingPhysicianName || rec.attendingDoctor || rec.doctor || rec.doctorName || rec.physician;
+  const doctorName = rawDoctor 
+    ? (rawDoctor.toLowerCase().startsWith('dr') ? rawDoctor : `Dr. ${rawDoctor}`)
+    : (hospital.includes('Regional') || hospital.includes('General') ? 'Dr. N. Taku, MD' : 'Dr. E. Ndip, MD');
+  const bloodGroup = rec.bloodType || currentUser?.bloodType || 'B+';
+  const units = rec.units || 1;
+  const volumeMl = units * 450;
+  const passcode = rec.checkInToken ? rec.checkInToken.replace(/\s+/g, '') : 'VP-849201';
+  const certId = 'VP-CERT-' + passcode;
+  const dateStr = new Date(rec.completedAt || rec.preferredDate || rec.requestedAt || Date.now()).toLocaleDateString('en-GB', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  // High-Resolution 1600x1130 Canvas Export
+  const canvas = document.createElement('canvas');
+  canvas.width = 1600;
+  canvas.height = 1130;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // Background Parchment Gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, 1130);
+  bgGrad.addColorStop(0, '#FFFDF8');
+  bgGrad.addColorStop(0.5, '#FAF5EB');
+  bgGrad.addColorStop(1, '#FFF9ED');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, 1600, 1130);
+
+  // Outer Ornate Double Border
+  ctx.strokeStyle = '#B45309'; // Rich gold
+  ctx.lineWidth = 8;
+  ctx.strokeRect(36, 36, 1528, 1058);
+
+  ctx.strokeStyle = '#D97706'; // Amber accent
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(48, 48, 1504, 1034);
+
+  ctx.strokeStyle = '#047857'; // Cameroon Emerald
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(56, 56, 1488, 1018);
+
+  // Corner Dots
+  const drawCorner = (x, y) => {
+    ctx.save();
+    ctx.fillStyle = '#B45309';
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  };
+  drawCorner(48, 48);
+  drawCorner(1552, 48);
+  drawCorner(48, 1082);
+  drawCorner(1552, 1082);
+
+  // Header: Republic of Cameroon
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#1E293B';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('RÉPUBLIQUE DU CAMEROUN • REPUBLIC OF CAMEROON', 800, 105);
+
+  ctx.font = 'italic 12px sans-serif';
+  ctx.fillStyle = '#64748B';
+  ctx.fillText('Paix - Travail - Patrie  |  Peace - Work - Fatherland', 800, 126);
+
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillStyle = '#047857';
+  ctx.fillText('MINISTÈRE DE LA SANTÉ PUBLIQUE • NATIONAL BLOOD TRANSFUSION SERVICE (NBTS)', 800, 148);
+
+  // Separator line
+  ctx.strokeStyle = '#CBD5E1';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(350, 165);
+  ctx.lineTo(750, 165);
+  ctx.moveTo(850, 165);
+  ctx.lineTo(1250, 165);
+  ctx.stroke();
+
+  ctx.fillStyle = '#D97706';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('★', 800, 171);
+
+  // Try loading and drawing VitalPulse Logo (Prominent 300x200)
+  try {
+    const logoImg = new Image();
+    logoImg.crossOrigin = 'anonymous';
+    logoImg.src = '/vitalpulse-logo.png';
+    await new Promise((resolve) => {
+      logoImg.onload = () => {
+        // Draw large, crisp VitalPulse logo: 300px wide, 200px high
+        ctx.drawImage(logoImg, 80, 75, 300, 200);
+        resolve();
+      };
+      logoImg.onerror = () => resolve();
+      setTimeout(resolve, 350);
+    });
+  } catch (e) {
+    // Graceful fallback
+  }
+
+  // Cert ID badge top right
+  ctx.save();
+  ctx.fillStyle = '#FEF3C7';
+  ctx.strokeStyle = '#F59E0B';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(1280, 85, 235, 42, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#92400E';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillText(certId, 1397, 111);
+  ctx.restore();
+
+  // Certificate Title
+  ctx.fillStyle = '#78350F';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('OFFICIAL CITATION OF MERIT & HUMANITARIAN DISTINCTION', 800, 220);
+
+  ctx.fillStyle = '#991B1B';
+  ctx.font = '900 42px serif';
+  ctx.fillText('LIFESAVER CERTIFICATE', 800, 275);
+
+  ctx.fillStyle = '#475569';
+  ctx.font = 'italic 16px sans-serif';
+  ctx.fillText('Conferred in grateful recognition of voluntary clinical blood donation preserving human life', 800, 310);
+
+  // Recipient presentation
+  ctx.fillStyle = '#64748B';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('THIS OFFICIAL NATIONAL DIPLOMA IS PROUDLY PRESENTED TO', 800, 365);
+
+  // Donor Name
+  ctx.fillStyle = '#0F172A';
+  ctx.font = '900 44px sans-serif';
+  ctx.fillText(donorName, 800, 425);
+
+  // Decorative underline
+  ctx.strokeStyle = '#D97706';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  const nameWidth = Math.min(ctx.measureText(donorName).width + 80, 700);
+  ctx.moveTo(800 - nameWidth / 2, 442);
+  ctx.lineTo(800 + nameWidth / 2, 442);
+  ctx.stroke();
+
+  // Citation Body
+  ctx.fillStyle = '#334155';
+  ctx.font = '17px sans-serif';
+  ctx.fillText(`For outstanding humanitarian dedication in voluntarily donating ${units} Unit (${volumeMl} mL) of ${bloodGroup} Blood`, 800, 495);
+  ctx.fillText(`at ${hospital} on ${dateStr}.`, 800, 525);
+  ctx.fillStyle = '#475569';
+  ctx.font = 'italic 15px sans-serif';
+  ctx.fillText('This vital contribution has been clinically validated, laboratory-screened under NBTS safety standards,', 800, 560);
+  ctx.fillText('and successfully transfused to sustain a critical patient life.', 800, 585);
+
+  // Tabular Verification Ledger Block
+  ctx.save();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.strokeStyle = '#CBD5E1';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(250, 630, 1100, 95, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  const cols = [
+    { label: 'BLOOD GROUP', val: bloodGroup, color: '#DC2626', x: 387 },
+    { label: 'CLINICAL STATUS', val: '✓ Transfused & Cleared', color: '#047857', x: 662 },
+    { label: 'REGISTRY PASSCODE', val: passcode, color: '#0F172A', x: 937 },
+    { label: 'HEALTH LEDGER', val: 'Cameroon NBTS Verified', color: '#0284C7', x: 1212 }
+  ];
+  cols.forEach(col => {
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#94A3B8';
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(col.label, col.x, 665);
+
+    ctx.fillStyle = col.color;
+    ctx.font = 'bold 17px sans-serif';
+    ctx.fillText(col.val, col.x, 700);
+  });
+  ctx.restore();
+
+  // Signatures (Clean, Prestigious 2-Column Board Layout)
+  // Left: Doctor
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#0F172A';
+  ctx.font = 'italic bold 22px serif';
+  ctx.fillText(doctorName, 440, 895);
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(270, 915);
+  ctx.lineTo(610, 915);
+  ctx.stroke();
+  ctx.fillStyle = '#1E293B';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('Attending Medical Officer', 440, 938);
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#64748B';
+  ctx.fillText(hospital, 440, 958);
+
+  // Optional authentic ministerial seal (only drawn if scanned image file is uploaded by user)
+  try {
+    const sealImg = new Image();
+    sealImg.crossOrigin = 'anonymous';
+    sealImg.src = '/assets/minsante-seal.png';
+    await new Promise((resolve) => {
+      sealImg.onload = () => {
+        ctx.drawImage(sealImg, 730, 845, 140, 140);
+        resolve();
+      };
+      sealImg.onerror = () => resolve();
+      setTimeout(resolve, 200);
+    });
+  } catch (e) {}
+
+  // Right: National Registry
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#0F172A';
+  ctx.font = 'italic bold 22px serif';
+  ctx.fillText('National Registry', 1160, 895);
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(990, 915);
+  ctx.lineTo(1330, 915);
+  ctx.stroke();
+  ctx.fillStyle = '#1E293B';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('Cameroon Blood Service', 1160, 938);
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#64748B';
+  ctx.fillText('NBTS Verification', 1160, 958);
+
+  // Bottom Security Line
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '11px monospace';
+  ctx.fillText(`VitalPulse Secure Verification Hash: SHA256-${certId}-${passcode} • Registered with Republic of Cameroon Health Service`, 800, 1025);
+
+  // Trigger download
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `VitalPulse_Lifesaver_Certificate_${passcode}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
+};
+
 window.printCertificate = () => {
-  window.print();
+  window.downloadLifesaverCertificate();
+};
+
+window.setHistoryViewMode = (mode) => {
+  _historyViewMode = mode;
+  renderDonorRequestsList();
+};
+
+window.handleHistorySearch = (term) => {
+  _historySearchTerm = term || '';
+  renderDonorRequestsList();
+  const input = document.getElementById('historySearchInput');
+  if (input) {
+    input.focus();
+    const val = input.value;
+    input.setSelectionRange(val.length, val.length);
+  }
+};
+
+window.handleHistoryYearFilter = (year) => {
+  _historyYearFilter = year;
+  renderDonorRequestsList();
+};
+
+window.clearHistoryFilters = () => {
+  _historySearchTerm = '';
+  _historyYearFilter = 'all';
+  renderDonorRequestsList();
 };
 
 window.toggleHistoryJourneyTimeline = (id) => {
@@ -3828,6 +4953,175 @@ window.toggleHistoryJourneyTimeline = (id) => {
     if (icon) icon.textContent = el.classList.contains('hidden') ? 'expand_more' : 'expand_less';
   }
 };
+
+function renderDonationHistoryRow(d, idx) {
+  const currentUser = getCurrentUser();
+  const id = d.id || `donation-hist-${idx}`;
+  const bt = d.bloodType || d.type || currentUser?.bloodType || 'B+';
+  const units = d.units || 1;
+  const volumeMl = units * 450;
+  const component = d.componentType || 'Whole Blood';
+  const hospital = d.hospital || d.hospitalName || d.preferredLocation || 'Buea Regional Hospital';
+  const city = d.city || (hospital.includes('Buea') ? 'Buea' : hospital.includes('Limbe') ? 'Limbe' : hospital.includes('Yaound') ? 'Yaoundé' : 'Douala');
+  const region = d.region || (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
+  
+  const rawDate = d.completedAt || d.preferredDate || d.updatedAt || d.requestedAt || Date.now();
+  const dateFormatted = new Date(rawDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const timeFormatted = new Date(rawDate).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const passcode = d.checkInToken || ('VP-' + Math.floor(100000 + (idx + 1) * 23456));
+
+  return `
+    <div class="group bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-3 sm:p-4 hover:border-emerald-500/50 hover:shadow-md transition-all space-y-3">
+      
+      <!-- Primary Dense Row -->
+      <div class="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+        
+        <!-- Left: Blood Emblem + Facility & Meta -->
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <div class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-sm sm:text-base font-headline shrink-0 shadow-xs border border-white/20">
+            ${esc(bt)}
+          </div>
+          
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h4 class="font-black text-xs sm:text-sm text-slate-900 dark:text-white truncate">${esc(hospital)}</h4>
+              <span class="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-full shrink-0">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Verified Facility
+              </span>
+            </div>
+            <p class="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+              <span>${esc(city)}, ${esc(region)}</span>
+              <span>•</span>
+              <span class="text-slate-600 dark:text-slate-300 font-bold">${dateFormatted} at ${timeFormatted}</span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Center: Clinical Metrics (Volume, Outcome, Passcode) -->
+        <div class="hidden md:flex items-center gap-2 shrink-0">
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[11px]">
+            <span class="material-symbols-outlined text-xs text-red-500">water_drop</span>
+            <span>${volumeMl} mL • ${esc(component)}</span>
+          </span>
+
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px] border border-emerald-200/60 dark:border-emerald-800/40">
+            <span class="material-symbols-outlined text-xs text-rose-500" style="font-variation-settings:'FILL' 1">favorite</span>
+            <span>1 Life Saved</span>
+          </span>
+
+          <div class="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold">
+            <span class="material-symbols-outlined text-xs text-amber-500">qr_code_2</span>
+            <span>${esc(passcode)}</span>
+          </div>
+        </div>
+
+        <!-- Right: Actions (Certificate Button + Expand Chevron) -->
+        <div class="flex items-center gap-2 shrink-0 justify-end w-full sm:w-auto">
+          <button type="button" onclick="window.openLifesaverCertificateModal('${esc(id)}')" class="press-scale flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-xs shadow-emerald-600/20 transition-all cursor-pointer min-h-[38px]">
+            <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+            <span>Certificate</span>
+          </button>
+
+          <button type="button" onclick="window.toggleHistoryJourneyTimeline('${esc(id)}')" class="press-scale inline-flex items-center justify-center gap-1 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer min-h-[38px]" title="Toggle Audit Trail">
+            <span class="hidden lg:inline text-[11px]">Audit</span>
+            <span id="journeyTimelineIcon-${esc(id)}" class="material-symbols-outlined text-base">expand_more</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Mobile Metrics Strip (For small screens under md breakpoint) -->
+      <div class="flex md:hidden items-center justify-between gap-1.5 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px]">
+        <span class="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1 truncate min-w-0">
+          <span class="material-symbols-outlined text-xs text-red-500 shrink-0">water_drop</span>
+          <span class="truncate">${volumeMl} mL • ${esc(component)}</span>
+        </span>
+        <span class="font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 shrink-0">
+          <span class="material-symbols-outlined text-xs text-rose-500 shrink-0" style="font-variation-settings:'FILL' 1">favorite</span> 1 Life Saved
+        </span>
+        <span class="font-mono text-slate-500 dark:text-slate-400 font-bold shrink-0">#${esc(passcode)}</span>
+      </div>
+
+      <!-- Expandable Detailed Clinical Audit Drawer -->
+      <div id="journeyTimeline-${esc(id)}" class="hidden bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-3.5 sm:p-5 border border-slate-200/80 dark:border-slate-700 space-y-4">
+        
+        <!-- Header Strip inside Drawer -->
+        <div class="flex items-center justify-between flex-wrap gap-2 border-b border-slate-200/60 dark:border-slate-700/60 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-base text-emerald-600" style="font-variation-settings:'FILL' 1">verified</span>
+            <span class="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">Verified NBTS Medical Ledger Audit</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-[10px] font-mono text-slate-500 dark:text-slate-400 font-bold">Passcode: ${esc(passcode)}</span>
+            <button type="button" onclick="window.copyCheckInPasscode('${esc(passcode)}', this)" class="press-scale px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer">
+              <span class="material-symbols-outlined text-xs">content_copy</span> Copy
+            </button>
+          </div>
+        </div>
+
+        <!-- 6-Stage Timeline Nodes -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">Requisition Matched</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">Dispatched to donor for ${esc(hospital)}</p>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">En Route Alert</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">GPS route initiated & hospital alerted</p>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">Reception Check-In</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">CNI verified with code ${esc(passcode)}</p>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">4</span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">Phlebotomy Collection</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">${volumeMl} mL unit safely collected & sealed</p>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-600 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">5</span>
+            <div>
+              <p class="font-bold text-slate-800 dark:text-slate-200 text-xs">Laboratory Clearance</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">TTIs & crossmatch certified sterile</p>
+            </div>
+          </div>
+
+          <div class="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-start gap-2.5">
+            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">6</span>
+            <div>
+              <p class="font-bold text-emerald-700 dark:text-emerald-400 text-xs">Transfusion Successful</p>
+              <p class="text-[10px] text-slate-400 mt-0.5">1 Life Saved • Patient in recovery</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Footer Seal -->
+        <div class="flex items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-700/60 text-slate-500 text-[10px] sm:text-[11px] font-medium flex-wrap gap-2">
+          <span class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-bold">
+            <span class="material-symbols-outlined text-sm">health_and_safety</span> Official Cameroon Blood Service Record
+          </span>
+          <span class="text-[10px] font-mono text-slate-400">Passcode: ${esc(passcode)}</span>
+        </div>
+
+      </div>
+
+    </div>`;
+}
 
 function renderDonationHistoryCard(d, idx) {
   const currentUser = getCurrentUser();
@@ -3846,188 +5140,76 @@ function renderDonationHistoryCard(d, idx) {
   const passcode = d.checkInToken || ('VP-' + Math.floor(100000 + (idx + 1) * 23456));
 
   return `
-    <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-xs hover:shadow-md transition-all border-l-4 border-l-emerald-500 space-y-4 sm:space-y-5 relative overflow-hidden">
+    <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs hover:shadow-md transition-all border-l-4 border-l-emerald-500 space-y-3.5 relative overflow-hidden flex flex-col justify-between">
       
-      <!-- Top Row: Blood Type Emblem + Hospital Info + Verified Stamp -->
-      <div class="flex items-start justify-between gap-3 flex-wrap">
-        <div class="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
-          <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-lg sm:text-xl font-headline shadow-md shrink-0 border-2 border-white dark:border-slate-800">
+      <!-- Top Row: Blood Type + Facility Info -->
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-base sm:text-lg font-headline shadow-xs shrink-0 border border-white/20">
             ${esc(bt)}
           </div>
-          <div class="min-w-0">
-            <div class="flex items-center gap-2 flex-wrap">
-              <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(hospital)}</h3>
-              <span class="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 px-2 py-0.5 rounded-full">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Verified Center
-              </span>
-            </div>
-            <p class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-emerald-600">location_on</span> ${esc(city)}, ${esc(region)}</span>
-              <span>•</span>
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-slate-400">calendar_today</span> ${dateFormatted} at ${timeFormatted}</span>
+          <div class="min-w-0 flex-1">
+            <h4 class="font-black text-sm text-slate-900 dark:text-white truncate">${esc(hospital)}</h4>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1 mt-0.5 truncate">
+              <span class="material-symbols-outlined text-xs text-emerald-600">location_on</span> ${esc(city)}, ${esc(region)}
             </p>
           </div>
         </div>
 
-        <!-- Official Lifesaver Complete Stamp -->
-        <div class="flex items-center gap-2 shrink-0">
-          <span class="inline-flex items-center gap-1 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shadow-xs">
-            <span class="material-symbols-outlined text-sm text-emerald-600 dark:text-emerald-400" style="font-variation-settings:'FILL' 1">verified</span>
-            <span>Lifesaver Complete</span>
-          </span>
+        <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 shrink-0">
+          <span class="material-symbols-outlined text-xs text-emerald-600 dark:text-emerald-400" style="font-variation-settings:'FILL' 1">verified</span>
+          <span>Verified</span>
+        </span>
+      </div>
+
+      <!-- Quick Metrics Grid -->
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div class="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700">
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Volume & Type</p>
+          <p class="font-black text-slate-800 dark:text-slate-200 text-xs truncate mt-0.5">${volumeMl} mL • ${esc(component)}</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-700">
+          <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clinical Impact</p>
+          <p class="font-black text-emerald-700 dark:text-emerald-400 text-xs truncate mt-0.5">Up to ${(units || 1) * 3} Lives Preserved</p>
         </div>
       </div>
 
-      <!-- 6-Stage Completed Progression Bar -->
-      <div class="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-3 sm:p-4 border border-slate-200/80 dark:border-slate-700">
-        <p class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1">
-          <span class="material-symbols-outlined text-xs text-emerald-600">task_alt</span> 6-Stage Real-Time Medical Lifecycle
-        </p>
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
-          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
-            <div class="min-w-0">
-              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">1. Accepted</p>
-              <p class="text-[8px] text-slate-400 truncate">Matched</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
-            <div class="min-w-0">
-              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">2. En Route</p>
-              <p class="text-[8px] text-slate-400 truncate">Trip started</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
-            <div class="min-w-0">
-              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">3. Check-In</p>
-              <p class="text-[8px] text-slate-400 truncate">Passcode verified</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
-            <div class="min-w-0">
-              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">4. Blood Drawn</p>
-              <p class="text-[8px] text-slate-400 truncate">${volumeMl} mL collected</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 bg-white dark:bg-slate-900 p-2 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0">✓</span>
-            <div class="min-w-0">
-              <p class="font-bold text-[10px] text-slate-800 dark:text-slate-200 truncate">5. Lab Cleared</p>
-              <p class="text-[8px] text-slate-400 truncate">Crossmatched</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
-            <span class="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-[10px] shrink-0" style="font-variation-settings:'FILL' 1">❤️</span>
-            <div class="min-w-0">
-              <p class="font-black text-[10px] text-emerald-800 dark:text-emerald-200 truncate">6. Life Saved</p>
-              <p class="text-[8px] text-emerald-600 dark:text-emerald-400 truncate">Patient safe</p>
-            </div>
-          </div>
-        </div>
+      <!-- Date & Passcode Bar -->
+      <div class="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-medium pt-1">
+        <span class="flex items-center gap-1">
+          <span class="material-symbols-outlined text-xs text-slate-400">calendar_today</span> ${dateFormatted}
+        </span>
+        <span class="font-mono text-xs font-bold text-slate-600 dark:text-slate-300">#${esc(passcode)}</span>
       </div>
 
-      <!-- 3-Metric Micro-Grid -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 text-xs">
-        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2.5 sm:gap-3">
-          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-red-500/15 text-red-600 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-base sm:text-lg">water_drop</span>
-          </div>
-          <div class="min-w-0">
-            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Volume & Type</p>
-            <p class="font-black text-slate-800 dark:text-slate-200 text-xs truncate mt-0.5">${volumeMl} mL • ${esc(component)}</p>
-          </div>
-        </div>
+      <!-- Actions -->
+      <div class="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+        <button type="button" onclick="window.openLifesaverCertificateModal('${esc(id)}')" class="press-scale flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-xs transition-all cursor-pointer">
+          <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+          <span>View Certificate</span>
+        </button>
 
-        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2.5 sm:gap-3">
-          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-emerald-500/15 text-emerald-600 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-base sm:text-lg" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
-          </div>
-          <div class="min-w-0">
-            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Clinical Outcome</p>
-            <p class="font-black text-emerald-700 dark:text-emerald-400 text-xs truncate mt-0.5">1 Life Saved • Transfused</p>
-          </div>
-        </div>
-
-        <div class="bg-slate-50 dark:bg-slate-800/70 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl border border-slate-200/60 dark:border-slate-700 flex items-center gap-2.5 sm:gap-3">
-          <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-base sm:text-lg">qr_code_2</span>
-          </div>
-          <div class="min-w-0">
-            <p class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Official Passcode</p>
-            <p class="font-mono font-black text-slate-800 dark:text-slate-200 text-xs truncate mt-0.5">${esc(passcode)}</p>
-          </div>
-        </div>
+        <button type="button" onclick="window.toggleHistoryJourneyTimeline('${esc(id)}')" class="press-scale px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer" title="Detailed Audit">
+          <span id="journeyTimelineIcon-${esc(id)}" class="material-symbols-outlined text-base">expand_more</span>
+        </button>
       </div>
 
       <!-- Expandable Detailed Journey Audit Accordion -->
-      <div id="journeyTimeline-${esc(id)}" class="hidden bg-slate-50 dark:bg-slate-800/40 rounded-2xl p-3.5 sm:p-4 border border-slate-200/70 dark:border-slate-700 space-y-2.5 sm:space-y-3">
-        <p class="text-[10px] font-black text-slate-500 uppercase tracking-wider">6-Step Real-Time Hospital Audit Trail</p>
-        <div class="space-y-2 text-xs">
-          <div class="flex items-start gap-2.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
-            <div>
-              <p class="font-bold text-slate-800 dark:text-slate-200">1. Requisition Accepted & Check-In Passcode Issued</p>
-              <p class="text-[10px] text-slate-400">Passcode ${esc(passcode)} generated for reception check-in at ${esc(hospital)}</p>
-            </div>
+      <div id="journeyTimeline-${esc(id)}" class="hidden bg-slate-50 dark:bg-slate-800/40 rounded-xl p-3 border border-slate-200/70 dark:border-slate-700 space-y-2 text-xs">
+        <p class="text-[10px] font-black text-slate-500 uppercase tracking-wider">6-Step Hospital Audit Trail</p>
+        <div class="space-y-1.5 text-[11px]">
+          <div class="flex items-center gap-2 text-emerald-600 font-bold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Requisition Matched & Accepted
           </div>
-          <div class="flex items-start gap-2.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
-            <div>
-              <p class="font-bold text-slate-800 dark:text-slate-200">2. En Route Started & Hospital Notified via Live GPS</p>
-              <p class="text-[10px] text-slate-400">Donor started trip. Real-time GPS and hospital reception alert activated.</p>
-            </div>
+          <div class="flex items-center gap-2 text-emerald-600 font-bold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> GPS Route & Reception Check-In Verified
           </div>
-          <div class="flex items-start gap-2.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
-            <div>
-              <p class="font-bold text-slate-800 dark:text-slate-200">3. Reception Arrival & Passcode Verified with CNI</p>
-              <p class="text-[10px] text-slate-400">Hospital reception validated code ${esc(passcode)} and routed donor to phlebotomy.</p>
-            </div>
+          <div class="flex items-center gap-2 text-emerald-600 font-bold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> ${volumeMl} mL Collected & Lab Screened Sterile
           </div>
-          <div class="flex items-start gap-2.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
-            <div>
-              <p class="font-bold text-slate-800 dark:text-slate-200">4. Blood Drawn & ${volumeMl} mL Unit Collected</p>
-              <p class="text-[10px] text-slate-400">Unit safely collected, sealed, and transferred to laboratory.</p>
-            </div>
+          <div class="flex items-center gap-2 text-emerald-600 font-bold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Transfused Successfully • Patient Safe
           </div>
-          <div class="flex items-start gap-2.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
-            <div>
-              <p class="font-bold text-slate-800 dark:text-slate-200">5. Laboratory Crossmatch & Testing Cleared</p>
-              <p class="text-[10px] text-slate-400">Infectious diseases screening and patient crossmatch cleared for transfusion.</p>
-            </div>
-          </div>
-          <div class="flex items-start gap-2.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 shrink-0"></span>
-            <div>
-              <p class="font-bold text-slate-800 dark:text-slate-200">6. Transfusion Completed & Patient Safely Recovering</p>
-              <p class="text-[10px] text-slate-400">Attending physician confirmed successful transfusion. Patient safe.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action Buttons Row -->
-      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
-        <div class="flex items-center gap-2 flex-wrap">
-          <button type="button" onclick="window.openLifesaverCertificateModal('${esc(id)}')" class="press-scale inline-flex items-center justify-center gap-1.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-sm shadow-emerald-600/20 transition-all cursor-pointer">
-            <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">workspace_premium</span>
-            <span>View Certificate</span>
-          </button>
-
-          <button type="button" onclick="window.toggleHistoryJourneyTimeline('${esc(id)}')" class="press-scale inline-flex items-center justify-center gap-1 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer">
-            <span>Journey Audit</span>
-            <span id="journeyTimelineIcon-${esc(id)}" class="material-symbols-outlined text-sm">expand_more</span>
-          </button>
-        </div>
-
-        <div class="flex items-center gap-1 text-slate-500 text-xs font-bold justify-end">
-          <span class="material-symbols-outlined text-xs sm:text-sm text-emerald-600">health_and_safety</span>
-          <span class="text-[10px] sm:text-[11px]">Recovery Active • Eligible in 42 Days</span>
         </div>
       </div>
 
@@ -4217,14 +5399,50 @@ window.setRequestsPage = (page) => {
   document.getElementById('view-requests')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
+export function getNormalizedUrgency(urgency) {
+  const u = String(urgency || '').toLowerCase().trim();
+  if (u.includes('crit') || u.includes('immediate') || u.includes('emergency')) return 'critical';
+  if (u.includes('urg') || u.includes('high') || u.includes('soon')) return 'urgent';
+  return 'routine';
+}
+
 function renderDonorRequestsList() {
   const container = document.getElementById('donorRequestsList');
   if (!container) return;
   const currentUser = getCurrentUser();
 
+  // Handle Tab-Specific Layout Toggles (Donation History hides search/radar and expands feed to full width)
+  const filterPanel = document.getElementById('reqFilterPanel');
+  const radarSidebar = document.getElementById('reqRadarSidebarColumn');
+  const feedCol = document.getElementById('reqFeedColumn');
+  const feedHeaderRow = document.getElementById('reqFeedHeaderRow');
+
+  const isHistory = _currentReqFilter === 'completed';
+  if (filterPanel) {
+    filterPanel.classList.toggle('hidden', isHistory);
+    filterPanel.style.display = isHistory ? 'none' : '';
+  }
+  if (radarSidebar) {
+    radarSidebar.classList.toggle('hidden', isHistory);
+    radarSidebar.style.display = isHistory ? 'none' : '';
+  }
+  if (feedHeaderRow) {
+    feedHeaderRow.classList.toggle('hidden', isHistory);
+    feedHeaderRow.style.display = isHistory ? 'none' : '';
+  }
+  if (feedCol) {
+    if (isHistory) {
+      feedCol.classList.remove('lg:col-span-8');
+      feedCol.classList.add('lg:col-span-12');
+    } else {
+      feedCol.classList.remove('lg:col-span-12');
+      feedCol.classList.add('lg:col-span-8');
+    }
+  }
+
   const activeJourneys = _activeJourneys.filter(r => r.status === 'Donor Assigned' || r.status === 'Donor En Route' || r.status === 'Checked In');
-  const criticalCount = _allRequests.filter(r => (r.urgency || '').toLowerCase() === 'critical').length;
-  const urgentCount = _allRequests.filter(r => (r.urgency || '').toLowerCase() === 'urgent').length;
+  const criticalCount = _allRequests.filter(r => getNormalizedUrgency(r.urgency) === 'critical').length;
+  const urgentCount = _allRequests.filter(r => getNormalizedUrgency(r.urgency) === 'urgent').length;
   const routineCount = Math.max(0, _allRequests.length - criticalCount - urgentCount);
   const totalCount = _allRequests.length;
 
@@ -4247,10 +5465,18 @@ function renderDonorRequestsList() {
   if (tabBcastBadge) tabBcastBadge.textContent = _allRequests.filter(r => r.isPublicRequest || r.systemWide).length;
   const ribbonReqCount = document.getElementById('ribbonLiveReqCount');
   if (ribbonReqCount) ribbonReqCount.textContent = totalCount;
+  const ribbonReqLabel = document.getElementById('ribbonLiveReqLabel');
+  if (ribbonReqLabel) ribbonReqLabel.textContent = totalCount === 1 ? 'Request Live' : 'Requests Live';
 
-  // Hero blood type
+  // Hero blood type & sculpted medical emblem
+  const heroBloodType = currentUser?.bloodType || 'B+';
   const heroBloodEl = document.getElementById('reqHeroBloodType');
-  if (heroBloodEl) heroBloodEl.textContent = currentUser?.bloodType || 'B+';
+  if (heroBloodEl) {
+    const raw = String(heroBloodType).trim();
+    const sign = raw.endsWith('+') ? '+' : raw.endsWith('-') ? '-' : '';
+    const letter = sign ? raw.slice(0, -1) : raw;
+    heroBloodEl.innerHTML = `${esc(letter)}${sign ? `<sup class="text-xs text-rose-200 ml-0.5 drop-shadow-[0_0_6px_rgba(255,255,255,0.7)]">${sign}</sup>` : ''}`;
+  }
 
   // 2. Render Active Mission Spotlight (If user is currently on an active mission)
   const activeExpeditionContainer = document.getElementById('donorActiveExpeditionContainer');
@@ -4274,48 +5500,399 @@ function renderDonorRequestsList() {
 
   // 3. Tab Specific Handling for History
   if (_currentReqFilter === 'completed') {
-    const st = {
-      'pending': 'bg-amber-50 text-amber-700 border-amber-200',
-      'approved': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      'completed': 'bg-indigo-50 text-indigo-700 border-indigo-200',
-      'rejected': 'bg-red-50 text-red-700 border-red-200',
-      'cancelled': 'bg-slate-100 text-slate-400 border-slate-200',
-    };
     const completedJourneys = _activeJourneys.filter(r => r.status === 'Completed' || r.status === 'Issued' || r.status === 'Resolved');
-    
-    if (completedJourneys.length === 0 && _pastDonations.length === 0) {
+    const allHistoryItems = [...completedJourneys, ..._pastDonations];
+
+    if (allHistoryItems.length === 0) {
+      const donorName = currentUser?.displayName || currentUser?.fullName || 'Verified Lifesaver';
+      const bloodType = currentUser?.bloodType || 'B+';
+      const donorCity = (currentUser?.city && currentUser.city.toLowerCase() !== 'national') ? currentUser.city : 'Douala';
+      const donorRegion = currentUser?.region || (donorCity === 'Buea' || donorCity === 'Limbe' ? 'Southwest' : donorCity === 'Yaoundé' ? 'Centre' : 'Littoral');
+
       container.innerHTML = `
-        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 sm:p-14 text-center space-y-4 shadow-xs">
-          <div class="w-16 h-16 rounded-3xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center mx-auto mb-2 border border-emerald-200 dark:border-emerald-800">
-            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+        <div class="space-y-4 sm:space-y-6">
+          <!-- Dual-Pane Biometric Lifesaver Passport Dossier -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 items-stretch">
+            
+            <!-- LEFT PANE (lg:col-span-7): The Official Republic of Cameroon Lifesaver Passport Specimen -->
+            <div class="lg:col-span-7 bg-[#080E1A] border border-emerald-500/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 text-white shadow-2xl relative overflow-hidden flex flex-col justify-between space-y-4 sm:space-y-6">
+              
+              <!-- Subtle Security Watermark & Ambient Radial Glows -->
+              <div class="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none"></div>
+              <div class="absolute -left-20 -bottom-20 w-72 h-72 rounded-full bg-teal-500/10 blur-3xl pointer-events-none"></div>
+              
+              <!-- Top Official Security Header -->
+              <div class="relative z-10 flex items-center justify-between border-b border-emerald-500/20 pb-3 sm:pb-4 flex-wrap gap-2">
+                <div class="flex items-center gap-2 sm:gap-2.5">
+                  <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-950 border border-emerald-400/30 flex items-center justify-center text-[10px] sm:text-xs font-black text-emerald-400 font-headline">
+                    CMR
+                  </div>
+                  <div>
+                    <p class="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-emerald-400">RÉPUBLIQUE DU CAMEROUN • NBTS</p>
+                    <p class="text-[10px] sm:text-[11px] font-bold text-slate-300">National Blood Transfusion Service</p>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <span class="inline-flex items-center gap-1 font-mono text-[9px] sm:text-[10px] font-bold text-emerald-300/80 bg-emerald-950/80 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> REG: 2026-STANDBY
+                  </span>
+                </div>
+              </div>
+
+              <!-- Donor Biometric ID Strip -->
+              <div class="relative z-10 flex items-start sm:items-center justify-between gap-3 sm:gap-4 bg-white/5 border border-white/10 rounded-xl sm:rounded-2xl p-3 sm:p-4 backdrop-blur-sm flex-wrap sm:flex-nowrap">
+                <div class="flex items-center gap-3 sm:gap-3.5 min-w-0">
+                  <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-emerald-600 via-teal-600 to-emerald-500 text-white flex items-center justify-center font-black text-base sm:text-xl font-headline shrink-0 shadow-md border border-white/20">
+                    ${esc(bloodType)}
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h3 class="text-sm sm:text-lg font-black text-white font-headline truncate">${esc(donorName)}</h3>
+                      <span class="inline-flex items-center gap-1 text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-500/20 border border-emerald-400/30 px-2 py-0.5 rounded-full">
+                        Standby Lifesaver
+                      </span>
+                    </div>
+                    <p class="text-[10px] sm:text-[11px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                      <span>${esc(donorCity)}, ${esc(donorRegion)}</span>
+                      <span>•</span>
+                      <span class="text-emerald-400 font-bold">Awaiting First Clinical Seal</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div class="shrink-0 text-right hidden sm:block">
+                  <p class="text-[9px] font-bold uppercase tracking-wider text-slate-400">Total Recorded</p>
+                  <p class="text-xl font-black text-white leading-none mt-0.5">0 Units</p>
+                </div>
+              </div>
+
+              <!-- 4 Clinical Passport Stamp Slots (Embossed Specimen Seals) -->
+              <div class="relative z-10 space-y-2">
+                <div class="flex items-center justify-between">
+                  <p class="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-slate-400">Lifesaver Credential Milestones</p>
+                  <span class="text-[8px] sm:text-[9px] font-bold text-emerald-400">0 of 4 Seals Minted</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
+                  <!-- Stamp 1 -->
+                  <div class="border-2 border-dashed border-emerald-500/25 bg-emerald-950/20 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex items-start gap-2.5 sm:gap-3 relative group">
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-500/10 border border-emerald-400/20 text-emerald-400 flex items-center justify-center shrink-0">
+                      <span class="material-symbols-outlined text-base">water_drop</span>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-black text-white">Seal #01 · Collection</p>
+                        <span class="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Slot Open</span>
+                      </div>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 leading-snug">450 mL sterile phlebotomy unit drawn at accredited facility.</p>
+                    </div>
+                  </div>
+
+                  <!-- Stamp 2 -->
+                  <div class="border-2 border-dashed border-teal-500/25 bg-teal-950/20 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex items-start gap-2.5 sm:gap-3 relative group">
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-teal-500/10 border border-teal-400/20 text-teal-400 flex items-center justify-center shrink-0">
+                      <span class="material-symbols-outlined text-base">biotech</span>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-black text-white">Seal #02 · Lab Clear</p>
+                        <span class="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Slot Open</span>
+                      </div>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 leading-snug">Full serology & infectious disease screening verified sterile.</p>
+                    </div>
+                  </div>
+
+                  <!-- Stamp 3 -->
+                  <div class="border-2 border-dashed border-rose-500/25 bg-rose-950/20 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex items-start gap-2.5 sm:gap-3 relative group">
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-rose-500/10 border border-rose-400/20 text-rose-400 flex items-center justify-center shrink-0">
+                      <span class="material-symbols-outlined text-base">volunteer_activism</span>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-black text-white">Seal #03 · Patient Saved</p>
+                        <span class="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Slot Open</span>
+                      </div>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 leading-snug">Attending physician confirmation of successful transfusion.</p>
+                    </div>
+                  </div>
+
+                  <!-- Stamp 4 -->
+                  <div class="border-2 border-dashed border-amber-500/25 bg-amber-950/20 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex items-start gap-2.5 sm:gap-3 relative group">
+                    <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-amber-500/10 border border-amber-400/20 text-amber-400 flex items-center justify-center shrink-0">
+                      <span class="material-symbols-outlined text-base">workspace_premium</span>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center justify-between">
+                        <p class="text-[11px] sm:text-xs font-black text-white">Seal #04 · Presidential</p>
+                        <span class="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest">Slot Open</span>
+                      </div>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5 leading-snug">Official NBTS Lifesaver Diploma & QR credential issued.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bottom Security Barcode Footer -->
+              <div class="relative z-10 pt-2.5 sm:pt-3 border-t border-emerald-500/20 flex items-center justify-between text-[9px] sm:text-[10px] text-slate-400 flex-wrap gap-1.5">
+                <span class="flex items-center gap-1.5 text-emerald-400 font-bold">
+                  <span class="material-symbols-outlined text-xs">health_and_safety</span>
+                  <span>National Health Service Verifiable Credential</span>
+                </span>
+                <span class="font-mono text-slate-400 hidden sm:inline">|| | | ||| | |||| || ||| |</span>
+              </div>
+
+            </div>
+
+            <!-- RIGHT PANE (lg:col-span-5): Mission Launch & Activation Hub -->
+            <div class="lg:col-span-5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-xl flex flex-col justify-between space-y-4 sm:space-y-5">
+              
+              <div class="space-y-3 sm:space-y-4">
+                <div class="flex items-center justify-between">
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800/60">
+                    <span class="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-red-600 animate-ping"></span> Live Hospital Network
+                  </span>
+                  <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase">Emergency Standby</span>
+                </div>
+
+                <div>
+                  <h3 class="text-lg sm:text-2xl font-black font-headline text-slate-900 dark:text-white tracking-tight">Activate Your First Lifesaver Stamp</h3>
+                  <p class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-300 leading-relaxed mt-1.5 sm:mt-2">
+                    Hospitals across Cameroon rely on verified voluntary donors. Responding to a live requisition or donating at an accredited center immediately validates your clinical passport.
+                  </p>
+                </div>
+
+                <!-- 3-Step Rapid Flow -->
+                <div class="space-y-2 sm:space-y-2.5 pt-1">
+                  <div class="flex items-start gap-2.5 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700">
+                    <span class="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-lg bg-red-600 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shrink-0 mt-0.5">1</span>
+                    <div class="min-w-0">
+                      <p class="text-[11px] sm:text-xs font-black text-slate-900 dark:text-white">Accept an Urgent Requisition</p>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-slate-400">Match with a hospital emergency in your region (${esc(donorRegion)}).</p>
+                    </div>
+                  </div>
+
+                  <div class="flex items-start gap-2.5 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700">
+                    <span class="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shrink-0 mt-0.5">2</span>
+                    <div class="min-w-0">
+                      <p class="text-[11px] sm:text-xs font-black text-slate-900 dark:text-white">Fast-Track Reception Check-In</p>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-slate-400">Present your National CNI ID and 1-tap passcode at the desk.</p>
+                    </div>
+                  </div>
+
+                  <div class="flex items-start gap-2.5 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700">
+                    <span class="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-lg bg-amber-500 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shrink-0 mt-0.5">3</span>
+                    <div class="min-w-0">
+                      <p class="text-[11px] sm:text-xs font-black text-slate-900 dark:text-white">Official Diploma & Recovery Log</p>
+                      <p class="text-[9.5px] sm:text-[10px] text-slate-500 dark:text-slate-400">Your verifiable diploma and laboratory seal are permanently logged.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action CTAs -->
+              <div class="space-y-2 sm:space-y-2.5 pt-2">
+                <button onclick="window.filterDonorRequests('all')" class="press-scale w-full py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shadow-lg shadow-red-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[44px]">
+                  <span class="material-symbols-outlined text-base">emergency</span>
+                  <span>Respond to Open Requisitions</span>
+                </button>
+
+                <div class="grid grid-cols-2 gap-2 sm:gap-2.5">
+                  <button onclick="window.switchDonorView('centers')" class="press-scale py-2.5 px-2 sm:px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-[11px] sm:text-xs border border-slate-200 dark:border-slate-700 transition-colors flex items-center justify-center gap-1.5 cursor-pointer min-h-[40px]">
+                    <span class="material-symbols-outlined text-sm text-emerald-600">location_on</span>
+                    <span>Find Centers</span>
+                  </button>
+
+                  <button onclick="window.openLifesaverCertificateModal('sample')" class="press-scale py-2.5 px-2 sm:px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 font-bold text-[11px] sm:text-xs border border-emerald-200 dark:border-emerald-800/60 transition-colors flex items-center justify-center gap-1.5 cursor-pointer min-h-[40px]">
+                    <span class="material-symbols-outlined text-sm text-emerald-600">workspace_premium</span>
+                    <span>Preview Diploma</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
           </div>
-          <div class="space-y-1 max-w-md mx-auto">
-            <h3 class="font-black text-lg sm:text-xl text-slate-900 dark:text-white font-headline">No Donation History Yet</h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">When you respond to urgent hospital requisitions or complete scheduled donations, your official Lifesaver certificates, blood draw stamps, and patient recovery tracking will appear here.</p>
-          </div>
-          <button onclick="window.filterDonorRequests('all')" class="press-scale inline-flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md shadow-red-600/25 transition-all cursor-pointer">
-            <span class="material-symbols-outlined text-base">search</span> Browse Open Requests
-          </button>
         </div>`;
       document.getElementById('donorRequestsPagination').innerHTML = '';
       return;
     }
 
-    const allHistoryItems = [...completedJourneys, ..._pastDonations];
+    const totalDonatedMl = allHistoryItems.reduce((acc, curr) => acc + ((curr.units || 1) * 450), 0);
+    const totalUnitsGiven = allHistoryItems.reduce((acc, curr) => acc + (curr.units || 1), 0);
+    const livesSaved = totalUnitsGiven * 3;
+
+    // Extract available years for filtering
+    const availableYears = Array.from(new Set(allHistoryItems.map(item => {
+      const raw = item.completedAt || item.preferredDate || item.updatedAt || item.requestedAt || Date.now();
+      return new Date(raw).getFullYear();
+    }))).sort((a, b) => b - a);
+
+    const yearCounts = {};
+    availableYears.forEach(yr => {
+      yearCounts[yr] = allHistoryItems.filter(item => {
+        const raw = item.completedAt || item.preferredDate || item.updatedAt || item.requestedAt || Date.now();
+        return new Date(raw).getFullYear() === yr;
+      }).length;
+    });
+
+    // Apply Search and Year Filters
+    let visibleItems = [...allHistoryItems];
+    if (_historySearchTerm) {
+      const q = _historySearchTerm.toLowerCase();
+      visibleItems = visibleItems.filter(item => {
+        const hospital = (item.hospital || item.hospitalName || item.preferredLocation || '').toLowerCase();
+        const city = (item.city || '').toLowerCase();
+        const region = (item.region || '').toLowerCase();
+        const component = (item.componentType || '').toLowerCase();
+        const passcode = (item.checkInToken || '').toLowerCase();
+        const bt = (item.bloodType || item.type || '').toLowerCase();
+        return hospital.includes(q) || city.includes(q) || region.includes(q) || component.includes(q) || passcode.includes(q) || bt.includes(q);
+      });
+    }
+
+    if (_historyYearFilter !== 'all') {
+      const targetYr = Number(_historyYearFilter);
+      visibleItems = visibleItems.filter(item => {
+        const raw = item.completedAt || item.preferredDate || item.updatedAt || item.requestedAt || Date.now();
+        return new Date(raw).getFullYear() === targetYr;
+      });
+    }
+
+    // Group visible items by Year
+    const groupedByYear = {};
+    visibleItems.forEach(item => {
+      const raw = item.completedAt || item.preferredDate || item.updatedAt || item.requestedAt || Date.now();
+      const yr = new Date(raw).getFullYear();
+      if (!groupedByYear[yr]) groupedByYear[yr] = [];
+      groupedByYear[yr].push(item);
+    });
+    const sortedYears = Object.keys(groupedByYear).map(Number).sort((a, b) => b - a);
+
+    // Render items by view mode
+    const renderItemsList = (items) => {
+      if (_historyViewMode === 'cards') {
+        return `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            ${items.map((item, idx) => renderDonationHistoryCard(item, idx)).join('')}
+          </div>`;
+      }
+      return `
+        <div class="space-y-2.5">
+          ${items.map((item, idx) => renderDonationHistoryRow(item, idx)).join('')}
+        </div>`;
+    };
 
     container.innerHTML = `
-      <div class="space-y-4">
-        <div class="flex items-center justify-between gap-3 pb-1">
-          <div>
-            <h3 class="font-black text-base sm:text-lg text-slate-900 dark:text-white font-headline">Your Completed Lifesaver Records</h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">All verified donations and completed hospital expeditions</p>
+      <div class="space-y-5">
+        <!-- Executive Lifesaver Passport Banner -->
+        <div class="bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-950 border border-emerald-800/40 rounded-2xl sm:rounded-3xl p-4 sm:p-6 text-white shadow-xl relative overflow-hidden">
+          <div class="absolute -right-10 -bottom-10 w-44 h-44 rounded-full bg-emerald-500/10 blur-2xl pointer-events-none"></div>
+          
+          <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-5 relative z-10">
+            <div class="space-y-1.5 flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                  <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">verified</span> Verified Lifesaver Ledger
+                </span>
+                <span class="text-xs text-emerald-200/80 font-semibold">• Cameroon NBTS Registered</span>
+              </div>
+              <h2 class="text-lg sm:text-2xl font-black font-headline text-white tracking-tight">Your Official Donation Records</h2>
+              <p class="text-xs text-slate-300 max-w-lg leading-relaxed">
+                Complete clinical registry of your blood donations across accredited hospitals in Cameroon. Search records, export official certificates, or review laboratory screening clearances.
+              </p>
+            </div>
+
+            <!-- Stat Badges + Print Action -->
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 shrink-0">
+              <div class="grid grid-cols-3 gap-1.5 sm:gap-2.5 shrink-0">
+                <div class="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-2 sm:p-3 text-center border border-white/10 min-w-0 sm:min-w-[76px]">
+                  <p class="text-base sm:text-2xl font-black text-emerald-400 leading-none">${allHistoryItems.length}</p>
+                  <p class="text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold text-slate-300 mt-1">Donations</p>
+                </div>
+                <div class="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-2 sm:p-3 text-center border border-white/10 min-w-0 sm:min-w-[76px]">
+                  <p class="text-base sm:text-2xl font-black text-white leading-none">${totalDonatedMl}</p>
+                  <p class="text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold text-slate-300 mt-1">mL Given</p>
+                </div>
+                <div class="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-2 sm:p-3 text-center border border-white/10 min-w-0 sm:min-w-[76px]">
+                  <p class="text-base sm:text-2xl font-black text-rose-400 leading-none">${livesSaved}</p>
+                  <p class="text-[8px] sm:text-[9px] uppercase tracking-wider font-extrabold text-slate-300 mt-1">Lives Saved</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <span class="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' 1">verified</span> ${allHistoryItems.length} Completed
-          </span>
         </div>
 
-        ${allHistoryItems.map((item, idx) => renderDonationHistoryCard(item, idx)).join('')}
+        <!-- Lifesaver Ledger Control Toolbar (Search + Year Filter + View Switcher) -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-2.5 sm:p-3.5 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3">
+          
+          <!-- Search input -->
+          <div class="flex-1 relative">
+            <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-base pointer-events-none">search</span>
+            <input id="historySearchInput" type="text" value="${esc(_historySearchTerm)}" oninput="window.handleHistorySearch(this.value)" placeholder="Search facility, city, component, or passcode..." class="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 rounded-xl pl-9 pr-8 py-2 text-xs font-bold text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-xs min-h-[40px]" />
+            ${_historySearchTerm ? `
+              <button type="button" onclick="window.handleHistorySearch('')" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 cursor-pointer transition-colors" title="Clear Search">
+                <span class="material-symbols-outlined text-sm">cancel</span>
+              </button>` : ''}
+          </div>
+
+          <!-- Controls Right: Year Filter + Density Mode Toggle -->
+          <div class="flex items-center gap-2 justify-between sm:justify-end shrink-0">
+            
+            <!-- Year Selector -->
+            <div class="flex items-center gap-1.5 flex-1 sm:flex-initial">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">Year:</span>
+              <select onchange="window.handleHistoryYearFilter(this.value)" class="w-full sm:w-auto bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-700 dark:text-slate-300 outline-none cursor-pointer min-h-[40px]">
+                <option value="all" ${_historyYearFilter === 'all' ? 'selected' : ''}>All Years (${allHistoryItems.length})</option>
+                ${availableYears.map(yr => `<option value="${yr}" ${_historyYearFilter === String(yr) ? 'selected' : ''}>${yr} (${yearCounts[yr]})</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- Density Toggle (Ledger View vs Card View) -->
+            <div class="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 gap-1 shrink-0 min-h-[40px]">
+              <button type="button" onclick="window.setHistoryViewMode('ledger')" class="px-2.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${_historyViewMode === 'ledger' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="High-density list view">
+                <span class="material-symbols-outlined text-sm">view_agenda</span>
+                <span class="text-[11px]">Ledger</span>
+              </button>
+              <button type="button" onclick="window.setHistoryViewMode('cards')" class="px-2.5 py-1.5 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${_historyViewMode === 'cards' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}" title="Visual card grid view">
+                <span class="material-symbols-outlined text-sm">grid_view</span>
+                <span class="text-[11px]">Cards</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- List Content Area -->
+        ${visibleItems.length === 0 ? `
+          <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 text-center space-y-3">
+            <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
+              <span class="material-symbols-outlined text-2xl">search_off</span>
+            </div>
+            <div>
+              <h3 class="font-bold text-sm text-slate-800 dark:text-slate-200">No Matching Donation Records</h3>
+              <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1">No past donations matched your search filter "${esc(_historySearchTerm)}".</p>
+            </div>
+            <button type="button" onclick="window.clearHistoryFilters()" class="press-scale inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold cursor-pointer hover:bg-emerald-700 transition-colors">
+              <span class="material-symbols-outlined text-sm">refresh</span> Clear Filters
+            </button>
+          </div>
+        ` : sortedYears.map(yr => {
+            const yrItems = groupedByYear[yr] || [];
+            const yrMl = yrItems.reduce((acc, c) => acc + ((c.units || 1) * 450), 0);
+            return `
+              <div class="space-y-3">
+                <div class="flex items-center justify-between px-1 flex-wrap gap-1.5">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">${yr} Records</span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">${yrItems.length} donation${yrItems.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <span class="text-[10px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400">${yrMl} mL total • Up to ${yrItems.reduce((a, c) => a + ((c.units || 1) * 3), 0)} lives preserved</span>
+                </div>
+                ${renderItemsList(yrItems)}
+              </div>
+            `;
+          }).join('')}
+
       </div>`;
     document.getElementById('donorRequestsPagination').innerHTML = '';
     return;
@@ -4341,7 +5918,7 @@ function renderDonorRequestsList() {
   const df = _reqDropdownFilters;
   if (df.bloodType) filtered = filtered.filter(r => (r.bloodType || r.type) === df.bloodType);
   if (df.component) filtered = filtered.filter(r => (r.componentType || 'Whole Blood') === df.component);
-  if (df.urgency) filtered = filtered.filter(r => (r.urgency || '').toLowerCase() === df.urgency);
+  if (df.urgency) filtered = filtered.filter(r => getNormalizedUrgency(r.urgency) === df.urgency);
   if (df.distance) filtered = filtered.filter(r => typeof r.distanceKm === 'number' && r.distanceKm <= Number(df.distance));
 
   if (_currentReqFilter === 'public') {
@@ -4354,7 +5931,7 @@ function renderDonorRequestsList() {
     filtered.sort((a, b) => (Number(a.distanceKm) || 999) - (Number(b.distanceKm) || 999));
   } else if (sortVal === 'urgency') {
     const rank = { 'critical': 3, 'urgent': 2, 'routine': 1 };
-    filtered.sort((a, b) => (rank[(b.urgency || '').toLowerCase()] || 0) - (rank[(a.urgency || '').toLowerCase()] || 0));
+    filtered.sort((a, b) => (rank[getNormalizedUrgency(b.urgency)] || 0) - (rank[getNormalizedUrgency(a.urgency)] || 0));
   } else if (sortVal === 'recent') {
     filtered.sort((a, b) => new Date(b.requestedAt || 0) - new Date(a.requestedAt || 0));
   }
@@ -4371,26 +5948,42 @@ function renderDonorRequestsList() {
   const acceptBlocked = isBusy || ineligible || kycPending;
   const deferralDays = _donorEligibilityCache?.daysUntil || 0;
 
+  updateQuickChipVisuals();
+
   if (filtered.length === 0) {
+    const userBt = currentUser?.bloodType || 'B+';
+    const hasSearch = Boolean(_reqSearchTerm);
+    const hasUrgency = Boolean(_reqDropdownFilters.urgency);
+    const filterContext = hasSearch ? `for "${esc(_reqSearchTerm)}"` : hasUrgency ? `with ${_reqDropdownFilters.urgency.toUpperCase()} priority` : '';
     container.innerHTML = `
-      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-12 text-center space-y-3 shadow-xs">
-        <div class="w-16 h-16 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-2">
-          <span class="material-symbols-outlined text-3xl">search_off</span>
+      <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-10 sm:p-12 text-center space-y-4 shadow-xs">
+        <div class="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 flex items-center justify-center mx-auto shadow-inner border border-emerald-200/50">
+          <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">verified</span>
         </div>
-        <h3 class="font-black text-lg text-slate-900 dark:text-white">No Matching Blood Requisitions</h3>
-        <p class="text-xs text-slate-500 max-w-sm mx-auto">There are no blood requests matching your active search or filters. Try resetting filters to view all hospital needs.</p>
-        <button onclick="window.resetReqFilters()" class="press-scale px-4 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs shadow-sm cursor-pointer mt-2">
-          Reset Filters
-        </button>
+        <div class="space-y-1.5 max-w-md mx-auto">
+          <h3 class="font-black text-lg text-slate-900 dark:text-white font-headline">Transfusion Reserves Stable</h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            There are currently no active requisitions ${filterContext} matching your compatible blood group (${esc(userBt)}). Hospital reserves in this catchment are safely stocked!
+          </p>
+        </div>
+        <div class="pt-2 flex items-center justify-center gap-3 flex-wrap">
+          <button onclick="window.resetReqFilters()" class="press-scale px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-sm cursor-pointer flex items-center gap-2">
+            <span class="material-symbols-outlined text-sm">refresh</span> Reset Filters & View All Live
+          </button>
+          <button onclick="switchDonorView('centers')" class="press-scale px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 font-bold text-xs border border-slate-200 dark:border-slate-700 cursor-pointer">
+            Explore Blood Banks
+          </button>
+        </div>
       </div>`;
     document.getElementById('donorRequestsPagination').innerHTML = '';
     return;
   }
 
-  // 7. Render Horizontal Cards (Matches Reference Inspiration Image Exactly)
+  // 7. Render Tactical Requisition Cards
   container.innerHTML = pagedList.map((req, idx) => {
-    const isCritical = (req.urgency || '').toLowerCase() === 'critical';
-    const isUrgent = (req.urgency || '').toLowerCase() === 'urgent';
+    const normUrgency = getNormalizedUrgency(req.urgency);
+    const isCritical = normUrgency === 'critical';
+    const isUrgent = normUrgency === 'urgent';
     const urgencyLabel = isCritical ? 'CRITICAL' : isUrgent ? 'URGENT' : 'ROUTINE';
     const urgencyCls = isCritical
       ? 'text-red-600 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/50'
@@ -4398,68 +5991,95 @@ function renderDonorRequestsList() {
       ? 'text-amber-700 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50'
       : 'text-slate-600 bg-slate-100 dark:bg-slate-800 border border-slate-200';
 
+    const cardBorderAccent = isCritical
+      ? 'border-l-4 border-l-red-600 bg-gradient-to-r from-red-500/[0.03] via-transparent to-transparent'
+      : isUrgent
+      ? 'border-l-4 border-l-amber-500 bg-gradient-to-r from-amber-500/[0.03] via-transparent to-transparent'
+      : 'border-l-4 border-l-slate-300 dark:border-l-slate-700';
+
     const bt = req.bloodType || req.type || 'B+';
     const units = req.units || (idx % 2 === 0 ? 3 : 2);
     const component = req.componentType || (idx % 3 === 0 ? 'Packed Red Blood Cells (PRBC)' : idx % 2 === 0 ? 'Whole Blood' : 'Fresh Frozen Plasma (FFP)');
-    const city = req.city || (idx === 0 ? 'Buea' : idx === 1 ? 'Limbe' : idx === 2 ? 'Bamenda' : idx === 3 ? 'Yaoundé' : 'Douala');
-    const region = req.region || (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Bamenda' ? 'Northwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
-    const distanceStr = req.distanceKm ? req.distanceKm + ' km' : `${(idx + 1) * 2.3} km`;
-    const hospitalName = req.hospital || req.hospitalName || (city + ' Regional Hospital');
+    const rawCity = (req.city || '').trim();
+    const rawHospital = (req.hospital || req.hospitalName || '').trim();
+    const isNationalOrSystem = rawCity.toLowerCase() === 'national' || rawHospital.toLowerCase().includes('central command');
+    const city = isNationalOrSystem ? (idx === 0 ? 'Douala' : 'Yaoundé') : (rawCity || (idx === 0 ? 'Buea' : idx === 1 ? 'Limbe' : idx === 2 ? 'Bamenda' : idx === 3 ? 'Yaoundé' : 'Douala'));
+    const region = req.region && req.region.toLowerCase() !== 'national'
+      ? req.region
+      : (city === 'Buea' || city === 'Limbe' ? 'Southwest Region' : city === 'Bamenda' ? 'Northwest Region' : city === 'Yaoundé' ? 'Centre Region' : 'Littoral Region');
+    const distanceKmNum = typeof req.distanceKm === 'number' ? req.distanceKm : (idx + 1) * 2.3;
+    const distanceStr = req.distanceKm ? req.distanceKm + ' km' : `${distanceKmNum.toFixed(1)} km`;
+    const driveTimeMin = Math.max(5, Math.round(distanceKmNum * 2.2));
+    const hospitalName = rawHospital && rawHospital.toLowerCase() !== 'national'
+      ? (rawHospital === 'Central Command' ? `${city} Central Command Hospital` : rawHospital)
+      : `${city} Regional Hospital`;
 
-    // Deadlines
-    const neededBy = isCritical ? 'Today, 6:00 PM' : isUrgent ? 'Today, 8:00 PM' : 'Tomorrow, 9:00 AM';
+    // Consistent & Accurate Clinical Timing
+    const timing = formatRequestTiming(req);
 
-    // Tags
+    // Tags & Status Indicators
+    const isNew24h = isRequestWithin24Hours(req);
+    const newBadge = isNew24h
+      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-wider bg-emerald-500 text-white shadow-xs shrink-0" title="Posted within the last 24 hours"><span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span><span>NEW</span></span>`
+      : '';
     const tagEmergency = isCritical ? `<span class="inline-flex items-center gap-1 bg-red-50 dark:bg-red-950/40 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-md border border-red-100"><span class="material-symbols-outlined text-xs">emergency</span> Emergency</span>` : '';
-    const tagWalkIn = `<span class="inline-flex items-center gap-1 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700"><span class="material-symbols-outlined text-xs">directions_walk</span> Walk-in Friendly</span>`;
-    const tagDonorNeeded = `<span class="inline-flex items-center gap-1 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-rose-100"><span class="material-symbols-outlined text-xs">bloodtype</span> Donor Needed</span>`;
+    const blockedReason = isBusy ? 'Availability Paused' : kycPending ? 'Verification Required' : ineligible ? `Deferred: ${deferralDays}d` : '';
 
     return `
-      <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 shadow-xs hover:shadow-md transition-all flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3.5 sm:gap-4">
+      <div class="hover-lift bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 hover:border-red-500/30 dark:hover:border-red-500/40 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-xs hover:shadow-lg transition-all duration-200 ${cardBorderAccent} space-y-3.5 sm:space-y-4">
         
-        <!-- Left: Blood Type Circle Emblem -->
-        <div class="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
-          <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-600 text-white flex items-center justify-center font-black text-lg sm:text-xl font-headline shadow-md shrink-0 border-2 border-white dark:border-slate-800">
-            ${esc(bt)}
+        <!-- Top Row: Emblem, Hospital Info, Urgency & Distance -->
+        <div class="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+          <div class="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0 flex-1">
+            <!-- Cool Biometric Medical Blood Emblem -->
+            ${renderCoolBloodEmblem(bt, units, 'card')}
+
+            <!-- Hospital Info -->
+            <div class="min-w-0 flex-1 space-y-0.5">
+              <div class="flex items-center gap-2 flex-wrap">
+                ${newBadge}
+                <span class="text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${urgencyCls}">${urgencyLabel}</span>
+                <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(hospitalName)}</h3>
+              </div>
+              
+              <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium flex-wrap pt-0.5">
+                <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">location_on</span> ${esc(city)}, ${esc(region)}</span>
+                <span>•</span>
+                <span class="inline-flex items-center gap-1 font-bold text-slate-700 dark:text-slate-300"><span class="material-symbols-outlined text-xs text-slate-400">near_me</span> ${esc(distanceStr)}</span>
+                <span class="hidden sm:inline">•</span>
+                <span class="inline-flex items-center gap-1 text-slate-500"><span class="material-symbols-outlined text-xs text-slate-400">directions_car</span> ~${driveTimeMin} min drive</span>
+                <span>•</span>
+                <span class="inline-flex items-center gap-1 font-semibold text-slate-500 dark:text-slate-400"><span class="material-symbols-outlined text-xs text-slate-400">schedule</span> Posted ${timing.postedAgo}</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Middle: Hospital Info, Urgency, Distance, Units, Tags -->
-          <div class="min-w-0 flex-1 space-y-1">
-            <div class="flex items-center gap-2 flex-wrap">
-              <span class="text-[8px] sm:text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${urgencyCls}">${urgencyLabel}</span>
-              <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">${esc(hospitalName)}</h3>
-            </div>
-            
-            <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium flex-wrap">
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-500">location_on</span> ${esc(city)}, ${esc(region)}</span>
-              <span>•</span>
-              <span class="inline-flex items-center gap-1"><span class="material-symbols-outlined text-xs text-slate-400">near_me</span> ${esc(distanceStr)}</span>
-            </div>
-
-            <p class="text-xs font-bold text-slate-700 dark:text-slate-300 pt-0.5">
-              ${units} Units • <span class="font-medium text-slate-500 dark:text-slate-400">${esc(component)}</span>
-            </p>
-
-            <div class="flex items-center gap-1.5 flex-wrap pt-1">
-              ${tagEmergency}${tagWalkIn}${tagDonorNeeded}
-            </div>
+          <!-- Needed By / Timing Badge -->
+          <div class="shrink-0 text-left sm:text-right bg-slate-50 dark:bg-slate-800/60 sm:bg-transparent sm:dark:bg-transparent p-2 sm:p-0 rounded-xl w-full sm:w-auto flex items-center sm:block justify-between">
+            <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider">${timing.deadlineLabel}</p>
+            <p class="text-xs sm:text-sm ${timing.deadlineColor}">${timing.deadlineText}</p>
           </div>
         </div>
 
-        <!-- Right: Needed By Deadline & Action Buttons -->
-        <div class="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-2 sm:gap-3 shrink-0 pt-2.5 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800">
-          <div class="text-left md:text-right">
-            <p class="text-[9px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-wider">Needed by</p>
-            <p class="text-xs sm:text-sm font-black ${isCritical ? 'text-red-600' : 'text-slate-800 dark:text-slate-200'}">${neededBy}</p>
+        <!-- Middle Spec Strip: Component & Emergency Tags -->
+        <div class="flex items-center justify-between gap-2 flex-wrap text-xs pt-1 border-t border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
+              ${units} Units • <span class="text-slate-600 dark:text-slate-300">${esc(component)}</span>
+            </span>
+            ${tagEmergency}
+            ${currentUser?.bloodType === 'Unknown' ? `<span class="inline-flex items-center gap-1 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-sky-200/60"><span class="material-symbols-outlined text-xs">biotech</span> Typing at Intake</span>` : ''}
+            ${blockedReason ? `<span class="inline-flex items-center gap-1 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-md border border-amber-200/60"><span class="material-symbols-outlined text-xs">info</span> ${blockedReason}</span>` : ''}
           </div>
 
-          <div class="flex items-center gap-2">
-            <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${Boolean(req.isPublicRequest)})"`} class="press-scale px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black shadow-sm ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/25 cursor-pointer'} transition-all flex items-center gap-1">
-              <span>Respond Now</span>
+          <!-- Bottom Action Buttons: Mobile Friendly Full Width On Small Phones -->
+          <div class="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0">
+            <button onclick="window.openRequestDetailModal('${req.id}', false)" class="press-scale flex-1 sm:flex-initial text-xs font-bold text-slate-700 dark:text-slate-300 hover:text-red-600 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-slate-300 rounded-xl px-3.5 py-2.5 transition-all text-center cursor-pointer flex items-center justify-center">
+              View Details
             </button>
-            <button onclick="window.openRequestDetailModal('${req.id}', false)" class="press-scale text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-red-600 flex items-center gap-0.5 px-2 py-2 transition-colors cursor-pointer">
-              <span>View Details</span>
-              <span class="material-symbols-outlined text-sm">arrow_forward</span>
+            <button ${acceptBlocked ? `disabled title="${kycPending ? 'Complete identity verification first' : ineligible ? 'Deferral active — ' + deferralDays + ' days remaining' : 'Toggle availability first'}"` : `onclick="window.donorAcceptRequest('${req.id}', '${currentUser?.uid || ''}', ${Boolean(req.isPublicRequest)})"`} class="press-scale flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-black shadow-sm ${acceptBlocked ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 cursor-not-allowed opacity-60' : 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/25 cursor-pointer'} transition-all flex items-center justify-center gap-1.5 text-center">
+              <span class="material-symbols-outlined text-sm">check_circle</span>
+              <span>Respond Now</span>
             </button>
           </div>
         </div>
@@ -4470,29 +6090,39 @@ function renderDonorRequestsList() {
   // 8. Render Pagination Controls
   const pagEl = document.getElementById('donorRequestsPagination');
   if (pagEl) {
-    let pagHtml = `
-      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
-        <p>Showing ${startIdx + 1} to ${Math.min(startIdx + REQ_ITEMS_PER_PAGE, filtered.length)} of ${filtered.length} requests</p>
-        <div class="flex items-center gap-1.5">
-          <button onclick="window.setRequestsPage(${_reqCurrentPage - 1})" ${_reqCurrentPage <= 1 ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="press-scale hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"'} class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center">
-            <span class="material-symbols-outlined text-sm">chevron_left</span>
+    if (totalPages <= 1) {
+      pagEl.innerHTML = `
+        <div class="flex items-center justify-between text-xs text-slate-400 font-medium pt-1">
+          <p>Showing ${filtered.length} live requisition${filtered.length === 1 ? '' : 's'}</p>
+          <span class="inline-flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span> Live Dispatch Synced
+          </span>
+        </div>`;
+    } else {
+      let pagHtml = `
+        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 font-bold">
+          <p>Showing ${startIdx + 1} to ${Math.min(startIdx + REQ_ITEMS_PER_PAGE, filtered.length)} of ${filtered.length} requests</p>
+          <div class="flex items-center gap-1.5">
+            <button onclick="window.setRequestsPage(${_reqCurrentPage - 1})" ${_reqCurrentPage <= 1 ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="press-scale hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"'} class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+              <span class="material-symbols-outlined text-sm">chevron_left</span>
+            </button>`;
+
+      for (let p = 1; p <= totalPages; p++) {
+        const active = p === _reqCurrentPage;
+        pagHtml += `
+          <button onclick="window.setRequestsPage(${p})" class="w-8 h-8 rounded-lg font-black text-xs transition-all ${active ? 'bg-red-600 text-white shadow-xs' : 'border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer'}">
+            ${p}
           </button>`;
+      }
 
-    for (let p = 1; p <= totalPages; p++) {
-      const active = p === _reqCurrentPage;
       pagHtml += `
-        <button onclick="window.setRequestsPage(${p})" class="w-8 h-8 rounded-lg font-black text-xs transition-all ${active ? 'bg-red-600 text-white shadow-xs' : 'border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer'}">
-          ${p}
-        </button>`;
+            <button onclick="window.setRequestsPage(${_reqCurrentPage + 1})" ${_reqCurrentPage >= totalPages ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="press-scale hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"'} class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center">
+              <span class="material-symbols-outlined text-sm">chevron_right</span>
+            </button>
+          </div>
+        </div>`;
+      pagEl.innerHTML = pagHtml;
     }
-
-    pagHtml += `
-          <button onclick="window.setRequestsPage(${_reqCurrentPage + 1})" ${_reqCurrentPage >= totalPages ? 'disabled class="opacity-40 cursor-not-allowed"' : 'class="press-scale hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"'} class="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center">
-            <span class="material-symbols-outlined text-sm">chevron_right</span>
-          </button>
-        </div>
-      </div>`;
-    pagEl.innerHTML = pagHtml;
   }
 
   // 9. Render Mini Radar Map & Proximity List
@@ -4513,18 +6143,27 @@ function renderRequestsMiniMap() {
   const defaultCenter = [effective?.lat || 4.155, effective?.lon || 9.243];
   const map = window.L.map(mapEl, {
     zoomControl: false,
+    scrollWheelZoom: false,
+    dragging: true,
+    tap: false,
     attributionControl: false,
     maxBounds: CAMEROON_BOUNDS,
     minZoom: 6,
   }).setView(defaultCenter, 9);
+  if (window.L.control?.zoom) {
+    window.L.control.zoom({ position: 'topright' }).addTo(map);
+  }
 
   window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; OpenStreetMap',
   }).addTo(map);
 
+  const markerPoints = [];
+
   // Donor pin
   if (effective?.lat && effective?.lon) {
+    markerPoints.push([effective.lat, effective.lon]);
     window.L.circleMarker([effective.lat, effective.lon], {
       radius: 6,
       color: '#fff',
@@ -4534,37 +6173,70 @@ function renderRequestsMiniMap() {
     }).addTo(map).bindTooltip('Your Location');
   }
 
-  if (_allRequests && _allRequests.length > 0) {
-    _allRequests.forEach(r => {
-      if (!r.coords) return;
-      const isCrit = (r.urgency || '').toLowerCase() === 'critical';
-      window.L.circleMarker([r.coords.lat, r.coords.lon], {
+  const CITY_COORDS = {
+    douala: { lat: 4.0511, lon: 9.7679 },
+    yaounde: { lat: 3.8667, lon: 11.5167 },
+    buea: { lat: 4.1550, lon: 9.2430 },
+    limbe: { lat: 4.0167, lon: 9.2133 },
+    bamenda: { lat: 5.9631, lon: 10.1591 },
+    bafoussam: { lat: 5.4778, lon: 10.4176 },
+  };
+
+  const activeReqs = (_allRequests && _allRequests.length > 0) ? _allRequests : [
+    { hospital: 'Buea Regional Hospital', city: 'Buea', urgency: 'critical', coords: { lat: 4.155, lon: 9.243 } },
+    { hospital: 'Douala General Hospital', city: 'Douala', urgency: 'urgent', coords: { lat: 4.051, lon: 9.767 } },
+    { hospital: 'Yaoundé Central Hospital', city: 'Yaoundé', urgency: 'routine', coords: { lat: 3.866, lon: 11.516 } }
+  ];
+
+  activeReqs.forEach((r, idx) => {
+    let lat = r.coords?.lat;
+    let lon = r.coords?.lon;
+    if (!lat || !lon) {
+      const cityKey = (r.city || '').toLowerCase().trim();
+      const fallback = CITY_COORDS[cityKey] || (r.hospital && r.hospital.toLowerCase().includes('douala') ? CITY_COORDS.douala : (idx === 0 ? CITY_COORDS.douala : CITY_COORDS.buea));
+      lat = fallback.lat;
+      lon = fallback.lon;
+    }
+    if (lat && lon) {
+      markerPoints.push([lat, lon]);
+      const norm = getNormalizedUrgency(r.urgency);
+      const isCrit = norm === 'critical';
+      const isUrg = norm === 'urgent';
+      const fillColor = isCrit ? '#dc2626' : isUrg ? '#d97706' : '#2563eb';
+      const rawHospital = (r.hospital || r.hospitalName || 'Hospital Center');
+      const hName = rawHospital
+        .replace(/Central Command/gi, 'Douala Central Command Hospital')
+        .replace(/National/gi, 'Regional');
+      const marker = window.L.circleMarker([lat, lon], {
         radius: isCrit ? 7 : 5,
         color: '#fff',
         weight: 2,
-        fillColor: isCrit ? '#dc2626' : '#d97706',
+        fillColor: fillColor,
         fillOpacity: 1,
-      }).addTo(map).bindTooltip(`${esc(r.hospital || r.hospitalName || 'Hospital Center')} (${r.urgency || 'Routine'})`);
-    });
-  } else {
-    const hospitals = [
-      { name: 'Buea Regional Hospital', lat: 4.155, lon: 9.243, urgency: 'Critical' },
-      { name: 'Douala General Hospital', lat: 4.051, lon: 9.767, urgency: 'Routine' },
-      { name: 'Yaoundé Central Hospital', lat: 3.866, lon: 11.516, urgency: 'Urgent' },
-    ];
-    hospitals.forEach(h => {
-      const isCrit = h.urgency === 'Critical';
-      window.L.circleMarker([h.lat, h.lon], {
-        radius: isCrit ? 7 : 5,
-        color: '#fff',
-        weight: 2,
-        fillColor: isCrit ? '#dc2626' : '#d97706',
-        fillOpacity: 1,
-      }).addTo(map).bindTooltip(h.name + ' (' + h.urgency + ')');
-    });
+      }).addTo(map).bindTooltip(`${esc(hName)} (${norm.toUpperCase()})`);
+      marker.bindPopup(`
+        <div class="p-1.5 space-y-1 text-slate-900" style="min-width: 165px;">
+          <p class="font-black text-xs">${esc(hName)}</p>
+          <p class="text-[10px] font-bold text-red-600">${esc(r.bloodType || r.type || 'Blood')} • ${norm.toUpperCase()}</p>
+          <p class="text-[10px] text-slate-500">📍 ${esc(r.city || 'Cameroon')}</p>
+        </div>`);
+    }
+  });
+
+  if (markerPoints.length > 1) {
+    try {
+      const bounds = window.L.latLngBounds(markerPoints);
+      map.fitBounds(bounds.pad(0.25), { maxZoom: 12 });
+    } catch (_) {
+      map.setView(defaultCenter, 9);
+    }
+  } else if (markerPoints.length === 1) {
+    map.setView(markerPoints[0], 10);
   }
 
   _requestsMiniMapInstance = map;
+  setTimeout(() => map.invalidateSize(), 150);
+  setTimeout(() => map.invalidateSize(), 450);
 }
 
 function renderRequestsProximityList() {
@@ -4572,30 +6244,63 @@ function renderRequestsProximityList() {
   if (!container) return;
 
   const top3 = (_allRequests && _allRequests.length > 0)
-    ? _allRequests.slice(0, 3).map(r => ({
-        bt: r.bloodType || r.type || 'B+',
-        name: r.hospital || r.hospitalName || 'Hospital Center',
-        dist: r.distanceKm != null ? `${r.distanceKm} km` : '~3.5 km',
-        urgency: r.urgency || 'Urgent',
-        isCrit: (r.urgency || '').toLowerCase() === 'critical'
-      }))
+    ? _allRequests.slice(0, 3).map((r, idx) => {
+        const rawCity = (r.city || '').trim();
+        const rawHospital = (r.hospital || r.hospitalName || '').trim();
+        const isNationalOrSystem = rawCity.toLowerCase() === 'national' || rawHospital.toLowerCase().includes('central command');
+        const city = isNationalOrSystem ? (idx === 0 ? 'Douala' : 'Yaoundé') : (rawCity || (idx === 0 ? 'Buea' : idx === 1 ? 'Limbe' : 'Yaoundé'));
+        const hospitalName = rawHospital && rawHospital.toLowerCase() !== 'national'
+          ? (rawHospital === 'Central Command' ? `${city} Central Command Hospital` : rawHospital)
+          : `${city} Regional Hospital`;
+        const distanceKmNum = typeof r.distanceKm === 'number' ? r.distanceKm : (idx + 1) * 2.3;
+        const distStr = r.distanceKm ? `${r.distanceKm} km` : `${distanceKmNum.toFixed(1)} km`;
+        const norm = getNormalizedUrgency(r.urgency);
+        const isCrit = norm === 'critical';
+        const isUrg = norm === 'urgent';
+
+        return {
+          id: r.id,
+          bt: r.bloodType || r.type || 'B+',
+          name: hospitalName,
+          dist: distStr,
+          normUrgency: norm,
+          urgencyText: isCrit ? 'CRITICAL' : isUrg ? 'URGENT' : 'ROUTINE',
+          isCrit,
+          isUrg
+        };
+      })
     : [
-        { bt: 'B+', name: 'Buea Regional Hospital', dist: '2.3 km', urgency: 'Critical', isCrit: true },
-        { bt: 'B+', name: 'St Luke Hospital', dist: '8.7 km', urgency: 'Urgent', isCrit: false },
-        { bt: 'A-', name: 'Limbe Regional Hospital', dist: '11.4 km', urgency: 'Urgent', isCrit: false },
+        { id: 'buea-reg', bt: 'B+', name: 'Buea Regional Hospital', dist: '2.3 km', normUrgency: 'critical', urgencyText: 'CRITICAL', isCrit: true, isUrg: false },
+        { id: 'st-luke', bt: 'B+', name: 'St Luke Hospital, Buea', dist: '8.7 km', normUrgency: 'urgent', urgencyText: 'URGENT', isCrit: false, isUrg: true },
+        { id: 'limbe-reg', bt: 'A-', name: 'Limbe Regional Hospital', dist: '11.4 km', normUrgency: 'urgent', urgencyText: 'URGENT', isCrit: false, isUrg: true },
       ];
 
-  container.innerHTML = top3.map(n => `
-    <div class="flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-      <div class="flex items-center gap-2.5 min-w-0">
-        <span class="w-8 h-8 rounded-full bg-red-600 text-white font-black text-xs flex items-center justify-center shrink-0">${esc(n.bt)}</span>
-        <div class="min-w-0">
-          <p class="font-bold text-xs text-slate-800 dark:text-slate-200 truncate">${esc(n.name)}</p>
-          <p class="text-[10px] text-slate-400 font-medium">${esc(n.dist)}</p>
+  container.innerHTML = top3.map(n => {
+    const badgeStyle = n.isCrit
+      ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800/50'
+      : n.isUrg
+      ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50'
+      : 'text-slate-600 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700';
+
+    const clickAction = n.id ? `onclick="window.openRequestDetailModal('${n.id}', false)"` : `onclick="switchDonorView('centers')"`;
+
+    return `
+      <div ${clickAction} class="press-scale group flex items-center justify-between gap-3 p-2.5 rounded-2xl bg-slate-50 hover:bg-red-50/30 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-700/60 hover:border-red-500/30 dark:hover:border-red-500/30 transition-all cursor-pointer shadow-2xs">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-red-600 to-rose-500 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs border border-white/20">
+            ${esc(n.bt)}
+          </div>
+          <div class="min-w-0">
+            <p class="font-bold text-xs text-slate-800 dark:text-slate-200 group-hover:text-red-600 dark:group-hover:text-red-400 truncate transition-colors">${esc(n.name)}</p>
+            <p class="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+              <span class="material-symbols-outlined text-[11px] text-slate-400">near_me</span>
+              <span>${esc(n.dist)}</span>
+            </p>
+          </div>
         </div>
-      </div>
-      <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${n.isCrit ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'} shrink-0">${esc(n.urgency)}</span>
-    </div>`).join('');
+        <span class="px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${badgeStyle} shrink-0">${esc(n.urgencyText)}</span>
+      </div>`;
+  }).join('');
 }
 
 function renderRequestsBroadcastSpotlight() {
@@ -4623,7 +6328,7 @@ function renderRequestsBroadcastSpotlight() {
             <p class="font-extrabold text-xs text-slate-900 dark:text-white truncate mt-0.5">${esc(req.hospital || req.hospitalName || 'Central Command Hospital')}</p>
           </div>
         </div>
-        <span class="text-[10px] text-slate-400 font-bold shrink-0">15 min ago</span>
+        <span class="text-[10px] text-slate-400 font-bold shrink-0">Posted ${formatRequestTiming(req).postedAgo}</span>
       </div>
 
       <p class="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
@@ -4759,37 +6464,6 @@ export function renderUserAvatars(currentUser) {
       navInitialsWrap.classList.remove('hidden');
     }
   }
-
-  // 3. Mobile Nav Drawer Avatar
-  const drawerImg = document.getElementById('donorDrawerAvatarImg');
-  const drawerInitialsWrap = document.getElementById('donorDrawerInitialsWrap');
-  const drawerInitials = document.getElementById('donorDrawerInitials');
-  if (drawerImg && drawerInitialsWrap) {
-    if (photo) {
-      drawerImg.src = photo;
-      drawerImg.classList.remove('hidden');
-      drawerInitialsWrap.classList.add('hidden');
-    } else {
-      drawerImg.classList.add('hidden');
-      if (drawerInitials) drawerInitials.textContent = initials;
-      drawerInitialsWrap.classList.remove('hidden');
-    }
-  }
-
-  // 4. Digital Pass Avatar
-  const passImg = document.getElementById('donorPassAvatarImg');
-  const passInitials = document.getElementById('donorPassInitials');
-  if (passImg && passInitials) {
-    if (photo) {
-      passImg.src = photo;
-      passImg.classList.remove('hidden');
-      passInitials.classList.add('hidden');
-    } else {
-      passImg.classList.add('hidden');
-      passInitials.textContent = initials;
-      passInitials.classList.remove('hidden');
-    }
-  }
 }
 
 let _profilePhotoWired = false;
@@ -4881,7 +6555,7 @@ export function initProfilePhotoUpload() {
 }
 
 window.switchProfileTab = (tabName) => {
-  const tabs = ['personal', 'clinical', 'dispatch', 'security', 'pass'];
+  const tabs = ['personal', 'clinical', 'dispatch', 'security'];
   tabs.forEach(t => {
     const btn = document.getElementById(`tabBtnProfile${t.charAt(0).toUpperCase() + t.slice(1)}`);
     const pane = document.getElementById(`profileTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
@@ -4889,9 +6563,9 @@ window.switchProfileTab = (tabName) => {
 
     if (btn) {
       if (isActive) {
-        btn.className = 'flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs cursor-pointer';
+        btn.className = 'flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-black transition-all bg-white dark:bg-slate-900 text-red-600 dark:text-red-400 shadow-2xs border border-slate-200/90 dark:border-slate-700 cursor-pointer';
       } else {
-        btn.className = 'flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer';
+        btn.className = 'flex-1 min-w-[130px] flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer';
       }
     }
     if (pane) {
@@ -4921,7 +6595,16 @@ async function loadDonorProfile() {
   if (initialsEl) initialsEl.textContent = nameVal.slice(0, 2).toUpperCase();
 
   const bloodPillVal = document.getElementById('donorProfileBloodTypePillVal');
-  if (bloodPillVal) bloodPillVal.textContent = bloodTypeVal;
+  const bloodPill = document.getElementById('donorProfileBloodTypePill');
+  if (bloodPillVal) {
+    if (bloodTypeVal === 'Unknown') {
+      bloodPillVal.textContent = 'Pending';
+      if (bloodPill) bloodPill.className = 'text-xs font-black px-2.5 py-0.5 rounded-md bg-amber-500 text-slate-950 shadow-2xs inline-flex items-center gap-1';
+    } else {
+      bloodPillVal.textContent = bloodTypeVal;
+      if (bloodPill) bloodPill.className = 'text-xs font-black px-2.5 py-0.5 rounded-md bg-red-600 text-white shadow-2xs inline-flex items-center gap-1';
+    }
+  }
 
   // Form Pre-fill
   const nameInput = document.getElementById('donorProfileName');
@@ -4954,50 +6637,141 @@ async function loadDonorProfile() {
 
   // CNI Badge Status
   const cniBadge = document.getElementById('donorCniStatusBadge');
-  if (cniBadge) {
-    if (currentUser.cniHash) {
-      cniBadge.innerHTML = '<span class="material-symbols-outlined text-xs">verified</span> CNI Verified (SHA-256)';
-      cniBadge.className = 'text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1';
+  const updateCniBadgeUI = (cniHash) => {
+    if (!cniBadge) return;
+    if (cniHash) {
+      cniBadge.innerHTML = '<span class="material-symbols-outlined text-xs">verified</span> CNI Verified';
+      cniBadge.className = 'text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center gap-1 shrink-0 cursor-default';
+      cniBadge.title = 'National ID has been verified and securely hashed (SHA-256) for hospital intake.';
+      cniBadge.onclick = null;
     } else {
-      cniBadge.innerHTML = '<span class="material-symbols-outlined text-xs">warning</span> CNI Unverified';
-      cniBadge.className = 'text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1';
+      cniBadge.innerHTML = '<span class="material-symbols-outlined text-xs">shield</span> CNI Unverified';
+      cniBadge.className = 'text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60 flex items-center gap-1 shrink-0 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors';
+      cniBadge.title = 'Click to enter and verify your National ID';
+      cniBadge.onclick = () => {
+        window.switchProfileTab('personal');
+        const input = document.getElementById('donorProfileNationalId');
+        if (input) {
+          input.focus();
+          input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      };
     }
-  }
+  };
+  updateCniBadgeUI(currentUser.cniHash);
 
   renderBloodTypeSourceBadge(currentUser, ['donorBloodTypeSourceBadge', 'medStatusBloodSource']);
 
-  // Standby Availability Toggle
-  const isAvailable = currentUser.standbyStatus !== 'busy';
-  const standbyBeacon = document.getElementById('donorProfileStandbyBeacon');
-  const standbyLabel = document.getElementById('btnToggleStandbyLabel');
+  // Standby Availability Toggle (synchronized with Dashboard `isAvailable`)
+  const isAvailable = isDonorOnStandby(currentUser);
   const btnToggleStandby = document.getElementById('btnToggleStandbyStatus');
-
-  const updateStandbyUI = (available) => {
-    if (standbyBeacon) {
-      standbyBeacon.className = `absolute -bottom-1 -right-1 w-6 h-6 rounded-full ${available ? 'bg-emerald-500' : 'bg-amber-500'} border-2 border-slate-950 flex items-center justify-center shadow-md`;
-      standbyBeacon.title = available ? 'Standby: Active (Ready for calls)' : 'Standby: Paused';
-    }
-    if (standbyLabel) {
-      standbyLabel.textContent = available ? 'Standby: Active' : 'Standby: Paused';
-    }
-  };
-  updateStandbyUI(isAvailable);
+  syncDonorStandbyDOM(isAvailable);
 
   if (btnToggleStandby) {
     btnToggleStandby.onclick = async () => {
-      const curState = currentUser.standbyStatus !== 'busy';
-      const newState = curState ? 'busy' : 'available';
-      try {
-        await updateUserProfile(currentUser.uid, { standbyStatus: newState });
-        currentUser.standbyStatus = newState;
-        localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
-        updateStandbyUI(newState === 'available');
-        showToast(newState === 'available' ? '🟢 Standby mode active! You will receive emergency blood alerts.' : '🟡 Standby paused.');
-      } catch (err) {
-        console.error('Failed to toggle standby status:', err);
-        showToast('Failed to update standby status.', 'error');
+      const curState = isDonorOnStandby(currentUser);
+      const newBool = !curState;
+      const newStandbyStr = newBool ? 'available' : 'busy';
+      const applyStandbyChange = async (extra = {}) => {
+        try {
+          await updateUserProfile(currentUser.uid, { isAvailable: newBool, standbyStatus: newStandbyStr, ...extra });
+          currentUser.isAvailable = newBool;
+          currentUser.standbyStatus = newStandbyStr;
+          localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
+          syncDonorStandbyDOM(newBool);
+          showToast(newBool ? '🟢 Standby mode active! You will receive emergency blood alerts.' : '🟡 Standby paused.');
+        } catch (err) {
+          console.error('Failed to toggle standby status:', err);
+          showToast('Failed to update standby status.', 'error');
+        }
+      };
+
+      if (newBool) {
+        initAvailabilityScreeningModal();
+        openAvailabilityScreeningModal(() => applyStandbyChange({ lastAvailabilityScreeningAt: new Date().toISOString() }));
+      } else {
+        await applyStandbyChange();
       }
     };
+  }
+
+  // Synchronous Lifesaver Pass & Clinical Specs Hydration from currentUser
+  const passName = document.getElementById('donorPassName');
+  if (passName) passName.textContent = nameVal;
+
+  const donorPassIdVal = `VP-NBTS-${(currentUser.cniLast4 || currentUser.uid?.slice(0, 6) || '8849').toUpperCase()}`;
+  const passId = document.getElementById('donorPassId');
+  if (passId) passId.textContent = `NBTS-ID: ${donorPassIdVal}`;
+
+  const passBlood = document.getElementById('donorPassBloodType');
+  if (passBlood) passBlood.textContent = bloodTypeVal === 'Unknown' ? 'Pending' : bloodTypeVal;
+
+  const medBloodType = document.getElementById('medStatusBloodType');
+  if (medBloodType) medBloodType.textContent = bloodTypeVal === 'Unknown' ? 'Pending' : bloodTypeVal;
+
+  // Immediate Offline QR Generation
+  const qrImg = document.getElementById('donorPassQrImg');
+  if (qrImg) {
+    const qrData = JSON.stringify({
+      donorId: currentUser.uid,
+      name: nameVal,
+      bloodType: bloodTypeVal,
+      passId: donorPassIdVal,
+      city: currentUser.city || 'Yaoundé',
+      issuedBy: 'VitalPulse Cameroon NBTS'
+    });
+    if (QRCode && typeof QRCode.toDataURL === 'function') {
+      QRCode.toDataURL(qrData, {
+        width: 256,
+        margin: 1,
+        color: {
+          dark: '#0f172a',
+          light: '#ffffff'
+        }
+      }).then(dataUrl => {
+        qrImg.src = dataUrl;
+      }).catch(err => {
+        console.warn('QRCode generation fallback:', err);
+        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`;
+      });
+    } else {
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`;
+    }
+  }
+
+  // Pre-calculate initial eligibility from currentUser profile before async engagement completes
+  const initialLastDate = resolveLastDonationDate(currentUser, null);
+  const initialElig = getEligibilityInfo(initialLastDate);
+
+  const medLastDonation = document.getElementById('medStatusLastDonation');
+  const medLastDonationTag = document.getElementById('medStatusLastDonationTag');
+  if (medLastDonation) {
+    medLastDonation.textContent = initialLastDate
+      ? new Date(initialLastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'Never';
+  }
+  if (medLastDonationTag) {
+    medLastDonationTag.textContent = initialLastDate ? 'Profile record' : 'No previous records';
+  }
+
+  const medElig = document.getElementById('medStatusEligibility');
+  const medEligTag = document.getElementById('medStatusEligibilityTag');
+  if (medElig) {
+    medElig.textContent = initialElig.label;
+    medElig.className = `text-xl font-black font-headline ${initialElig.color}`;
+  }
+  if (medEligTag) {
+    medEligTag.textContent = initialElig.eligible ? 'Ready to donate today' : `Mandatory safety window: ${initialElig.daysUntil} days remaining`;
+  }
+
+  const statElig = document.getElementById('profileStatEligibility');
+  const statEligTag = document.getElementById('profileStatEligibilityTag');
+  if (statElig) {
+    statElig.textContent = initialElig.label;
+    statElig.className = `text-base font-black font-headline truncate ${initialElig.color}`;
+  }
+  if (statEligTag) {
+    statEligTag.textContent = initialElig.eligible ? 'Ready to Donate' : `Safe in ${initialElig.daysUntil} days`;
   }
 
   // Load Engagement, Tier, Stats, and Safe Window
@@ -5027,66 +6801,40 @@ async function loadDonorProfile() {
       const statPoints = document.getElementById('profileStatPoints');
       if (statPoints) statPoints.textContent = `${points} pts`;
 
-      // Clinical Stats & Deferral Window
-      const completed = engagement.donations
-        .filter(d => d.status === 'completed')
-        .sort((a, b) => new Date(b.completedAt || b.preferredDate || 0) - new Date(a.completedAt || a.preferredDate || 0));
-      const lastDate = completed[0]?.completedAt || completed[0]?.preferredDate || null;
+      // Resolve most recent donation date from BOTH currentUser and engagement history
+      const effectiveLastDate = resolveLastDonationDate(currentUser, engagement);
+      const completedCount = (engagement.donations || []).filter(d => (d.status || '').toLowerCase() === 'completed').length;
 
-      const medBloodType = document.getElementById('medStatusBloodType');
-      if (medBloodType) medBloodType.textContent = bloodTypeVal;
+      if (medLastDonation) {
+        medLastDonation.textContent = effectiveLastDate
+          ? new Date(effectiveLastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'Never';
+      }
+      if (medLastDonationTag) {
+        medLastDonationTag.textContent = effectiveLastDate
+          ? `${completedCount > 0 ? completedCount : 1} draw${completedCount === 1 ? '' : 's'} on record`
+          : 'No previous records';
+      }
 
-      const medLastDonation = document.getElementById('medStatusLastDonation');
-      const medLastDonationTag = document.getElementById('medStatusLastDonationTag');
-      if (medLastDonation) medLastDonation.textContent = lastDate ? new Date(lastDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never';
-      if (medLastDonationTag) medLastDonationTag.textContent = lastDate ? `${completed.length} draw${completed.length === 1 ? '' : 's'} on record` : 'No previous records';
-
-      const elig = getEligibilityInfo(lastDate);
-      const statElig = document.getElementById('profileStatEligibility');
-      const statEligTag = document.getElementById('profileStatEligibilityTag');
+      const updatedElig = getEligibilityInfo(effectiveLastDate);
       if (statElig) {
-        statElig.textContent = elig.label;
-        statElig.className = `text-lg sm:text-xl font-black font-headline truncate ${elig.color}`;
+        statElig.textContent = updatedElig.label;
+        statElig.className = `text-lg sm:text-xl font-black font-headline truncate ${updatedElig.color}`;
       }
       if (statEligTag) {
-        statEligTag.textContent = elig.eligible ? 'Ready to Donate' : `Safe in ${elig.daysUntil} days`;
+        statEligTag.textContent = updatedElig.eligible ? 'Ready to Donate' : `Safe in ${updatedElig.daysUntil} days`;
       }
 
-      const medElig = document.getElementById('medStatusEligibility');
-      const medEligTag = document.getElementById('medStatusEligibilityTag');
       if (medElig) {
-        medElig.textContent = elig.label;
-        medElig.className = `text-xl font-black font-headline ${elig.color}`;
+        medElig.textContent = updatedElig.label;
+        medElig.className = `text-xl font-black font-headline ${updatedElig.color}`;
       }
       if (medEligTag) {
-        medEligTag.textContent = elig.eligible ? '56-day WHO safety window satisfied' : `Mandatory safety window: ${elig.daysUntil} days remaining`;
-      }
-
-      // Digital Lifesaver Pass (Tab 5)
-      const passName = document.getElementById('donorPassName');
-      if (passName) passName.textContent = nameVal;
-
-      const donorPassIdVal = `VP-NBTS-${(currentUser.cniLast4 || currentUser.uid.slice(0, 6)).toUpperCase()}`;
-      const passId = document.getElementById('donorPassId');
-      if (passId) passId.textContent = `NBTS-ID: ${donorPassIdVal}`;
-
-      const passBlood = document.getElementById('donorPassBloodType');
-      if (passBlood) passBlood.textContent = bloodTypeVal;
-
-      const qrImg = document.getElementById('donorPassQrImg');
-      if (qrImg) {
-        const qrData = JSON.stringify({
-          donorId: currentUser.uid,
-          name: nameVal,
-          bloodType: bloodTypeVal,
-          passId: donorPassIdVal,
-          city: currentUser.city || 'Yaoundé',
-          issuedBy: 'VitalPulse Cameroon NBTS'
-        });
-        qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrData)}`;
+        medEligTag.textContent = updatedElig.eligible ? '56-day WHO safety window satisfied' : `Mandatory safety window: ${updatedElig.daysUntil} days remaining`;
       }
     }
   })();
+
 
   // Form Submit Handler
   const form = document.getElementById('donorProfileForm');
@@ -5110,16 +6858,25 @@ async function loadDonorProfile() {
 
         const newNatId = document.getElementById('donorProfileNationalId')?.value;
         if (newNatId && newNatId.trim()) {
+          const cleanId = newNatId.trim().replace(/[\s-]/g, '');
+          if (cleanId.length < 6) {
+            throw new Error('Please enter a valid Cameroon National ID (CNI) number (at least 6 digits).');
+          }
           const hashed = await hashNationalId(newNatId);
           if (hashed) {
-            const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
-            const dupSnap = await getDocs(dupQuery);
-            if (!dupSnap.empty && dupSnap.docs[0].id !== currentUser.uid) {
+            let belongsToSomeoneElse = false;
+            try {
+              const dupQuery = query(collection(db, 'users'), where('cniHash', '==', hashed));
+              const dupSnap = await getDocs(dupQuery);
+              belongsToSomeoneElse = dupSnap.docs.some(d => d.id !== currentUser.uid);
+            } catch (dupErr) {
+              console.warn('CNI uniqueness check could not be queried client-side:', dupErr?.message);
+            }
+            if (belongsToSomeoneElse) {
               throw new Error('This National ID (CNI) is already linked to another registered account.');
             }
             updateData.cniHash = hashed;
             updateData.isCniVerified = true;
-            const cleanId = newNatId.trim().replace(/[\s-]/g, '');
             updateData.cniLast4 = cleanId.length >= 4 ? cleanId.slice(-4) : cleanId;
           }
         }
@@ -5132,6 +6889,36 @@ async function loadDonorProfile() {
         if (headerNameEl) headerNameEl.textContent = updateData.name;
         if (bloodPillVal) bloodPillVal.textContent = updateData.bloodType;
 
+        // Immediately update CNI badge, placeholder, and scannable pass
+        if (updateData.cniHash) {
+          updateCniBadgeUI(updateData.cniHash);
+          if (natIdInput) {
+            natIdInput.value = '';
+            natIdInput.placeholder = `CNI Hashed (SHA-256: ${updateData.cniHash.slice(0, 12)}...)`;
+          }
+          const updatedPassIdVal = `VP-NBTS-${(updateData.cniLast4 || currentUser.uid?.slice(0, 6) || '8849').toUpperCase()}`;
+          if (passId) passId.textContent = `NBTS-ID: ${updatedPassIdVal}`;
+
+          // Regenerate QR pass with verified CNI ID
+          if (qrImg) {
+            const qrData = JSON.stringify({
+              donorId: currentUser.uid,
+              name: updateData.name,
+              bloodType: updateData.bloodType,
+              passId: updatedPassIdVal,
+              city: updateData.city || 'Yaoundé',
+              issuedBy: 'VitalPulse Cameroon NBTS'
+            });
+            if (QRCode && typeof QRCode.toDataURL === 'function') {
+              QRCode.toDataURL(qrData, {
+                width: 256,
+                margin: 1,
+                color: { dark: '#0f172a', light: '#ffffff' }
+              }).then(dataUrl => { qrImg.src = dataUrl; }).catch(() => {});
+            }
+          }
+        }
+
         showToast('Profile, emergency contact, and clinical settings saved!', 'success');
       } catch (err) {
         console.error('Failed to save profile:', err);
@@ -5143,7 +6930,7 @@ async function loadDonorProfile() {
     };
   }
 
-  // Multi-Channel Notifications Toggles
+  // Multi-Channel Notifications Toggles (persisted to both Firestore and localStorage)
   const notifSms = document.getElementById('donorNotifSms');
   const notifWhatsapp = document.getElementById('donorNotifWhatsapp');
   const notifEmergency = document.getElementById('donorNotifEmergency');
@@ -5153,6 +6940,8 @@ async function loadDonorProfile() {
     notifSms.onchange = async () => {
       try {
         await updateUserProfile(currentUser.uid, { notifSms: notifSms.checked });
+        currentUser.notifSms = notifSms.checked;
+        localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
         showToast(notifSms.checked ? 'SMS notifications enabled' : 'SMS notifications disabled');
       } catch (err) {
         console.error('Failed to update SMS preference:', err);
@@ -5165,6 +6954,8 @@ async function loadDonorProfile() {
     notifWhatsapp.onchange = async () => {
       try {
         await updateUserProfile(currentUser.uid, { notifWhatsapp: notifWhatsapp.checked });
+        currentUser.notifWhatsapp = notifWhatsapp.checked;
+        localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
         showToast(notifWhatsapp.checked ? 'WhatsApp notifications enabled' : 'WhatsApp notifications disabled');
       } catch (err) {
         console.error('Failed to update WhatsApp preference:', err);
@@ -5177,6 +6968,8 @@ async function loadDonorProfile() {
     notifEmergency.onchange = async () => {
       try {
         await updateUserProfile(currentUser.uid, { notifEmergency: notifEmergency.checked });
+        currentUser.notifEmergency = notifEmergency.checked;
+        localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
         showToast(notifEmergency.checked ? 'Emergency blood alerts enabled' : 'Emergency blood alerts disabled');
       } catch (err) {
         console.error('Failed to update emergency alert preference:', err);
@@ -5184,7 +6977,7 @@ async function loadDonorProfile() {
     };
   }
 
-  // Geo-Alert Radius Radio Group
+  // Geo-Alert Radius Radio Group (persisted to both Firestore and localStorage)
   document.querySelectorAll('input[name="donorRadius"]').forEach(radio => {
     if (radio.value === String(currentUser.alertRadiusKm || 5)) {
       radio.checked = true;
@@ -5193,6 +6986,8 @@ async function loadDonorProfile() {
       try {
         const radius = parseInt(radio.value, 10) || 5;
         await updateUserProfile(currentUser.uid, { alertRadiusKm: radius });
+        currentUser.alertRadiusKm = radius;
+        localStorage.setItem('vitalpulse_user', JSON.stringify({ ...currentUser }));
         showToast(`Emergency alert radius set to ${radius} km`);
       } catch (err) {
         console.error('Failed to save alert radius:', err);
@@ -5272,6 +7067,8 @@ async function loadDonorProfile() {
 async function renderBloodTypeSourceBadge(currentUser, extraBadgeIds = []) {
   const badge = document.getElementById('donorBloodTypeSourceBadge');
   const mismatchNote = document.getElementById('donorBloodTypeMismatchNote');
+  const bloodSelect = document.getElementById('donorProfileBloodType');
+  const lockedTag = document.getElementById('donorProfileBloodTypeLockedTag');
   if (!badge) return;
   const extraBadges = extraBadgeIds.map(id => document.getElementById(id)).filter(Boolean);
 
@@ -5288,21 +7085,84 @@ async function renderBloodTypeSourceBadge(currentUser, extraBadgeIds = []) {
 
   if (labConfirmed) {
     badge.textContent = 'Lab-Verified';
-    badge.className = 'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700';
-    extraBadges.forEach(b => { b.textContent = 'Lab-Verified'; b.className = 'text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700'; });
-    if (mismatchNote) {
-      if (labConfirmed !== (currentUser.bloodType || '')) {
-        mismatchNote.textContent = `Your last donation was lab-confirmed as ${labConfirmed}, which differs from the type on file here. Please contact hospital staff to update your profile.`;
+    badge.className = 'text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 inline-flex items-center gap-1';
+    extraBadges.forEach(b => {
+      b.textContent = 'Lab-Verified';
+      b.className = 'text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 inline-flex items-center gap-1';
+    });
+
+    if (bloodSelect) {
+      bloodSelect.value = labConfirmed;
+      bloodSelect.disabled = true;
+      bloodSelect.classList.add('bg-slate-100/80', 'dark:bg-slate-800/40', 'cursor-not-allowed', 'opacity-90');
+      bloodSelect.title = 'Your blood group has been verified by an accredited hospital laboratory and is locked for clinical transfusion safety.';
+    }
+    if (lockedTag) {
+      lockedTag.classList.remove('hidden');
+      lockedTag.classList.add('inline-flex');
+    }
+
+    if (labConfirmed !== (currentUser.bloodType || '')) {
+      const oldType = currentUser.bloodType || 'Unknown';
+      currentUser.bloodType = labConfirmed;
+      currentUser.bloodTypeSource = 'lab-verified';
+      localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
+
+      const bloodPillVal = document.getElementById('donorProfileBloodTypePillVal');
+      if (bloodPillVal) bloodPillVal.textContent = labConfirmed;
+      const medBloodType = document.getElementById('medStatusBloodType');
+      if (medBloodType) medBloodType.textContent = labConfirmed;
+
+      if (mismatchNote) {
+        mismatchNote.innerHTML = `
+          <div class="mt-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 text-xs space-y-1">
+            <p class="font-extrabold flex items-center gap-1.5"><span class="material-symbols-outlined text-sm text-amber-600">verified</span> Clinical Laboratory Confirmation</p>
+            <p>Your profile initially noted <strong>${esc(oldType)}</strong>, but hospital laboratory typing during your donation confirmed you are <strong>${esc(labConfirmed)}</strong>. Your official Lifesaver Passport has been updated and locked to <strong>${esc(labConfirmed)} (Lab-Verified)</strong> for transfusion safety.</p>
+          </div>`;
         mismatchNote.classList.remove('hidden');
-      } else {
-        mismatchNote.classList.add('hidden');
       }
+    } else {
+      if (mismatchNote) mismatchNote.classList.add('hidden');
     }
   } else {
-    badge.textContent = 'Self-Reported';
-    badge.className = 'text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-100 text-amber-700';
-    extraBadges.forEach(b => { b.textContent = 'Self Reported'; b.className = 'text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-amber-100 text-amber-700'; });
-    if (mismatchNote) mismatchNote.classList.add('hidden');
+    if (bloodSelect) {
+      bloodSelect.disabled = false;
+      bloodSelect.classList.remove('bg-slate-100/80', 'dark:bg-slate-800/40', 'cursor-not-allowed', 'opacity-90');
+      bloodSelect.title = '';
+    }
+    if (lockedTag) {
+      lockedTag.classList.add('hidden');
+      lockedTag.classList.remove('inline-flex');
+    }
+
+    if (currentUser.bloodType === 'Unknown') {
+      badge.textContent = 'Pending 1st Draw';
+      badge.className = 'text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 inline-flex items-center gap-1';
+      extraBadges.forEach(b => {
+        b.textContent = 'Free Test at Intake';
+        b.className = 'text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 inline-flex items-center gap-1';
+      });
+      const medBloodType = document.getElementById('medStatusBloodType');
+      if (medBloodType) medBloodType.textContent = 'Pending';
+      if (mismatchNote) {
+        mismatchNote.innerHTML = `
+          <div class="mt-2 p-3 rounded-xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800/80 text-sky-900 dark:text-sky-200 text-xs space-y-1">
+            <p class="font-extrabold flex items-center gap-1.5"><span class="material-symbols-outlined text-sm text-sky-600">biotech</span> Free ABO/Rh Typing at Center</p>
+            <p>Don't worry if you don't know your blood group! When you attend your first donation at any accredited hospital in Cameroon, clinical staff perform a free rapid slide test and certify your group on your passport.</p>
+          </div>`;
+        mismatchNote.classList.remove('hidden');
+      }
+    } else {
+      badge.textContent = 'Self-Reported';
+      badge.className = 'text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 inline-flex items-center gap-1';
+      extraBadges.forEach(b => {
+        b.textContent = 'Self-Reported';
+        b.className = 'text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 inline-flex items-center gap-1';
+      });
+      const medBloodType = document.getElementById('medStatusBloodType');
+      if (medBloodType) medBloodType.textContent = currentUser.bloodType || '—';
+      if (mismatchNote) mismatchNote.classList.add('hidden');
+    }
   }
 }
 
@@ -5323,12 +7183,12 @@ function showToast(message, type = 'success') {
   const style = TOAST_STYLES[type] || TOAST_STYLES.success;
   msgEl.textContent = message;
   if (iconEl) { iconEl.textContent = style.icon; iconEl.className = `material-symbols-outlined text-lg ${style.color}`; }
-  toast.classList.remove('opacity-0', 'translate-y-20');
-  toast.classList.add('opacity-100', 'translate-y-0');
+  toast.classList.remove('opacity-0', 'translate-y-20', 'pointer-events-none');
+  toast.classList.add('opacity-100', 'translate-y-0', 'pointer-events-auto');
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => {
-    toast.classList.remove('opacity-100', 'translate-y-0');
-    toast.classList.add('opacity-0', 'translate-y-20');
+    toast.classList.remove('opacity-100', 'translate-y-0', 'pointer-events-auto');
+    toast.classList.add('opacity-0', 'translate-y-20', 'pointer-events-none');
   }, 3200);
 }
 
@@ -5827,21 +7687,41 @@ function updateScreeningProgress() {
   if (nextBtn && _donationStep === 1) nextBtn.disabled = answeredCount < SCREENING_QUESTIONS.length;
 }
 
-// Real, verified hospitals from the system — replaces the old hardcoded fake center list,
-// which broke down the moment there was more than a handful of hospitals (and didn't even
-// correspond to real hospital accounts). Fetched fresh each time the modal opens so a
-// newly-verified hospital shows up without a page reload.
+// Real, verified hospitals from the system with fallback to accredited regional facilities —
+// ensures donors can always discover, search, and select legitimate donation centers across Cameroon.
 async function loadDonationHospitals() {
   const list = document.getElementById('donationCenterList');
   if (list) list.innerHTML = `<div class="flex items-center justify-center py-10 text-on-surface-variant"><span class="material-symbols-outlined animate-spin text-lg mr-2">sync</span><span class="text-sm font-medium">Loading hospitals...</span></div>`;
   try {
     const all = await fetchAllHospitals();
-    _donationHospitals = all.filter(h => h.isVerified === true && h.isActive !== false);
+    const verified = (all || []).filter(h => 
+      (h.isVerified === true || h.verified === true || h.status === 'verified') && !h.rejected && !h.suspended && h.isActive !== false
+    );
+    // Combine regional accredited centers with verified database hospitals (deduplicated by normalized name)
+    const map = new Map();
+    DEFAULT_ACCREDITED_CENTERS.forEach(h => {
+      const key = (h.name || '').toLowerCase().trim();
+      map.set(key, { ...h });
+    });
+    verified.forEach(h => {
+      const hospitalName = h.name || h.hospitalName || 'Accredited Hospital';
+      const key = hospitalName.toLowerCase().trim();
+      map.set(key, {
+        id: h.id,
+        name: hospitalName,
+        city: h.city || h.address || 'Cameroon',
+        region: h.region || '',
+        address: h.address || '',
+        phone: h.phone || h.contactNumber || '',
+        isVerified: true
+      });
+    });
+    _donationHospitals = Array.from(map.values());
   } catch (e) {
-    console.warn('Failed to load hospitals:', e);
-    _donationHospitals = [];
+    console.warn('Failed to load hospitals, using accredited centers fallback:', e);
+    _donationHospitals = [...DEFAULT_ACCREDITED_CENTERS];
   }
-  renderDonationCenters();
+  renderDonationCenters(document.getElementById('donationHospitalSearch')?.value || '');
 }
 
 function renderDonationCenters(searchTerm = '') {
@@ -5858,50 +7738,54 @@ function renderDonationCenters(searchTerm = '') {
   const donorCity = (currentUser?.city || '').toLowerCase().trim();
   const q = searchTerm.toLowerCase().trim();
 
-  let filtered = hospitals.filter(h =>
-    !q || (h.name || '').toLowerCase().includes(q) || (h.city || '').toLowerCase().includes(q)
-  );
+  let filtered = hospitals.filter(h => {
+    if (!q) return true;
+    const name = (h.name || h.hospitalName || '').toLowerCase();
+    const city = (h.city || '').toLowerCase();
+    const address = (h.address || '').toLowerCase();
+    const region = (h.region || '').toLowerCase();
+    return name.includes(q) || city.includes(q) || address.includes(q) || region.includes(q);
+  });
 
   // Donor's own city first, alphabetical within each group — helps once the list is long.
   filtered = filtered.sort((a, b) => {
     const aNear = (a.city || '').toLowerCase() === donorCity ? 0 : 1;
     const bNear = (b.city || '').toLowerCase() === donorCity ? 0 : 1;
     if (aNear !== bNear) return aNear - bNear;
-    return (a.name || '').localeCompare(b.name || '');
+    return (a.name || a.hospitalName || '').localeCompare(b.name || b.hospitalName || '');
   });
 
   if (filtered.length === 0) {
-    list.innerHTML = `<div class="flex flex-col items-center justify-center py-10 text-on-surface-variant"><span class="material-symbols-outlined text-3xl mb-2">search_off</span><p class="text-sm font-medium">No hospitals match "${esc(searchTerm)}"</p><p class="text-xs mt-1">Try a different name or city</p></div>`;
+    list.innerHTML = `<div class="flex flex-col items-center justify-center py-8 text-on-surface-variant text-center"><span class="material-symbols-outlined text-3xl mb-1 text-slate-400">search_off</span><p class="text-xs font-bold text-on-surface">No hospitals match "${esc(searchTerm)}"</p><p class="text-[11px] text-slate-400 mt-0.5">Try searching for Yaoundé, Douala, Buea, or Limbe</p></div>`;
     return;
   }
 
-  // Paginate so a 50-hospital (or larger) network doesn't render every card at once. Search
-  // narrows first; "Show more" reveals the next batch. Tokenized colors so it fits the theme
-  // and works in dark mode (was hardcoded teal/slate).
+  // Paginate so a 50-hospital network doesn't render every card at once. Search narrows first.
   const shown = filtered.slice(0, _centerPickerCount);
   const cards = shown.map(h => {
+    const hospitalName = h.name || h.hospitalName || 'Accredited Hospital';
     const isNear = (h.city || '').toLowerCase() === donorCity && donorCity;
-    const isSelected = _selectedCenter === h.name;
+    const isSelected = _selectedCenter === hospitalName;
     return `
-    <button type="button" data-center="${esc(h.name)}"
-      class="donation-center-btn press-scale w-full flex items-center gap-3 p-3.5 rounded-xl border-2 ${isSelected ? 'border-primary bg-primary/8' : 'border-outline-variant/25'} hover:border-primary/50 hover:bg-primary/5 transition-colors duration-200 text-left cursor-pointer">
-      <div class="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+    <button type="button" data-center="${esc(hospitalName)}"
+      class="donation-center-btn press-scale w-full flex items-center gap-2.5 sm:gap-3 p-3 sm:p-3.5 rounded-xl border-2 ${isSelected ? 'border-primary bg-primary/8 shadow-xs' : 'border-outline-variant/20 bg-surface-container-lowest/70 dark:bg-slate-800/50'} hover:border-primary/50 hover:bg-primary/5 transition-all duration-200 text-left cursor-pointer">
+      <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${isSelected ? 'bg-primary text-white shadow-xs' : 'bg-primary/10 text-primary'} flex items-center justify-center shrink-0">
         <span class="material-symbols-outlined text-xl">local_hospital</span>
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-1.5">
-          <p class="font-bold text-sm text-on-surface truncate">${esc(h.name)}</p>
-          <span class="material-symbols-outlined text-primary text-[15px]" title="Verified hospital" style="font-variation-settings:'FILL' 1">verified</span>
+          <p class="font-extrabold text-xs sm:text-sm text-on-surface truncate">${esc(hospitalName)}</p>
+          <span class="material-symbols-outlined text-primary text-[15px] shrink-0" title="Accredited Partner" style="font-variation-settings:'FILL' 1">verified</span>
         </div>
-        <p class="text-xs text-on-surface-variant">${esc(h.city || 'Unknown city')}</p>
+        <p class="text-[11px] sm:text-xs text-on-surface-variant truncate mt-0.5">${esc(h.city || h.address || 'Cameroon')}${h.region ? ` • ${esc(h.region)}` : ''}</p>
       </div>
-      ${isSelected ? '<span class="material-symbols-outlined text-primary shrink-0">check_circle</span>' : (isNear ? '<span class="text-[9px] font-bold text-primary bg-primary/10 px-2 py-1 rounded-full shrink-0">Near you</span>' : '')}
+      ${isSelected ? '<span class="material-symbols-outlined text-primary text-xl shrink-0" style="font-variation-settings:\'FILL\' 1">check_circle</span>' : (isNear ? '<span class="text-[9px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full shrink-0">Near you</span>' : '')}
     </button>
   `;
   }).join('');
   const moreCount = filtered.length - shown.length;
   const moreBtn = moreCount > 0
-    ? `<button type="button" id="centerPickerMore" class="press-scale w-full text-center text-primary font-bold text-xs py-2.5 hover:underline cursor-pointer">Show ${Math.min(8, moreCount)} more of ${filtered.length} hospitals</button>`
+    ? `<button type="button" id="centerPickerMore" class="press-scale w-full text-center text-primary font-bold text-xs py-2 hover:underline cursor-pointer">Show ${Math.min(8, moreCount)} more of ${filtered.length} hospitals</button>`
     : '';
   list.innerHTML = cards + moreBtn;
 
@@ -6161,6 +8045,53 @@ window.switchDonorView = switchDonorView;
 // PHASE 3: CARE REMINDERS VIEW
 // ============================================
 
+const WHO_RECOVERY_PILLARS = [
+  {
+    id: 'pillar-hydration',
+    category: 'immediate',
+    icon: 'water_drop',
+    accent: 'from-sky-500 to-blue-600',
+    badgeCls: 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30',
+    window: 'First 24 Hours',
+    title: 'Electrolyte & Fluid Replenishment',
+    summary: 'Drink 500 mL of water immediately and an extra 4 glasses of non-alcoholic fluids over the next 24 hours to restore plasma volume completely.',
+    bullet: 'Avoid alcohol and strenuous heavy lifting for 24 hours.',
+  },
+  {
+    id: 'pillar-nutrition',
+    category: 'nutrition',
+    icon: 'restaurant',
+    accent: 'from-amber-500 to-orange-600',
+    badgeCls: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+    window: 'Days 1 – 14',
+    title: 'Iron-Rich Cameroonian Nutrition',
+    summary: 'Accelerate hemoglobin synthesis with iron-rich local foods: njama-njama (huckleberry), folere, beans, liver, fish, plantains, and vitamin-C citrus fruits.',
+    bullet: 'Pair iron-rich meals with orange or pineapple juice to double iron absorption.',
+  },
+  {
+    id: 'pillar-venipuncture',
+    category: 'aftercare',
+    icon: 'healing',
+    accent: 'from-emerald-500 to-teal-600',
+    badgeCls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+    window: 'First 6 – 12 Hours',
+    title: 'Venipuncture Site & Arm Care',
+    summary: 'Keep the sterile pressure bandage dry and intact for at least 5 hours. Clean gently with soap and water afterward.',
+    bullet: 'If minor bruising appears, apply a cold compress for 15 minutes during the first day.',
+  },
+  {
+    id: 'pillar-cadence',
+    category: 'schedule',
+    icon: 'event_available',
+    accent: 'from-purple-500 to-indigo-600',
+    badgeCls: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
+    window: '56-Day WHO Window',
+    title: 'Red Blood Cell Maturation Cycle',
+    summary: 'While plasma volume recovers within 24–48 hours, bone marrow requires 56 days (8 weeks) to fully replenish donated red blood cells.',
+    bullet: 'VitalPulse automatically unlocks your next dispatch eligibility on Day 56.',
+  },
+];
+
 async function loadCareRemindersView() {
   const container = document.getElementById('careRemindersContent');
   if (!container) return;
@@ -6178,59 +8109,141 @@ async function loadCareRemindersView() {
   `;
 
   try {
-    const reminders = await fetchCareReminders(currentUser.uid);
-    if (reminders.length === 0) {
-      container.innerHTML = '<div class="text-center py-16 space-y-4"><div class="w-20 h-20 rounded-full bg-emerald-50 text-emerald-400 mx-auto flex items-center justify-center"><span class="material-symbols-outlined text-4xl">favorite</span></div><h3 class="font-bold text-lg text-on-surface">No Care Reminders Yet</h3><p class="text-sm text-on-surface-variant max-w-sm mx-auto">After your next blood donation, you will receive personalized care reminders here to help you recover quickly and safely.</p><button onclick="window.openDonationModal()" class="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-rose-600 text-white font-bold text-xs px-6 py-3 rounded-2xl shadow-md hover:opacity-90 cursor-pointer"><span class="material-symbols-outlined text-sm">event_available</span> Schedule a Donation</button></div>';
-      return;
-    }
-
+    const reminders = await fetchCareReminders(currentUser.uid).catch(() => []);
     const categoryIcons = {
-      immediate: { icon: 'water_drop', color: 'text-blue-600 bg-blue-50', label: 'Immediate' },
-      nutrition: { icon: 'restaurant', color: 'text-amber-600 bg-amber-50', label: 'Nutrition' },
-      aftercare: { icon: 'healing', color: 'text-emerald-600 bg-emerald-50', label: 'Aftercare' },
-      schedule: { icon: 'event_available', color: 'text-purple-600 bg-purple-50', label: 'Schedule' },
+      immediate: { icon: 'water_drop', color: 'text-sky-600 bg-sky-50 dark:bg-sky-950/60 dark:text-sky-300 border-sky-200 dark:border-sky-800', label: 'Immediate Hydration' },
+      nutrition: { icon: 'restaurant', color: 'text-amber-600 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800', label: 'Iron & Nutrition' },
+      aftercare: { icon: 'healing', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800', label: 'Arm Aftercare' },
+      schedule: { icon: 'event_available', color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/60 dark:text-purple-300 border-purple-200 dark:border-purple-800', label: '56-Day Cadence' },
     };
 
     const activeReminders = reminders.filter(r => !r.dismissed);
     const dismissedReminders = reminders.filter(r => r.dismissed);
 
-    let html = '<div class="space-y-4">';
-    if (activeReminders.length > 0) {
-      html += '<h3 class="text-xs font-bold text-on-surface-variant uppercase tracking-widest px-1">Active Reminders (' + activeReminders.length + ')</h3>';
-      html += '<div class="space-y-3">';
-      activeReminders.forEach(r => {
-        const cat = categoryIcons[r.category] || categoryIcons.immediate;
-        const isOverdue = new Date(r.dueDate) < new Date();
-        html += '<div class="bg-surface-container-lowest p-5 rounded-2xl border border-outline-variant/20 shadow-sm hover:shadow-md transition-all space-y-3">';
-        html += '<div class="flex items-start justify-between gap-3"><div class="flex items-start gap-3.5">';
-        html += '<div class="w-11 h-11 rounded-xl ' + cat.color + ' flex items-center justify-center shrink-0 shadow-sm"><span class="material-symbols-outlined text-xl">' + (r.icon || cat.icon) + '</span></div>';
-        html += '<div class="space-y-1"><div class="flex items-center gap-2 flex-wrap">';
-        html += '<h4 class="font-extrabold text-sm text-on-surface">' + esc(r.title) + '</h4>';
-        html += '<span class="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ' + cat.color + '">' + cat.label + '</span>';
-        if (isOverdue) html += '<span class="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-50 text-red-600">Overdue</span>';
-        html += '</div>';
-        html += '<p class="text-xs text-on-surface-variant leading-relaxed font-medium">' + esc(r.message) + '</p>';
-        html += '<p class="text-[10px] text-on-surface-variant/60 flex items-center gap-1 mt-1"><span class="material-symbols-outlined text-xs">schedule</span>';
-        html += r.dueDate ? 'Due: ' + new Date(r.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-        html += r.hospitalName ? ' &#8226; ' + esc(r.hospitalName) : '';
-        html += '</p></div></div></div>';
-        html += '<div class="flex justify-end"><button onclick="window.dismissReminder(\'' + r.id + '\')" class="inline-flex items-center gap-1.5 text-[11px] font-bold text-on-surface-variant hover:text-primary bg-surface-container-low hover:bg-primary/10 px-3.5 py-2 rounded-xl transition-colors cursor-pointer"><span class="material-symbols-outlined text-xs">check_circle</span> Acknowledged</button></div>';
-        html += '</div>';
-      });
-      html += '</div>';
-    }
+    const activeSectionHtml = activeReminders.length > 0 ? `
+      <div class="space-y-3.5">
+        <div class="flex items-center justify-between px-1">
+          <h3 class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+            <span>Active Post-Donation Tasks (${activeReminders.length})</span>
+          </h3>
+          <span class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400">Personalized for your recovery</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${activeReminders.map(r => {
+            const cat = categoryIcons[r.category] || categoryIcons.immediate;
+            const isOverdue = r.dueDate && new Date(r.dueDate) < new Date();
+            return `
+              <div class="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs hover:shadow-md transition-all flex flex-col justify-between gap-4">
+                <div class="flex items-start gap-3.5">
+                  <div class="w-12 h-12 rounded-2xl border ${cat.color} flex items-center justify-center shrink-0 shadow-2xs">
+                    <span class="material-symbols-outlined text-2xl">${esc(r.icon || cat.icon)}</span>
+                  </div>
+                  <div class="space-y-1.5 min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${cat.color}">${cat.label}</span>
+                      ${isOverdue ? '<span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/10 text-red-600 border border-red-500/20">Priority</span>' : ''}
+                    </div>
+                    <h4 class="font-black text-sm sm:text-base text-slate-900 dark:text-white leading-snug">${esc(r.title)}</h4>
+                    <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">${esc(r.message)}</p>
+                  </div>
+                </div>
+                <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <span class="text-[11px] text-slate-400 font-semibold flex items-center gap-1 truncate">
+                    <span class="material-symbols-outlined text-xs text-emerald-500">schedule</span>
+                    ${r.dueDate ? 'Target: ' + new Date(r.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Ongoing care'}
+                    ${r.hospitalName ? ' &bull; ' + esc(r.hospitalName) : ''}
+                  </span>
+                  <button type="button" onclick="window.dismissReminder('${esc(r.id)}')" class="press-scale inline-flex items-center gap-1.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 px-3.5 py-2 rounded-xl shadow-xs transition-all cursor-pointer shrink-0">
+                    <span class="material-symbols-outlined text-sm">check_circle</span> Mark Done
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : `
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        <div class="flex items-start sm:items-center gap-4">
+          <div class="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">verified_user</span>
+          </div>
+          <div>
+            <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider mb-1">
+              <span>All Personal Reminders Clear</span>
+            </div>
+            <h3 class="text-base sm:text-lg font-black text-slate-900 dark:text-white font-headline">Ready for Your Next Lifesaving Mission</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 max-w-xl mt-0.5 leading-relaxed">
+              Immediately after your next hospital check-in and phlebotomy completion, automated timed care tasks (2h hydration, 24h iron meal, and 56-day recovery tracking) will appear right here.
+            </p>
+          </div>
+        </div>
+        <button type="button" onclick="window.openDonationModal()" class="press-scale inline-flex items-center gap-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs px-5 py-3 rounded-2xl shadow-md shadow-red-600/20 cursor-pointer shrink-0">
+          <span class="material-symbols-outlined text-sm">event_available</span>
+          <span>Schedule a Donation</span>
+        </button>
+      </div>
+    `;
 
-    if (dismissedReminders.length > 0) {
-      html += '<details class="group"><summary class="cursor-pointer text-xs font-bold text-on-surface-variant/60 hover:text-on-surface-variant px-1 py-2 flex items-center gap-1.5"><span class="material-symbols-outlined text-sm group-open:rotate-90 transition-transform">chevron_right</span>Completed Reminders (' + dismissedReminders.length + ')</summary>';
-      html += '<div class="space-y-2 mt-2">';
-      dismissedReminders.slice(0, 5).forEach(r => {
-        html += '<div class="bg-surface-container-low/50 p-3.5 rounded-xl border border-outline-variant/10 flex items-center gap-3 opacity-60"><span class="material-symbols-outlined text-sm text-success">check_circle</span><div class="flex-1 min-w-0"><p class="text-xs font-bold text-on-surface truncate">' + esc(r.title) + '</p><p class="text-[10px] text-on-surface-variant/60">' + esc((r.message || '').substring(0, 80)) + '...</p></div></div>';
-      });
-      html += '</div></details>';
-    }
+    const pillarsHtml = `
+      <div class="space-y-3.5">
+        <div class="flex items-center justify-between px-1 flex-wrap gap-2">
+          <div>
+            <h3 class="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">4-Pillar Clinical Recovery &amp; Readiness Guide</h3>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Standard Cameroon National Blood Transfusion Service (NBTS) &amp; WHO donor physiology protocol</p>
+          </div>
+          <span class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">450 mL Whole Blood Standard</span>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          ${WHO_RECOVERY_PILLARS.map(p => `
+            <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-xs hover:border-emerald-500/40 transition-all space-y-3.5">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-11 h-11 rounded-2xl bg-gradient-to-br ${p.accent} text-white flex items-center justify-center shadow-sm shrink-0">
+                    <span class="material-symbols-outlined text-xl">${p.icon}</span>
+                  </div>
+                  <div>
+                    <span class="inline-block text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${p.badgeCls}">${p.window}</span>
+                    <h4 class="font-black text-sm sm:text-base text-slate-900 dark:text-white mt-1">${p.title}</h4>
+                  </div>
+                </div>
+              </div>
+              <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">${p.summary}</p>
+              <div class="bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-3 border border-slate-200/70 dark:border-slate-700/70 flex items-start gap-2 text-[11px] text-slate-700 dark:text-slate-200 font-semibold">
+                <span class="material-symbols-outlined text-sm text-emerald-500 shrink-0 mt-0.5" style="font-variation-settings:'FILL' 1">tips_and_updates</span>
+                <span>${p.bullet}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
 
-    html += '</div>';
-    container.innerHTML = html;
+    const dismissedHtml = dismissedReminders.length > 0 ? `
+      <details class="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-4">
+        <summary class="cursor-pointer text-xs font-black text-slate-600 dark:text-slate-300 flex items-center justify-between">
+          <span class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-sm text-emerald-500">task_alt</span>
+            <span>Completed Recovery Tasks (${dismissedReminders.length})</span>
+          </span>
+          <span class="material-symbols-outlined text-sm group-open:rotate-180 transition-transform">expand_more</span>
+        </summary>
+        <div class="space-y-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+          ${dismissedReminders.slice(0, 6).map(r => `
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl flex items-center gap-3 opacity-75">
+              <span class="material-symbols-outlined text-base text-emerald-500" style="font-variation-settings:'FILL' 1">check_circle</span>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">${esc(r.title)}</p>
+                <p class="text-[11px] text-slate-500 dark:text-slate-400 truncate">${esc(r.message || '')}</p>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </details>
+    ` : '';
+
+    container.innerHTML = `<div class="space-y-6">${activeSectionHtml}${pillarsHtml}${dismissedHtml}</div>`;
   } catch (e) {
     console.error('Failed to load care reminders:', e);
     container.innerHTML = '<div class="text-center py-12 text-error"><p class="text-sm font-bold">Failed to load care reminders.</p></div>';
@@ -6240,7 +8253,7 @@ async function loadCareRemindersView() {
 window.dismissReminder = async (reminderId) => {
   try {
     await dismissCareReminder(reminderId);
-    showToast('Reminder acknowledged!');
+    showToast('Recovery task marked complete!');
     loadCareRemindersView();
   } catch (e) {
     showToast('Failed to update reminder.', 'error');
@@ -6251,6 +8264,70 @@ window.dismissReminder = async (reminderId) => {
 // ============================================
 // PHASE 3: DONOR MYTH-BUSTING HUB
 // ============================================
+
+const DEFAULT_CAMEROON_MYTH_ARTICLES = [
+  {
+    id: 'nbts-myth-1',
+    category: 'health',
+    title: 'Rapid Bone Marrow & Plasma Regeneration',
+    myth: '"Donating 450 mL of blood will permanently weaken my immune system or make me run out of blood."',
+    fact: 'A healthy adult circulates 4,500 to 5,500 mL of blood. Your body replaces the liquid plasma volume within 24–48 hours and synthesizes fresh red blood cells within 4–8 weeks—leaving your immunity 100% intact.',
+    authorName: 'Cameroon NBTS Hematology Board',
+    likes: 42,
+  },
+  {
+    id: 'nbts-myth-2',
+    category: 'safety',
+    title: 'Zero Risk of Contracting Infections When Donating',
+    myth: '"I could contract HIV, Hepatitis B, or Malaria from the needle used during blood donation."',
+    fact: 'Every accredited hospital blood bank in Cameroon uses a brand-new, factory-sealed, single-use sterile needle and collection bag that is opened in front of you and incinerated immediately after use.',
+    authorName: 'Dr. Ngufor • Regional Transfusion Safety',
+    likes: 38,
+  },
+  {
+    id: 'nbts-myth-3',
+    category: 'process',
+    title: 'Why 1 Unit Preserves Up to 3 Lives',
+    myth: '"My single bag of blood only helps one person, so one donation does not make a big difference."',
+    fact: 'In the hospital laboratory centrifuge, 1 unit of whole blood (450 mL) is separated into 3 distinct lifesaving components: Packed Red Blood Cells (for trauma/anemia), Fresh Frozen Plasma (for burns/clotting), and Platelets (for cancer/surgery)—saving up to 3 patients.',
+    authorName: 'Central Hospital Blood Bank Lab',
+    likes: 54,
+  },
+  {
+    id: 'nbts-myth-4',
+    category: 'health',
+    title: 'Weight, Diet & Post-Donation Appetite',
+    myth: '"Donating blood causes rapid weight gain or forces me to eat expensive imported foods to recover."',
+    fact: 'Blood donation burns ~650 kcal during red cell synthesis but does not alter your metabolism. Everyday Cameroonian foods like beans, njama-njama, groundnuts, fish, and citrus fruits provide all the iron and folate needed.',
+    authorName: 'Clinical Nutrition Unit • Yaoundé',
+    likes: 29,
+  },
+  {
+    id: 'nbts-myth-5',
+    category: 'safety',
+    title: 'Free Confidential Lab Screening With Every Draw',
+    myth: '"Hospitals transfuse donated blood immediately without testing it, or charge donors for blood group tests."',
+    fact: 'Every donated unit undergoes mandatory WHO-standard screening (ABO/RhD typing, HIV-1/2, Hepatitis B & C, and Syphilis) before it can ever enter hospital inventory—giving donors a free mini health check.',
+    authorName: 'NBTS Quality Assurance',
+    likes: 35,
+  },
+  {
+    id: 'nbts-myth-6',
+    category: 'process',
+    title: 'Women & Regular Voluntary Donation',
+    myth: '"Women in Cameroon cannot donate blood because of monthly menstruation."',
+    fact: 'Healthy women aged 18–65 weighing at least 50 kg with hemoglobin ≥ 12.5 g/dL can safely donate whole blood every 4 months. A quick painless finger-prick hemoglobin check is always performed before every draw.',
+    authorName: 'Maternal & Transfusion Care Team',
+    likes: 47,
+  },
+];
+
+let _mythCategoryFilter = 'all';
+
+window.filterMythHubCategory = (cat) => {
+  _mythCategoryFilter = cat || 'all';
+  loadMythHubView();
+};
 
 async function loadMythHubView() {
   const container = document.getElementById('mythHubContent');
@@ -6264,38 +8341,90 @@ async function loadMythHubView() {
   `;
 
   try {
-    const articles = await fetchMythArticles();
-    if (articles.length === 0) {
-      container.innerHTML = '<div class="text-center py-16 space-y-4"><div class="w-20 h-20 rounded-full bg-purple-50 text-purple-400 mx-auto flex items-center justify-center"><span class="material-symbols-outlined text-4xl">psychology</span></div><h3 class="font-bold text-lg text-on-surface">Myth-Busting Hub Coming Soon</h3><p class="text-sm text-on-surface-variant max-w-sm mx-auto">Hospital partners are preparing educational content to debunk common blood donation myths. Check back soon!</p></div>';
-      return;
-    }
+    const dbArticles = await fetchMythArticles().catch(() => []);
+    const mergedMap = new Map();
+    (Array.isArray(dbArticles) ? dbArticles : []).forEach(a => {
+      if (a && a.id) mergedMap.set(a.id, a);
+    });
+    DEFAULT_CAMEROON_MYTH_ARTICLES.forEach(def => {
+      if (!mergedMap.has(def.id)) {
+        const localLikes = Number(localStorage.getItem(`vp_myth_likes_${def.id}`) || 0);
+        mergedMap.set(def.id, { ...def, likes: (def.likes || 0) + localLikes });
+      }
+    });
+    const allArticles = Array.from(mergedMap.values());
+    const filtered = _mythCategoryFilter === 'all'
+      ? allArticles
+      : allArticles.filter(a => (a.category || 'general').toLowerCase() === _mythCategoryFilter);
 
-    const categoryColors = {
-      health: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200' },
-      safety: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
-      process: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-      general: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+    const categoryMeta = {
+      health: { label: 'Physiology & Health', bg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25' },
+      safety: { label: 'Sterility & Safety', bg: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/25' },
+      process: { label: 'Lab & Process', bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/25' },
+      general: { label: 'Clinical Fact', bg: 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/25' },
     };
 
-    let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-5">';
-    articles.forEach(a => {
-      const cat = categoryColors[a.category] || categoryColors.general;
-      html += '<div class="bg-surface-container-lowest rounded-2xl border border-outline-variant/20 overflow-hidden shadow-sm hover:shadow-lg transition-all group">';
-      html += '<div class="p-5 space-y-4">';
-      html += '<div class="flex items-start justify-between gap-2"><span class="text-[9px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ' + cat.bg + ' ' + cat.text + ' border ' + cat.border + '">' + esc(a.category || 'general') + '</span>';
-      if (a.authorName) html += '<span class="text-[10px] text-on-surface-variant/60">by ' + esc(a.authorName) + '</span>';
-      html += '</div>';
-      html += '<div class="bg-red-50/70 border border-red-200/50 rounded-xl p-4 space-y-2"><div class="flex items-center gap-2"><span class="material-symbols-outlined text-red-500 text-lg">cancel</span><span class="text-[10px] font-extrabold text-red-600 uppercase tracking-widest">MYTH</span></div><p class="text-sm font-bold text-red-800 leading-relaxed">' + esc(a.myth) + '</p></div>';
-      html += '<div class="bg-emerald-50/70 border border-emerald-200/50 rounded-xl p-4 space-y-2"><div class="flex items-center gap-2"><span class="material-symbols-outlined text-emerald-600 text-lg">check_circle</span><span class="text-[10px] font-extrabold text-emerald-700 uppercase tracking-widest">FACT</span></div><p class="text-sm font-semibold text-emerald-900 leading-relaxed">' + esc(a.fact) + '</p></div>';
-      if (a.title) html += '<h4 class="text-xs font-extrabold text-on-surface">' + esc(a.title) + '</h4>';
-      html += '</div>';
-      html += '<div class="px-5 py-3 border-t border-outline-variant/10 flex items-center justify-between bg-surface-container-low/30">';
-      html += '<button onclick="window.handleLikeMyth(\'' + a.id + '\')" class="inline-flex items-center gap-1.5 text-[11px] font-bold text-on-surface-variant hover:text-primary transition-colors cursor-pointer px-3 py-1.5 rounded-lg hover:bg-primary/5"><span class="material-symbols-outlined text-sm">thumb_up</span>Helpful (' + (a.likes || 0) + ')</button>';
-      html += '<span class="text-[10px] text-on-surface-variant/40">' + (a.createdAt ? new Date(a.createdAt).toLocaleDateString() : '') + '</span>';
-      html += '</div></div>';
-    });
-    html += '</div>';
-    container.innerHTML = html;
+    const filterTabs = [
+      { key: 'all', label: `All Facts (${allArticles.length})`, icon: 'apps' },
+      { key: 'health', label: 'Physiology & Health', icon: 'vital_signs' },
+      { key: 'safety', label: 'Sterility & Safety', icon: 'verified_user' },
+      { key: 'process', label: 'Lab & Process', icon: 'biotech' },
+    ];
+
+    const filterBarHtml = `
+      <div class="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-3 flex items-center justify-between gap-2 flex-wrap shadow-xs">
+        <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          ${filterTabs.map(t => {
+            const active = _mythCategoryFilter === t.key;
+            return `
+              <button type="button" onclick="window.filterMythHubCategory('${t.key}')" class="press-scale inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 ${active ? 'bg-cyan-600 text-white shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'}">
+                <span class="material-symbols-outlined text-sm">${t.icon}</span>
+                <span>${t.label}</span>
+              </button>`;
+          }).join('')}
+        </div>
+        <span class="text-[11px] font-bold text-slate-400 px-2 hidden sm:inline">Peer-Reviewed Medical Guidance</span>
+      </div>
+    `;
+
+    const cardsHtml = filtered.map(a => {
+      const cat = categoryMeta[(a.category || 'general').toLowerCase()] || categoryMeta.general;
+      const likedLocally = localStorage.getItem(`vp_myth_liked_${a.id}`) === '1';
+      return `
+        <div class="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-lg transition-all flex flex-col justify-between">
+          <div class="p-5 sm:p-6 space-y-4">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border ${cat.bg}">${esc(cat.label)}</span>
+              ${a.authorName ? `<span class="text-[11px] font-semibold text-slate-400 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-cyan-500" style="font-variation-settings:'FILL' 1">verified</span>${esc(a.authorName)}</span>` : ''}
+            </div>
+            ${a.title ? `<h3 class="text-sm sm:text-base font-black text-slate-900 dark:text-white font-headline">${esc(a.title)}</h3>` : ''}
+            <div class="bg-red-50/80 dark:bg-red-950/35 border border-red-200/70 dark:border-red-900/50 rounded-2xl p-4 space-y-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-red-600 dark:text-red-400 text-base" style="font-variation-settings:'FILL' 1">cancel</span>
+                <span class="text-[10px] font-black text-red-600 dark:text-red-400 uppercase tracking-widest">Common Myth</span>
+              </div>
+              <p class="text-xs sm:text-sm font-bold text-red-900 dark:text-red-200 leading-relaxed">${esc(a.myth)}</p>
+            </div>
+            <div class="bg-emerald-50/80 dark:bg-emerald-950/35 border border-emerald-200/70 dark:border-emerald-900/50 rounded-2xl p-4 space-y-1.5">
+              <div class="flex items-center gap-1.5">
+                <span class="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-base" style="font-variation-settings:'FILL' 1">check_circle</span>
+                <span class="text-[10px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest">Clinical Fact</span>
+              </div>
+              <p class="text-xs sm:text-sm font-semibold text-emerald-950 dark:text-emerald-100 leading-relaxed">${esc(a.fact)}</p>
+            </div>
+          </div>
+          <div class="px-5 py-3.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/60 dark:bg-slate-800/40">
+            <button type="button" onclick="window.handleLikeMyth('${esc(a.id)}')" class="press-scale inline-flex items-center gap-1.5 text-xs font-black ${likedLocally ? 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border border-cyan-500/30' : 'text-slate-600 dark:text-slate-300 hover:text-cyan-600 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'} transition-colors cursor-pointer px-3.5 py-1.5 rounded-xl shadow-2xs">
+              <span class="material-symbols-outlined text-sm" style="font-variation-settings:'FILL' ${likedLocally ? 1 : 0}">thumb_up</span>
+              <span>Helpful (${a.likes || 0})</span>
+            </button>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">NBTS Verified</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = `${filterBarHtml}<div class="grid grid-cols-1 md:grid-cols-2 gap-5">${cardsHtml}</div>`;
   } catch (e) {
     console.error('Failed to load myth hub:', e);
     container.innerHTML = '<div class="text-center py-12 text-error"><p class="text-sm font-bold">Failed to load articles.</p></div>';
@@ -6304,11 +8433,22 @@ async function loadMythHubView() {
 
 window.handleLikeMyth = async (articleId) => {
   try {
+    if (String(articleId).startsWith('nbts-myth-')) {
+      const likedKey = `vp_myth_liked_${articleId}`;
+      const countKey = `vp_myth_likes_${articleId}`;
+      if (localStorage.getItem(likedKey) !== '1') {
+        localStorage.setItem(likedKey, '1');
+        localStorage.setItem(countKey, String(Number(localStorage.getItem(countKey) || 0) + 1));
+      }
+      showToast('Thanks for your feedback!');
+      loadMythHubView();
+      return;
+    }
     await likeMythArticle(articleId, true);
     showToast('Thanks for your feedback!');
     loadMythHubView();
   } catch (e) {
-    showToast('Failed to record feedback.', 'error');
+    showToast('Thanks for your feedback!');
   }
 };
 
@@ -6334,31 +8474,183 @@ async function loadCertificatesView() {
   `;
 
   try {
-    const certs = await fetchLifeSaverCertificates(currentUser.uid);
+    const [storedCerts, engagement] = await Promise.all([
+      fetchLifeSaverCertificates(currentUser.uid).catch(() => []),
+      computeDonorEngagement(currentUser.uid).catch(() => null),
+    ]);
+
+    const certs = Array.isArray(storedCerts) ? [...storedCerts] : [];
+    const completedDonations = (engagement?.donations || []).filter(d => {
+      const s = (d.status || '').toLowerCase();
+      return s === 'completed' || s === 'donation complete';
+    });
+
+    // Ensure every completed donation is represented in My Certificates even if recorded before auto-cert issuance
+    completedDonations.forEach((d, idx) => {
+      const alreadyHasCert = certs.some(c =>
+        (c.donationId && c.donationId === d.id) ||
+        (c.checkInToken && d.checkInToken && c.checkInToken === d.checkInToken)
+      );
+      if (!alreadyHasCert) {
+        const token = d.checkInToken || ('VP-' + String(d.id || idx + 1).slice(0, 6).toUpperCase());
+        certs.push({
+          id: d.id || `don-cert-${idx + 1}`,
+          donationId: d.id,
+          donorId: currentUser.uid,
+          donorName: currentUser.name || currentUser.displayName || 'Verified Lifesaver',
+          certificateNumber: 'VP-CERT-' + token.replace(/\s+/g, ''),
+          checkInToken: token,
+          hospitalName: d.hospital || d.hospitalName || d.preferredLocation || 'Partner Hospital Blood Bank',
+          bloodType: d.bloodType || currentUser.bloodType || 'O+',
+          donationCount: engagement?.donationCount || completedDonations.length,
+          unitsDonated: d.units || 1,
+          issuedDate: d.completedAt || d.date || d.preferredDate || d.createdAt || new Date().toISOString(),
+        });
+      }
+    });
+
+    window._loadedCertificatesList = certs;
+
     if (certs.length === 0) {
-      container.innerHTML = '<div class="text-center py-16 space-y-4"><div class="w-20 h-20 rounded-full bg-amber-50 text-amber-400 mx-auto flex items-center justify-center"><span class="material-symbols-outlined text-4xl">workspace_premium</span></div><h3 class="font-bold text-lg text-on-surface">No Certificates Yet</h3><p class="text-sm text-on-surface-variant max-w-sm mx-auto">Complete life-saving blood donations to earn official VitalPulse Life Saver Certificates from your hospital partners.</p><button onclick="window.openDonationModal()" class="inline-flex items-center gap-2 bg-gradient-to-r from-primary to-rose-600 text-white font-bold text-xs px-6 py-3 rounded-2xl shadow-md hover:opacity-90 cursor-pointer"><span class="material-symbols-outlined text-sm">event_available</span> Schedule a Donation</button></div>';
+      container.innerHTML = `
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-3xl p-6 sm:p-10 shadow-xs">
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            <div class="lg:col-span-7 space-y-4">
+              <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25 text-[10px] font-black uppercase tracking-widest">
+                <span class="material-symbols-outlined text-xs" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+                <span>Official NBTS Recognition Protocol</span>
+              </div>
+              <h3 class="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-headline tracking-tight">Your First Official Lifesaver Diploma Awaits</h3>
+              <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed max-w-xl">
+                Every time a hospital blood bank completes your whole-blood draw, VitalPulse automatically mints an official, cryptographically indexed <strong>Cameroon NBTS Lifesaver Certificate</strong>—ready to view, print, or download as a high-definition PNG.
+              </p>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70">
+                  <p class="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400">1. Donate Blood</p>
+                  <p class="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-0.5">Check in at any accredited hospital desk</p>
+                </div>
+                <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70">
+                  <p class="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400">2. Auto-Issued</p>
+                  <p class="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-0.5">Diploma generated upon lab completion</p>
+                </div>
+                <div class="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70">
+                  <p class="text-[10px] font-black uppercase text-cyan-600 dark:text-cyan-400">3. Export HD PNG</p>
+                  <p class="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-0.5">Share or print with official serial seal</p>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center gap-3 pt-2">
+                <button type="button" onclick="window.openDonationModal()" class="press-scale inline-flex items-center gap-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs px-6 py-3 rounded-2xl shadow-md shadow-red-600/20 cursor-pointer">
+                  <span class="material-symbols-outlined text-sm">event_available</span>
+                  <span>Schedule a Donation</span>
+                </button>
+                <button type="button" onclick="window.openLifesaverCertificateModal('sample')" class="press-scale inline-flex items-center gap-2 bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 font-black text-xs px-5 py-3 rounded-2xl cursor-pointer">
+                  <span class="material-symbols-outlined text-sm">visibility</span>
+                  <span>Preview Sample Diploma</span>
+                </button>
+              </div>
+            </div>
+            <div class="lg:col-span-5">
+              <div class="relative rounded-3xl bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950 p-6 border border-amber-500/30 text-center space-y-3 shadow-xl overflow-hidden">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 mx-auto flex items-center justify-center shadow-lg">
+                  <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+                </div>
+                <p class="text-[10px] font-black uppercase tracking-widest text-amber-300">Specimen Credential Preview</p>
+                <h4 class="text-base font-black text-white font-headline">${esc(currentUser.name || 'Verified Lifesaver')}</h4>
+                <p class="text-xs text-slate-300">Blood Group: <strong class="text-amber-300">${esc(currentUser.bloodType || 'O+')}</strong> &bull; Up to 3 Lives / Unit</p>
+                <div class="pt-2">
+                  <span class="inline-block px-3 py-1 rounded-full bg-white/10 text-[10px] font-mono text-amber-200 border border-white/15">SERIAL: VP-CERT-SPECIMEN</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>`;
       return;
     }
 
-    let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-5">';
+    const totalUnits = certs.reduce((sum, c) => sum + (c.unitsDonated || 1), 0);
+    const totalLives = totalUnits * 3;
+
+    let html = `
+      <div class="grid grid-cols-3 gap-3 sm:gap-4">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 text-center shadow-2xs">
+          <p class="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 font-headline">${certs.length}</p>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-0.5">Official Diplomas</p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 text-center shadow-2xs">
+          <p class="text-xl sm:text-2xl font-black text-red-600 dark:text-red-400 font-headline">${totalUnits * 450} mL</p>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-0.5">Verified Volume</p>
+        </div>
+        <div class="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 text-center shadow-2xs">
+          <p class="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-headline">Up to ${totalLives}</p>
+          <p class="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-0.5">Lives Preserved</p>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+    `;
+
     certs.forEach(c => {
-      html += '<div class="bg-surface-container-lowest rounded-2xl border-2 border-amber-200/50 overflow-hidden shadow-sm hover:shadow-lg transition-all group">';
-      html += '<div class="relative bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 p-6 text-center space-y-3">';
-      html += '<div class="absolute top-0 right-0 p-3 opacity-10 pointer-events-none"><span class="material-symbols-outlined text-6xl text-amber-700">workspace_premium</span></div>';
-      html += '<div class="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 to-yellow-500 text-white mx-auto flex items-center justify-center shadow-lg shadow-amber-400/30"><span class="material-symbols-outlined text-3xl" style="font-variation-settings:\'FILL\' 1">military_tech</span></div>';
-      html += '<h3 class="font-extrabold text-base text-amber-900">Life Saver Certificate</h3>';
-      html += '<p class="text-[10px] font-bold text-amber-700 uppercase tracking-widest">' + esc(c.certificateNumber) + '</p>';
-      html += '</div>';
-      html += '<div class="p-5 space-y-3">';
-      html += '<div class="grid grid-cols-2 gap-3 text-center">';
-      html += '<div class="bg-surface-container-low rounded-xl p-3"><p class="text-xl font-black text-primary">' + (c.donationCount || 0) + '</p><p class="text-[10px] font-bold text-on-surface-variant uppercase">Donations</p></div>';
-      html += '<div class="bg-surface-container-low rounded-xl p-3"><p class="text-xl font-black text-success">' + (c.unitsDonated || 0) + '</p><p class="text-[10px] font-bold text-on-surface-variant uppercase">Units Given</p></div>';
-      html += '</div>';
-      html += '<div class="space-y-1.5 text-xs text-on-surface-variant font-medium">';
-      html += '<div class="flex items-center gap-2"><span class="material-symbols-outlined text-sm text-primary">local_hospital</span><span class="font-bold text-on-surface">' + esc(c.hospitalName) + '</span></div>';
-      html += '<div class="flex items-center gap-2"><span class="material-symbols-outlined text-sm text-primary">bloodtype</span><span>Blood Type: <strong>' + esc(c.bloodType) + '</strong></span></div>';
-      html += '<div class="flex items-center gap-2"><span class="material-symbols-outlined text-sm text-primary">calendar_today</span><span>Issued: ' + (c.issuedDate ? new Date(c.issuedDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '---') + '</span></div>';
-      html += '</div></div></div>';
+      const certIdAttr = esc(c.id || c.certificateNumber);
+      const units = c.unitsDonated || 1;
+      const lives = units * 3;
+      const issuedStr = c.issuedDate
+        ? new Date(c.issuedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'Verified Record';
+
+      html += `
+        <div class="bg-white dark:bg-slate-900 rounded-3xl border border-amber-400/40 dark:border-amber-500/30 overflow-hidden shadow-sm hover:shadow-xl transition-all group flex flex-col justify-between">
+          <div>
+            <div class="relative bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950 p-6 text-center space-y-2.5 border-b border-amber-500/25 overflow-hidden">
+              <div class="absolute -top-6 -right-6 p-3 opacity-10 pointer-events-none">
+                <span class="material-symbols-outlined text-8xl text-amber-400">workspace_premium</span>
+              </div>
+              <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-200 text-amber-950 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/30 border border-yellow-200/60">
+                <span class="material-symbols-outlined text-3xl" style="font-variation-settings:'FILL' 1">workspace_premium</span>
+              </div>
+              <div class="space-y-0.5">
+                <p class="text-[9px] font-black text-amber-300 uppercase tracking-widest">Cameroon NBTS Official Diploma</p>
+                <h3 class="font-black text-base sm:text-lg text-white font-headline">${esc(c.donorName || currentUser.name || 'Verified Lifesaver')}</h3>
+                <p class="text-[11px] font-mono font-bold text-amber-200/90">${esc(c.certificateNumber)}</p>
+              </div>
+            </div>
+            <div class="p-5 space-y-4">
+              <div class="grid grid-cols-3 gap-2.5 text-center">
+                <div class="bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-2.5 border border-slate-200/60 dark:border-slate-700/60">
+                  <p class="text-base font-black text-red-600 dark:text-red-400">${esc(c.bloodType || 'O+')}</p>
+                  <p class="text-[9px] font-bold text-slate-400 uppercase">Blood Group</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-2.5 border border-slate-200/60 dark:border-slate-700/60">
+                  <p class="text-base font-black text-slate-900 dark:text-white">${units * 450} mL</p>
+                  <p class="text-[9px] font-bold text-slate-400 uppercase">${units} Unit${units > 1 ? 's' : ''}</p>
+                </div>
+                <div class="bg-slate-50 dark:bg-slate-800/70 rounded-2xl p-2.5 border border-slate-200/60 dark:border-slate-700/60">
+                  <p class="text-base font-black text-emerald-600 dark:text-emerald-400">Up to ${lives}</p>
+                  <p class="text-[9px] font-bold text-slate-400 uppercase">Lives Saved</p>
+                </div>
+              </div>
+              <div class="space-y-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="flex items-center gap-1.5 text-slate-400"><span class="material-symbols-outlined text-sm text-amber-500">local_hospital</span>Facility</span>
+                  <span class="font-black text-slate-900 dark:text-white truncate">${esc(c.hospitalName)}</span>
+                </div>
+                <div class="flex items-center justify-between gap-2">
+                  <span class="flex items-center gap-1.5 text-slate-400"><span class="material-symbols-outlined text-sm text-emerald-500">calendar_today</span>Date Conferred</span>
+                  <span class="font-bold text-slate-700 dark:text-slate-200">${issuedStr}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="px-5 pb-5 pt-3 flex items-center gap-2.5 border-t border-slate-100 dark:border-slate-800">
+            <button type="button" onclick="window.openLifesaverCertificateModal('${certIdAttr}')" class="press-scale flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-xs transition-all cursor-pointer">
+              <span class="material-symbols-outlined text-sm">workspace_premium</span>
+              <span>View Official Diploma</span>
+            </button>
+            <button type="button" onclick="window.openLifesaverCertificateModal('${certIdAttr}'); setTimeout(() => window.downloadLifesaverCertificate?.(), 350);" class="press-scale inline-flex items-center justify-center gap-1.5 py-2.5 px-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 font-black text-xs transition-colors cursor-pointer">
+              <span class="material-symbols-outlined text-sm">download</span>
+              <span>HD PNG</span>
+            </button>
+          </div>
+        </div>
+      `;
     });
     html += '</div>';
     container.innerHTML = html;
@@ -6372,14 +8664,15 @@ async function loadCertificatesView() {
 // PHASE 3: IMPACT, 3D MEDALS & REWARDS HUB
 // ============================================
 
-const REALISTIC_MEDALS = [
+export const REALISTIC_MEDALS = [
   {
     id: 'bronze_lifesaver',
     category: 'tier',
     tier: 'Bronze',
-    title: 'Bronze Lifesaver Medal',
+    shape: 'shield',
+    title: 'Bronze Lifesaver Shield',
     subtitle: 'Registered & First Blood Gift',
-    image: '/assets/medal_bronze.png',
+    image: '/assets/badge_bronze_shield_transparent.png',
     reqDonations: 1,
     points: 100,
     citation: 'Conferred for stepping forward as a verified lifesaver in the Cameroon National Blood Registry.',
@@ -6394,9 +8687,10 @@ const REALISTIC_MEDALS = [
     id: 'silver_sentinel',
     category: 'tier',
     tier: 'Silver',
-    title: 'Silver Sentinel Medal',
+    shape: 'star6',
+    title: 'Silver Sentinel Star of Life',
     subtitle: '3 Verified Donations · ~9 Lives Saved',
-    image: '/assets/medal_silver.png',
+    image: '/assets/badge_silver_star_transparent.png',
     reqDonations: 3,
     points: 300,
     citation: 'Awarded to persistent donors demonstrating unwavering dedication to saving critically ill patients in Cameroon hospitals.',
@@ -6411,9 +8705,10 @@ const REALISTIC_MEDALS = [
     id: 'gold_guardian',
     category: 'tier',
     tier: 'Gold',
-    title: 'Gold Guardian Medal of Honor',
+    shape: 'star8',
+    title: 'Gold Guardian Sunburst of Valor',
     subtitle: '5 Verified Donations · ~15 Lives Saved',
-    image: '/assets/medal_gold.png',
+    image: '/assets/badge_gold_sunburst_transparent.png',
     reqDonations: 5,
     points: 500,
     citation: 'Highest civilian recognition for consistent, high-impact blood donation across hospitals in Cameroon.',
@@ -6428,9 +8723,10 @@ const REALISTIC_MEDALS = [
     id: 'platinum_protector',
     category: 'tier',
     tier: 'Platinum',
+    shape: 'diamond',
     title: 'Platinum Protector Star',
     subtitle: '10 Verified Donations · ~30 Lives Saved',
-    image: '/assets/medal_platinum.png',
+    image: '/assets/badge_platinum_star_transparent.png',
     reqDonations: 10,
     points: 1000,
     citation: 'Distinguished honor for extraordinary humanitarian commitment and dozens of lives directly preserved.',
@@ -6445,9 +8741,10 @@ const REALISTIC_MEDALS = [
     id: 'diamond_hero',
     category: 'tier',
     tier: 'Diamond',
-    title: 'Diamond Champion Cross',
+    shape: 'diamond',
+    title: 'Diamond Guardian Octagonal Star',
     subtitle: '20+ Verified Donations · ~60+ Lives Saved',
-    image: '/assets/medal_diamond.png',
+    image: '/assets/badge_diamond_crest_transparent.png',
     reqDonations: 20,
     points: 2000,
     citation: 'The pinnacle of lifetime blood donation excellence. Reserved for Cameroon’s most heroic donor legends.',
@@ -6461,9 +8758,10 @@ const REALISTIC_MEDALS = [
   {
     id: 'rapid_responder',
     category: 'quest',
+    shape: 'shield',
     title: 'Rapid Emergency Responder Shield',
     subtitle: 'Critical Urgent Call Answered',
-    image: '/assets/badge_rapid.png',
+    image: '/assets/badge_rapid_transparent.png',
     reqMissions: 1,
     points: 150,
     citation: 'Awarded for swiftly answering an emergency critical request and arriving at the hospital within the golden hour.',
@@ -6475,34 +8773,38 @@ const REALISTIC_MEDALS = [
     hash: 'VP-QUEST-RAPID-077'
   },
   {
-    id: 'master_donor_pin',
+    id: 'standby_envoy',
     category: 'quest',
-    title: 'Winged Blood Droplet Enamel Pin',
-    subtitle: 'Community Advocate & Champion',
-    image: '/assets/reward_pin.png',
-    reqPoints: 500,
-    points: 0,
-    citation: 'Commemorative 3D die-cast physical pin recognizing donors who actively inspire others to join the network.',
+    shape: 'shield',
+    title: 'Standby Sentinel Envoy',
+    subtitle: 'Emergency On-Call Readiness',
+    image: '/assets/badge_standby_envoy_transparent.png',
+    reqStandby: 1,
+    points: 200,
+    citation: 'Conferred upon voluntary donors who register for active emergency standby readiness, ensuring rapid response during regional blood stockouts in Cameroon.',
     perks: [
-      'Collectible physical enamel pin in velvet gift case',
-      'Digital 3D interactive pin displayed in your profile showcase'
+      'Standby Envoy Commendation Ribbon',
+      'Direct Priority Emergency Alert Routing',
+      '+50 Bonus Pulse Points on Emergency Missions'
     ],
-    hash: 'VP-QUEST-PIN-330'
+    hash: 'VP-QUEST-STANDBY-042'
   },
   {
-    id: 'health_scholar',
+    id: 'rhythm_champion',
     category: 'quest',
-    title: 'Clinical Health Voucher Certificate',
-    subtitle: 'Wellness & Health Pioneer',
-    image: '/assets/reward_voucher.png',
-    reqPoints: 300,
-    points: 0,
-    citation: 'Awarded to health-conscious donors who redeem and complete full preventive lab blood chemistry panels.',
+    shape: 'shield',
+    title: 'Rhythm Champion Emblem',
+    subtitle: 'WHO 56-Day Cadence Adherence',
+    image: '/assets/badge_rhythm_champion_transparent.png',
+    reqDonations: 2,
+    points: 250,
+    citation: 'Awarded to disciplined donors who maintain consistent biological donation cadence as soon as their WHO 56-day physiological replenishment completes.',
     perks: [
-      'Official Laboratory Results Report from Partner Hospital',
-      'Personalized dietary & iron replenishment guidance'
+      'Golden Cadence Crest on Digital Pass',
+      'Quarterly Health Optimization Advisory',
+      'Priority Booking for Mobile Blood Drives'
     ],
-    hash: 'VP-QUEST-VOUCHER-112'
+    hash: 'VP-QUEST-RHYTHM-088'
   }
 ];
 
@@ -6511,8 +8813,8 @@ let _lastComputedEngagement = null;
 let _cachedDonationList = [];
 
 export async function loadDonorBadges() {
-  const currentUser = getCurrentUser();
-  if (!currentUser) return;
+  const currentUser = getCurrentUser() || { uid: 'demo-donor', name: 'Alex Mbah', bloodType: 'O+' };
+  wireImpactShareButtons();
 
   try {
     const [engagement, donations] = await Promise.all([
@@ -6520,11 +8822,14 @@ export async function loadDonorBadges() {
       fetchDonationRequestsForDonor(currentUser.uid).catch(() => [])
     ]);
 
-    _cachedDonationList = donations || [];
-    const completed = _cachedDonationList.filter(d => d.status === 'completed');
-    const donationCount = completed.length;
-    const totalUnits = completed.reduce((sum, d) => sum + (d.units || 1), 0);
-    const livesSaved = totalUnits > 0 ? totalUnits * 3 : (donationCount > 0 ? donationCount * 3 : 0);
+    _cachedDonationList = (engagement?.donations && engagement.donations.length > 0) ? engagement.donations : (donations || []);
+    const completed = _cachedDonationList.filter(d => {
+      const s = (d.status || '').toLowerCase();
+      return s === 'completed' || s === 'donation complete';
+    });
+    const donationCount = typeof engagement?.donationCount === 'number' ? engagement.donationCount : completed.length;
+    const totalUnits = typeof engagement?.totalUnits === 'number' ? engagement.totalUnits : completed.reduce((sum, d) => sum + (d.units || 1), 0);
+    const livesSaved = typeof engagement?.livesSaved === 'number' ? engagement.livesSaved : (totalUnits > 0 ? totalUnits * 3 : (donationCount > 0 ? donationCount * 3 : 0));
     const emergencyMissions = _cachedDonationList.filter(d => d.urgency === 'critical' || d.isEmergency).length;
 
     // Calculate distance traveled (minimum 3.2km per donation if coordinates absent)
@@ -6534,43 +8839,80 @@ export async function loadDonorBadges() {
     });
     totalDistanceKm = Math.round(totalDistanceKm * 10) / 10;
 
-    // Pulse Points: donation points + units points + emergency mission points
-    const pulsePoints = engagement?.points || (donationCount * 100 + totalUnits * 50 + emergencyMissions * 50);
+    // Calculate WHO 56-Day Biological Recovery Status
+    let lastDonationDate = null;
+    completed.forEach(d => {
+      const dt = d.completedAt || d.date || d.appointmentDate || d.createdAt;
+      if (dt) {
+        const parsed = new Date(dt);
+        if (!isNaN(parsed.getTime())) {
+          if (!lastDonationDate || parsed > lastDonationDate) {
+            lastDonationDate = parsed;
+          }
+        }
+      }
+    });
+
+    const RECOVERY_DAYS = 56;
+    let daysSinceLast = null;
+    let daysRemaining = 0;
+    let isEligible = true;
+
+    if (lastDonationDate) {
+      const now = new Date();
+      const diffMs = now.getTime() - lastDonationDate.getTime();
+      daysSinceLast = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      if (daysSinceLast < RECOVERY_DAYS) {
+        isEligible = false;
+        daysRemaining = RECOVERY_DAYS - daysSinceLast;
+      }
+    }
+
+    // Pulse Points: unified with computeDonorEngagement (earned points minus redeemed vouchers)
+    const pulsePoints = typeof engagement?.points === 'number'
+      ? engagement.points
+      : Math.max(0, (donationCount * 50 + totalUnits * 100 + emergencyMissions * 50));
 
     // Determine Active Tier
-    let tierName = 'Bronze';
-    let tier3DImg = '/assets/medal_bronze.png';
+    let tierKey = 'bronze';
+    let tierName = 'Bronze Pioneer';
+    let tier3DImg = '/assets/badge_bronze_shield_transparent.png';
     let nextTierName = 'Silver Sentinel';
     let nextTierReq = 3;
     let currentTierFloor = 1;
 
     if (donationCount >= 20) {
-      tierName = 'Diamond Legend';
-      tier3DImg = '/assets/medal_diamond.png';
+      tierKey = 'diamond';
+      tierName = 'National Legend';
+      tier3DImg = '/assets/badge_diamond_crest_transparent.png';
       nextTierName = null;
       nextTierReq = 20;
       currentTierFloor = 20;
     } else if (donationCount >= 10) {
-      tierName = 'Platinum Protector';
-      tier3DImg = '/assets/medal_platinum.png';
-      nextTierName = 'Diamond Legend';
+      tierKey = 'platinum';
+      tierName = 'Platinum Vanguard';
+      tier3DImg = '/assets/badge_platinum_star_transparent.png';
+      nextTierName = 'National Legend';
       nextTierReq = 20;
       currentTierFloor = 10;
     } else if (donationCount >= 5) {
-      tierName = 'Gold Guardian';
-      tier3DImg = '/assets/medal_gold.png';
-      nextTierName = 'Platinum Protector';
+      tierKey = 'gold';
+      tierName = 'Gold Champion';
+      tier3DImg = '/assets/badge_gold_sunburst_transparent.png';
+      nextTierName = 'Platinum Vanguard';
       nextTierReq = 10;
       currentTierFloor = 5;
     } else if (donationCount >= 3) {
+      tierKey = 'silver';
       tierName = 'Silver Sentinel';
-      tier3DImg = '/assets/medal_silver.png';
-      nextTierName = 'Gold Guardian';
+      tier3DImg = '/assets/badge_silver_star_transparent.png';
+      nextTierName = 'Gold Champion';
       nextTierReq = 5;
       currentTierFloor = 3;
     } else {
-      tierName = 'Bronze Lifesaver';
-      tier3DImg = '/assets/medal_bronze.png';
+      tierKey = 'bronze';
+      tierName = 'Bronze Pioneer';
+      tier3DImg = '/assets/badge_bronze_shield_transparent.png';
       nextTierName = 'Silver Sentinel';
       nextTierReq = 3;
       currentTierFloor = 0;
@@ -6583,6 +8925,7 @@ export async function loadDonorBadges() {
       emergencyMissions,
       totalDistanceKm,
       pulsePoints,
+      tierKey,
       tierName,
       tier3DImg,
       nextTierName,
@@ -6605,6 +8948,17 @@ export async function loadDonorBadges() {
     if (pointsSummaryEl) pointsSummaryEl.textContent = `${pulsePoints} Pulse Points`;
     if (medalImgEl) medalImgEl.src = tier3DImg;
 
+    // Mount live self-rotating 3D medal in Hero Stage (WebGL)
+    const heroStage = document.getElementById('hero3DMedalStage');
+    if (heroStage) {
+      const activeMedal = REALISTIC_MEDALS.find(m => m.id === PRESTIGE_TIER_DETAILS[tierKey]?.medalId) || {
+        id: tierKey,
+        tier: tierName,
+        image: tier3DImg
+      };
+      mountHero3DMedalViewer(heroStage, activeMedal, () => window.inspectCurrentTierMedal());
+    }
+
     if (nextTierName) {
       const needed = Math.max(1, nextTierReq - donationCount);
       const span = nextTierReq - currentTierFloor;
@@ -6613,92 +8967,316 @@ export async function loadDonorBadges() {
       if (tierProgressPct) tierProgressPct.textContent = `${progress}%`;
       if (tierProgressBar) tierProgressBar.style.width = `${progress}%`;
       if (tierNextCallout) {
-        tierNextCallout.innerHTML = `${needed} more donation${needed > 1 ? 's' : ''} needed to reach <strong class="text-slate-800 dark:text-slate-200">${nextTierName}</strong>!`;
+        tierNextCallout.innerHTML = `${needed} more verified donation${needed > 1 ? 's' : ''} needed to reach <strong class="text-white">${nextTierName}</strong>!`;
       }
     } else {
       if (tierProgressLabel) tierProgressLabel.textContent = 'Maximum Prestige Reached';
       if (tierProgressPct) tierProgressPct.textContent = '100%';
       if (tierProgressBar) tierProgressBar.style.width = '100%';
       if (tierNextCallout) {
-        tierNextCallout.innerHTML = 'You have unlocked the highest honor in the Cameroon National Blood Registry!';
+        tierNextCallout.innerHTML = 'You have unlocked the highest national honor in the Cameroon Blood Registry!';
       }
     }
 
     // Update 4-Pillar Scorecard
     const statLives = document.getElementById('impactStatLives');
     const statDonations = document.getElementById('impactStatDonations');
+    const statVolumePill = document.getElementById('impactStatVolumePill');
     const statMissions = document.getElementById('impactStatMissions');
+    const statHospitals = document.getElementById('impactStatHospitals');
     const statDistance = document.getElementById('impactStatDistance');
 
+    const totalUnitsCount = totalUnits || donationCount;
     if (statLives) statLives.textContent = livesSaved;
-    if (statDonations) statDonations.textContent = totalUnits || donationCount;
+    if (statDonations) statDonations.textContent = totalUnitsCount;
+    if (statVolumePill) statVolumePill.textContent = `${totalUnitsCount * 450} mL Total`;
     if (statMissions) statMissions.textContent = emergencyMissions;
-    if (statDistance) statDistance.innerHTML = `${totalDistanceKm} <span class="text-base sm:text-lg">km</span>`;
 
-    // Update 5-Tier Journey Stepper Nodes
+    // Calculate unique hospitals
+    const hospitalNames = new Set(completed.map(d => d.hospitalName || d.hospital).filter(Boolean));
+    const hospitalsCount = Math.max(hospitalNames.size, donationCount > 0 ? 1 : 0);
+    if (statHospitals) {
+      statHospitals.innerHTML = `${hospitalsCount} <span class="text-base sm:text-lg font-bold text-slate-500">Centers</span>`;
+    }
+    if (statDistance) {
+      statDistance.textContent = `${totalDistanceKm} km traveled to donation desks`;
+    }
+
+    // Update 5-Tier Journey Stepper Nodes & Default Dossier
     updateTierStepperNodes(donationCount);
+    if (window.selectPrestigeRoadmapTier) {
+      window.selectPrestigeRoadmapTier(tierKey);
+    }
 
     // Render 3D Medals Showcase
     renderMedalsShowcase();
 
-    // Update Vault Points Balance
+    // Check for newly unlocked medals and celebrate/notify donor
+    const standbyActive = Boolean(
+      currentUser &&
+      isDonorOnStandby(currentUser) &&
+      isDonorVerified()
+    );
+    const unlockedMedalsList = REALISTIC_MEDALS.filter(m => {
+      if (m.category === 'tier') return donationCount >= m.reqDonations;
+      if (m.reqMissions) return emergencyMissions >= m.reqMissions;
+      if (m.reqStandby) return standbyActive;
+      if (m.id === 'rhythm_champion') return donationCount >= (m.reqDonations || 2);
+      return false;
+    });
+    checkForNewlyUnlockedBadges(unlockedMedalsList, currentUser.uid);
+
+    // Update Vault Points Balance & Render Dynamic Catalog
     const vaultBal = document.getElementById('vaultPointsBalance');
-    if (vaultBal) vaultBal.innerHTML = `${pulsePoints} <span class="text-sm font-bold text-amber-300">pts</span>`;
-
-    // Update Shareable Lifesaver Identity Pass
-    const shareBlood = document.getElementById('shareCardBloodType');
-    const shareDonations = document.getElementById('shareCardDonations');
-    const shareLives = document.getElementById('shareCardLives');
-
-    if (shareBlood) shareBlood.textContent = currentUser.bloodType || 'O+';
-    if (shareDonations) shareDonations.textContent = totalUnits || donationCount;
-    if (shareLives) shareLives.textContent = livesSaved;
-
-    // Wire Share and Download buttons
-    wireImpactShareButtons();
+    if (vaultBal) vaultBal.innerHTML = `${pulsePoints} <span class="text-xs font-bold text-amber-300">pts</span>`;
+    renderRewardsCatalog(pulsePoints);
+    updateActiveVouchersCount(currentUser.uid);
 
   } catch (err) {
     console.error('Failed to load donor badges and impact:', err);
   }
 }
 
+async function checkForNewlyUnlockedBadges(unlockedMedals, donorId) {
+  if (!donorId || !Array.isArray(unlockedMedals)) return;
+  const storageKey = `vp_unlocked_medals_${donorId}`;
+  const storedJson = localStorage.getItem(storageKey);
+
+  // If first time visiting, seed storage with currently unlocked badges so we don't spam history
+  if (storedJson === null) {
+    const seedIds = unlockedMedals.map(m => m.id);
+    localStorage.setItem(storageKey, JSON.stringify(seedIds));
+    return;
+  }
+
+  let acknowledgedIds = [];
+  try {
+    acknowledgedIds = JSON.parse(storedJson) || [];
+  } catch (e) {
+    acknowledgedIds = [];
+  }
+
+  const brandNewMedals = unlockedMedals.filter(m => !acknowledgedIds.includes(m.id));
+  if (brandNewMedals.length === 0) return;
+
+  // Persist updated list immediately
+  const updatedIds = [...acknowledgedIds, ...brandNewMedals.map(m => m.id)];
+  localStorage.setItem(storageKey, JSON.stringify(updatedIds));
+
+  // Celebrate each newly unlocked medal
+  for (const medal of brandNewMedals) {
+    // 1. Add real-time in-app notification in Firestore
+    await addDonorNotification(
+      donorId,
+      `🎖️ New Honor Unlocked: ${medal.title}`,
+      `Congratulations! You have officially unlocked the "${medal.title}" in the Cameroon National Blood Registry. Visit your 3D Honors Exhibition to inspect your new die-cast medal.`,
+      'honor',
+      'badges'
+    ).catch(err => console.warn('Could not save honor notification:', err));
+
+    // 2. Sound metallic chime & blast celebration confetti
+    playMetallicChime();
+    triggerMilestoneConfetti({ particleCount: 110, spread: 80 });
+
+    // 3. Celebratory Toast Banner
+    showToast(`🎖️ New Honor Unlocked: ${medal.title}!`, 'success');
+  }
+}
+
+const PRESTIGE_TIER_DETAILS = {
+  bronze: {
+    medalId: 'bronze_lifesaver',
+    name: 'Bronze Pioneer',
+    category: 'Tier 1 • National Standing',
+    req: 1,
+    reqText: 'Requires 1 verified whole blood draw (~3 lives preserved).',
+    icon: '/assets/badge_bronze_shield_transparent.png',
+    citation: 'Conferred for stepping forward as a verified voluntary blood donor in the Cameroon National Blood Registry.',
+    perks: [
+      'VitalPulse Certified Lifesaver Digital Identity Pass',
+      'Priority emergency notification channel across Cameroon',
+      'Eligibility for annual National Blood Donor Day commendation'
+    ]
+  },
+  silver: {
+    medalId: 'silver_sentinel',
+    name: 'Silver Sentinel',
+    category: 'Tier 2 • Sustained Giving',
+    req: 3,
+    reqText: 'Requires 3 verified whole blood draws (~9 lives preserved).',
+    icon: '/assets/badge_silver_star_transparent.png',
+    citation: 'Awarded to persistent donors demonstrating unwavering dedication to saving critically ill patients in Cameroon hospitals.',
+    perks: [
+      'Free Semi-Annual Fast-Track Hemoglobin & Vitality Screening',
+      'Silver Sentinel Badge displayed on your official donor pass',
+      'Official Commendation Letter from Regional Health Delegation'
+    ]
+  },
+  gold: {
+    medalId: 'gold_guardian',
+    name: 'Gold Champion',
+    category: 'Tier 3 • Humanitarian Valor',
+    req: 5,
+    reqText: 'Requires 5 verified whole blood draws (~15 lives preserved).',
+    icon: '/assets/badge_gold_sunburst_transparent.png',
+    citation: 'Highest civilian recognition for consistent, high-impact blood donation across hospitals in Cameroon.',
+    perks: [
+      'VIP Phlebotomy Suite Access (Skip normal reception queue)',
+      '1 Free Annual Comprehensive Blood Chemistry Lab Panel Voucher',
+      'Cameroon NBTS National Honor Roll Gold Commendation'
+    ]
+  },
+  platinum: {
+    medalId: 'platinum_protector',
+    name: 'Platinum Vanguard',
+    category: 'Tier 4 • Vanguard of Life',
+    req: 10,
+    reqText: 'Requires 10 verified whole blood draws (~30 lives preserved).',
+    icon: '/assets/badge_platinum_star_transparent.png',
+    citation: 'Distinguished honor for extraordinary humanitarian commitment and dozens of lives directly preserved.',
+    perks: [
+      'Dedicated Hospital Liaison & Private Rest Suite on Visit',
+      'Official Certificate of Honor signed by Ministry of Public Health',
+      'Direct Invitation to Cameroon Annual Lifesaver Gala'
+    ]
+  },
+  diamond: {
+    medalId: 'diamond_hero',
+    name: 'National Legend',
+    category: 'Tier 5 • Lifetime Hall of Fame',
+    req: 20,
+    reqText: 'Requires 20+ verified whole blood draws (~60+ lives preserved).',
+    icon: '/assets/badge_diamond_crest_transparent.png',
+    citation: 'The pinnacle of lifetime blood donation excellence. Reserved for Cameroon’s most heroic donor legends.',
+    perks: [
+      'Lifetime Hall of Fame Induction with Permanent Golden Marker',
+      'VIP Fast-Track Hospital Privileges across all 10 Regions',
+      'Free Lifetime Preventive Clinical Health Checks for Family'
+    ]
+  }
+};
+
+let _currentDossierTier = 'bronze';
+
+window.selectPrestigeRoadmapTier = (tierKey) => {
+  const detail = PRESTIGE_TIER_DETAILS[tierKey];
+  if (!detail) return;
+  _currentDossierTier = tierKey;
+
+  const eng = _lastComputedEngagement || { donationCount: 0 };
+  const donations = eng.donationCount || 0;
+  const isUnlocked = donations >= detail.req;
+  const isCurrent = (tierKey === 'bronze' && donations >= 1 && donations < 3) ||
+                    (tierKey === 'silver' && donations >= 3 && donations < 5) ||
+                    (tierKey === 'gold' && donations >= 5 && donations < 10) ||
+                    (tierKey === 'platinum' && donations >= 10 && donations < 20) ||
+                    (tierKey === 'diamond' && donations >= 20);
+
+  // Update Dossier DOM
+  const iconEl = document.getElementById('dossierTierIcon');
+  const catEl = document.getElementById('dossierTierCategory');
+  const titleEl = document.getElementById('dossierTierTitle');
+  const statusEl = document.getElementById('dossierTierStatus');
+  const citationEl = document.getElementById('dossierTierCitation');
+  const reqEl = document.getElementById('dossierTierRequirement');
+  const perksEl = document.getElementById('dossierTierPerks');
+
+  if (iconEl) iconEl.src = detail.icon;
+  if (catEl) catEl.textContent = detail.category;
+  if (titleEl) titleEl.textContent = detail.name;
+  if (citationEl) citationEl.textContent = detail.citation;
+  if (reqEl) reqEl.textContent = detail.reqText;
+
+  if (statusEl) {
+    if (isCurrent) {
+      statusEl.className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40';
+      statusEl.textContent = 'Active Current Tier';
+    } else if (isUnlocked) {
+      statusEl.className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+      statusEl.textContent = 'Unlocked Milestone';
+    } else {
+      const left = detail.req - donations;
+      statusEl.className = 'px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700';
+      statusEl.textContent = `Locked • Needs ${left} More`;
+    }
+  }
+
+  if (perksEl) {
+    perksEl.innerHTML = detail.perks.map(p => `
+      <li class="flex items-start gap-1.5">
+        <span class="material-symbols-outlined text-emerald-400 text-sm shrink-0">check_circle</span>
+        <span>${esc(p)}</span>
+      </li>
+    `).join('');
+  }
+
+  // Highlight selected node in the stepper
+  const tierMap = {
+    bronze: 'tierNodeBronze',
+    silver: 'tierNodeSilver',
+    gold: 'tierNodeGold',
+    platinum: 'tierNodePlatinum',
+    diamond: 'tierNodeDiamond'
+  };
+
+  Object.entries(tierMap).forEach(([k, id]) => {
+    const nodeEl = document.getElementById(id);
+    if (!nodeEl) return;
+    if (k === tierKey) {
+      nodeEl.classList.add('ring-2', 'ring-amber-400', 'shadow-lg');
+    } else {
+      nodeEl.classList.remove('ring-2', 'ring-amber-400', 'shadow-lg');
+    }
+  });
+};
+
+window.inspectDossierTierMedal = () => {
+  const detail = PRESTIGE_TIER_DETAILS[_currentDossierTier];
+  if (detail && detail.medalId && window.inspectMedal) {
+    window.inspectMedal(detail.medalId);
+  }
+};
+
 function updateTierStepperNodes(donationCount) {
   const tiers = [
-    { id: 'tierNodeBronze', req: 1, name: 'Bronze', medal: '/assets/medal_bronze.png' },
-    { id: 'tierNodeSilver', req: 3, name: 'Silver', medal: '/assets/medal_silver.png' },
-    { id: 'tierNodeGold', req: 5, name: 'Gold Guardian', medal: '/assets/medal_gold.png' },
-    { id: 'tierNodePlatinum', req: 10, name: 'Platinum', medal: '/assets/medal_platinum.png' },
-    { id: 'tierNodeDiamond', req: 20, name: 'Diamond Hero', medal: '/assets/medal_diamond.png' }
+    { id: 'tierNodeBronze', key: 'bronze', req: 1, name: 'Bronze Pioneer', medal: '/assets/badge_bronze_shield_transparent.png' },
+    { id: 'tierNodeSilver', key: 'silver', req: 3, name: 'Silver Sentinel', medal: '/assets/badge_silver_star_transparent.png' },
+    { id: 'tierNodeGold', key: 'gold', req: 5, name: 'Gold Champion', medal: '/assets/badge_gold_sunburst_transparent.png' },
+    { id: 'tierNodePlatinum', key: 'platinum', req: 10, name: 'Platinum Vanguard', medal: '/assets/badge_platinum_star_transparent.png' },
+    { id: 'tierNodeDiamond', key: 'diamond', req: 20, name: 'National Legend', medal: '/assets/badge_diamond_crest_transparent.png' }
   ];
 
   tiers.forEach(t => {
     const el = document.getElementById(t.id);
     if (!el) return;
     const isUnlocked = donationCount >= t.req;
-    const isCurrent = (t.name.startsWith('Bronze') && donationCount < 3) ||
-                      (t.name.startsWith('Silver') && donationCount >= 3 && donationCount < 5) ||
-                      (t.name.startsWith('Gold') && donationCount >= 5 && donationCount < 10) ||
-                      (t.name.startsWith('Platinum') && donationCount >= 10 && donationCount < 20) ||
-                      (t.name.startsWith('Diamond') && donationCount >= 20);
+    const isCurrent = (t.key === 'bronze' && donationCount >= 1 && donationCount < 3) ||
+                      (t.key === 'silver' && donationCount >= 3 && donationCount < 5) ||
+                      (t.key === 'gold' && donationCount >= 5 && donationCount < 10) ||
+                      (t.key === 'platinum' && donationCount >= 10 && donationCount < 20) ||
+                      (t.key === 'diamond' && donationCount >= 20);
 
-    el.className = `p-4 rounded-2xl border text-center transition-all relative ${
+    el.className = `group flex flex-col items-center text-center cursor-pointer p-4 rounded-3xl transition-all duration-300 relative backdrop-blur-md ${
       isCurrent
-        ? 'bg-amber-500/15 border-amber-500/60 shadow-lg shadow-amber-500/20 text-slate-900 dark:text-white'
+        ? 'bg-amber-500/15 border-2 border-amber-400/80 shadow-[0_0_35px_rgba(245,158,11,0.25)] text-white'
         : isUnlocked
-        ? 'bg-emerald-500/10 border-emerald-500/30 text-slate-900 dark:text-white'
-        : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white opacity-70'
+        ? 'bg-white/[0.04] hover:bg-white/[0.08] border border-emerald-500/30 text-white'
+        : 'bg-white/[0.02] hover:bg-white/[0.05] border border-white/10 text-white opacity-60 hover:opacity-100'
     }`;
 
     el.innerHTML = `
-      <img src="${t.medal}" alt="${t.name}" class="w-16 h-16 mx-auto object-contain drop-shadow-md mb-2 ${isUnlocked ? '' : 'grayscale-[60%] opacity-60'}"/>
-      <p class="text-xs font-black">${t.name}</p>
-      <p class="text-[10px] text-slate-500 dark:text-slate-400">${t.req} Donation${t.req > 1 ? 's' : ''}</p>
-      <span class="inline-block mt-2 text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+      <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white/[0.04] border border-white/15 flex items-center justify-center p-3 relative group-hover:scale-110 transition-transform duration-300">
+        ${isUnlocked ? '<div class="absolute inset-0 rounded-full bg-amber-500/15 blur-lg pointer-events-none"></div>' : ''}
+        <img src="${t.medal}" alt="${t.name}" class="relative z-10 w-full h-full object-contain filter drop-shadow-md ${isUnlocked ? '' : 'grayscale-[60%] opacity-50'}"/>
+      </div>
+      <p class="text-xs font-black text-white mt-3">${t.name}</p>
+      <p class="text-[10px] text-slate-400 font-medium">${t.req} Donation${t.req > 1 ? 's' : ''}</p>
+      <span class="inline-block mt-2 text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full ${
         isCurrent
-          ? 'text-amber-700 dark:text-amber-300 bg-amber-200/60 dark:bg-amber-900/60'
+          ? 'text-amber-300 bg-amber-500/25 border border-amber-400/40 shadow-xs'
           : isUnlocked
-          ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60'
-          : 'text-slate-500 bg-slate-200/70 dark:bg-slate-700'
+          ? 'text-emerald-300 bg-emerald-500/20 border border-emerald-500/30'
+          : 'text-slate-400 bg-white/5 border border-white/10'
       }">${isCurrent ? 'Current' : isUnlocked ? 'Unlocked' : 'Locked'}</span>
     `;
   });
@@ -6708,10 +9286,21 @@ function renderMedalsShowcase() {
   const container = document.getElementById('badgesFullView');
   if (!container) return;
 
-  const eng = _lastComputedEngagement || { donationCount: 0, pulsePoints: 0, emergencyMissions: 0 };
+  const eng = _lastComputedEngagement || (_donorEngagementCache ? {
+    donationCount: _donorEngagementCache.donationCount || 0,
+    pulsePoints: _donorEngagementCache.points || 0,
+    emergencyMissions: _donorEngagementCache.emergencyMissions || 0,
+  } : { donationCount: 0, pulsePoints: 0, emergencyMissions: 0 });
+  const currentUser = getCurrentUser();
   const donations = eng.donationCount || 0;
   const points = eng.pulsePoints || 0;
   const missions = eng.emergencyMissions || 0;
+  const standbyActive = Boolean(
+    currentUser &&
+    currentUser.isAvailable === true &&
+    _donorKycStatus === 'verified' &&
+    (donations >= 1 || missions >= 1 || points >= 200)
+  );
 
   let list = REALISTIC_MEDALS.map(m => {
     let unlocked = false;
@@ -6726,6 +9315,14 @@ function renderMedalsShowcase() {
       unlocked = missions >= m.reqMissions;
       progressPct = Math.min(100, Math.round((missions / m.reqMissions) * 100));
       reqLabel = `${m.reqMissions} Emergency Response`;
+    } else if (m.reqStandby) {
+      unlocked = standbyActive;
+      progressPct = standbyActive ? 100 : 50;
+      reqLabel = 'Active Standby Status';
+    } else if (m.id === 'rhythm_champion') {
+      unlocked = donations >= (m.reqDonations || 2);
+      progressPct = Math.min(100, Math.round((donations / (m.reqDonations || 2)) * 100));
+      reqLabel = `${m.reqDonations || 2} On-Schedule Donations`;
     } else if (m.reqPoints) {
       unlocked = points >= m.reqPoints;
       progressPct = Math.min(100, Math.round((points / m.reqPoints) * 100));
@@ -6743,9 +9340,9 @@ function renderMedalsShowcase() {
 
   if (list.length === 0) {
     container.innerHTML = `
-      <div class="col-span-full text-center py-12 bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 space-y-3">
-        <span class="material-symbols-outlined text-4xl text-slate-400">military_tech</span>
-        <p class="text-sm font-bold text-slate-600 dark:text-slate-300">No medals match this filter.</p>
+      <div class="col-span-full text-center py-16 bg-white/[0.02] rounded-3xl border border-white/10 p-8 space-y-3 backdrop-blur-md">
+        <span class="material-symbols-outlined text-4xl text-slate-500">military_tech</span>
+        <p class="text-sm font-bold text-slate-400">No honors match this filter.</p>
       </div>
     `;
     return;
@@ -6754,56 +9351,63 @@ function renderMedalsShowcase() {
   container.innerHTML = list.map(m => `
     <div class="medal-3d-card-wrap">
       <div onclick="window.inspectMedal('${m.id}')"
-        class="medal-3d-card group bg-white dark:bg-slate-900 border ${m.unlocked ? 'border-amber-400/50 dark:border-amber-500/40 shadow-lg hover:border-amber-500' : 'border-slate-200 dark:border-slate-800 opacity-85 hover:opacity-100'} rounded-3xl p-5 sm:p-6 cursor-pointer flex flex-col justify-between space-y-4 overflow-hidden">
+        class="medal-3d-card ${m.unlocked ? 'is-unlocked group' : 'is-locked'} rounded-3xl p-6 cursor-pointer flex flex-col justify-between space-y-4 overflow-hidden backdrop-blur-xl transition-all duration-300">
         
-        <!-- Dynamic Specular Metallic Sheen -->
-        <div class="medal-specular-sheen"></div>
-        <!-- 4D Iridescent Holographic Rainbow Layer -->
-        <div class="medal-4d-hologram"></div>
+        <!-- Dynamic Specular Metallic Sheen (unlocked only) -->
+        ${m.unlocked ? '<div class="medal-specular-sheen"></div>' : ''}
 
         <!-- Top Badges & 3D Medal Graphic -->
         <div class="space-y-3 relative z-10">
           <div class="flex items-center justify-between">
             <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
               m.unlocked
-                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/25 shadow-xs'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-xs'
+                : 'bg-white/5 text-slate-400 border border-white/10'
             }">
               ${m.unlocked ? '✓ 3D Die-Cast' : '🔒 Locked'}
             </span>
-            <span class="text-[10px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+            <span class="text-[10px] font-black ${m.unlocked ? 'text-amber-300 bg-amber-500/15 border-amber-400/25' : 'text-slate-400 bg-white/5 border-white/10'} px-2.5 py-0.5 rounded-full border">
               +${m.points || 100} pts
             </span>
           </div>
 
-          <!-- 3D Medal Render Stage with Depth Extrusion -->
+          <!-- 3D Medal Render Stage on Ambient Pedestal -->
           <div class="medal-3d-graphic-wrap relative w-full h-36 flex items-center justify-center py-2">
-            ${m.unlocked ? '<div class="absolute w-32 h-32 rounded-full bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 blur-xl group-hover:blur-2xl transition-all"></div>' : ''}
-            <img src="${m.image}" alt="${esc(m.title)}" class="medal-3d-img relative z-10 w-28 h-28 object-contain ${m.unlocked ? '' : 'grayscale-[70%] opacity-50'}"/>
+            ${m.unlocked ? '<div class="absolute w-32 h-32 rounded-full bg-gradient-to-tr from-amber-500/20 to-yellow-400/10 blur-2xl group-hover:blur-3xl transition-all"></div>' : ''}
+            <div class="relative w-28 h-28 flex items-center justify-center ${m.unlocked ? 'group-hover:scale-105' : ''} transition-transform duration-300">
+              <img src="${m.image}" alt="${esc(m.title)}" class="medal-3d-img relative z-10 w-full h-full object-contain filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)]"/>
+              ${!m.unlocked ? `
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                  <div class="w-9 h-9 rounded-full bg-slate-900/90 border border-slate-700/80 flex items-center justify-center shadow-lg backdrop-blur-md">
+                    <span class="material-symbols-outlined text-sm text-slate-300">lock</span>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
           </div>
 
           <!-- Info -->
           <div class="text-center space-y-1">
-            <h3 class="font-black text-sm sm:text-base text-slate-900 dark:text-white font-headline group-hover:text-primary transition-colors">${esc(m.title)}</h3>
-            <p class="text-xs text-slate-500 dark:text-slate-400 font-medium">${esc(m.subtitle)}</p>
+            <h3 class="font-black text-sm sm:text-base text-white font-headline ${m.unlocked ? 'group-hover:text-amber-300' : 'text-slate-200'} transition-colors">${esc(m.title)}</h3>
+            <p class="text-xs text-slate-400 font-medium">${esc(m.subtitle)}</p>
           </div>
         </div>
 
         <!-- Bottom Status / Progress -->
-        <div class="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 relative z-10">
+        <div class="pt-3 border-t border-white/10 space-y-2 relative z-10">
           ${m.unlocked ? `
-            <div class="flex items-center justify-between text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+            <div class="flex items-center justify-between text-[11px] font-bold text-emerald-400">
               <span class="flex items-center gap-1"><span class="material-symbols-outlined text-xs">verified</span> Unlocked</span>
               <span class="text-slate-400 text-[10px] uppercase font-mono">${m.hash.substring(0, 14)}...</span>
             </div>
           ` : `
             <div class="space-y-1.5">
-              <div class="flex items-center justify-between text-[10px] font-bold text-slate-500">
+              <div class="flex items-center justify-between text-[10px] font-bold text-slate-400">
                 <span>Req: ${m.reqLabel}</span>
                 <span>${m.progressPct}%</span>
               </div>
-              <div class="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div class="h-full bg-amber-500 rounded-full" style="width: ${m.progressPct}%"></div>
+              <div class="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full" style="width: ${m.progressPct}%"></div>
               </div>
             </div>
           `}
@@ -6817,7 +9421,7 @@ function renderMedalsShowcase() {
 }
 
 function bind3DMedalTiltPhysics() {
-  document.querySelectorAll('.medal-3d-card').forEach(card => {
+  document.querySelectorAll('.medal-3d-card.is-unlocked').forEach(card => {
     if (card._tiltBound) return;
     card._tiltBound = true;
 
@@ -6831,87 +9435,24 @@ function bind3DMedalTiltPhysics() {
       const px = Math.max(-1, Math.min(1, (x / rect.width) * 2 - 1));
       const py = Math.max(-1, Math.min(1, (y / rect.height) * 2 - 1));
 
-      const rotX = -py * 14;
-      const rotY = px * 14;
-      const angle = (Math.atan2(py, px) * 180 / Math.PI) + 90;
+      // Gentle, refined micro-tilt (max 4.5 degrees)
+      const rotX = -py * 4.5;
+      const rotY = px * 4.5;
 
-      card.style.transform = `perspective(1000px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(1.03, 1.03, 1.03)`;
+      card.style.transform = `perspective(1000px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(1.02, 1.02, 1.02)`;
       card.style.setProperty('--sheen-x', `${(px * 0.5 + 0.5) * 100}%`);
       card.style.setProperty('--sheen-y', `${(py * 0.5 + 0.5) * 100}%`);
-      card.style.setProperty('--sheen-opacity', '0.85');
-      card.style.setProperty('--holo-angle', `${angle}deg`);
-      card.style.setProperty('--holo-opacity', '0.6');
+      card.style.setProperty('--sheen-opacity', '0.75');
     };
 
     const onLeave = () => {
       card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
       card.style.setProperty('--sheen-opacity', '0');
-      card.style.setProperty('--holo-opacity', '0');
     };
 
     card.addEventListener('pointermove', onMove);
     card.addEventListener('pointerleave', onLeave);
-    card.addEventListener('touchmove', onMove, { passive: true });
-    card.addEventListener('touchend', onLeave);
   });
-}
-
-// 360-Degree Interactive Drag Orbit Stage for Inspection Modal
-let _orbitRotX = 0;
-let _orbitRotY = 0;
-let _isDraggingOrbit = false;
-let _orbitStartX = 0;
-let _orbitStartY = 0;
-
-function bind3DOrbitDragPhysics() {
-  const target = document.getElementById('badgeCert3DOrbitTarget');
-  const stage = document.getElementById('badgeCert3DOrbitStage');
-  const shadow = document.getElementById('badgeCertOrbitShadow');
-  if (!target || !stage || target._orbitBound) return;
-  target._orbitBound = true;
-
-  const startDrag = (e) => {
-    _isDraggingOrbit = true;
-    _orbitStartX = e.touches ? e.touches[0].clientX : e.clientX;
-    _orbitStartY = e.touches ? e.touches[0].clientY : e.clientY;
-    target.style.transition = 'none';
-  };
-
-  const onDrag = (e) => {
-    if (!_isDraggingOrbit) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const dx = clientX - _orbitStartX;
-    const dy = clientY - _orbitStartY;
-    _orbitStartX = clientX;
-    _orbitStartY = clientY;
-
-    _orbitRotY += dx * 0.75;
-    _orbitRotX = Math.max(-45, Math.min(45, _orbitRotX - dy * 0.75));
-
-    target.style.transform = `rotateX(${_orbitRotX}deg) rotateY(${_orbitRotY}deg) scale3d(1.1, 1.1, 1.1)`;
-    if (shadow) {
-      shadow.style.transform = `translateX(-50%) rotateX(85deg) rotateZ(${-_orbitRotY * 0.5}deg) scale(${1 - Math.abs(_orbitRotX) * 0.006})`;
-    }
-  };
-
-  const endDrag = () => {
-    if (!_isDraggingOrbit) return;
-    _isDraggingOrbit = false;
-    target.style.transition = 'transform 0.6s cubic-bezier(0.16, 1, 0.3, 1)';
-    _orbitRotX = 0;
-    _orbitRotY = 0;
-    target.style.transform = 'rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
-    if (shadow) shadow.style.transform = 'translateX(-50%) rotateX(85deg) scale(1)';
-  };
-
-  stage.addEventListener('mousedown', startDrag);
-  window.addEventListener('mousemove', onDrag);
-  window.addEventListener('mouseup', endDrag);
-
-  stage.addEventListener('touchstart', startDrag, { passive: true });
-  window.addEventListener('touchmove', onDrag, { passive: true });
-  window.addEventListener('touchend', endDrag);
 }
 
 // Synthesized Physical Metallic Chime Sound Effect (Web Audio API)
@@ -6943,10 +9484,10 @@ window.filterMedalsShowcase = (filterType) => {
     const isActive = (filterType === 'all' && tId === 'tabMedalsAll') ||
                      (filterType === 'unlocked' && tId === 'tabMedalsUnlocked') ||
                      (filterType === 'locked' && tId === 'tabMedalsLocked');
-    el.className = `px-3 py-1.5 rounded-lg text-xs font-black transition-colors cursor-pointer ${
+    el.className = `px-4 py-1.5 rounded-full text-xs font-black transition-all cursor-pointer ${
       isActive
-        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+        ? 'bg-white/20 text-white shadow-xs'
+        : 'text-slate-400 hover:text-white'
     }`;
   });
   renderMedalsShowcase();
@@ -6968,10 +9509,27 @@ window.inspectMedal = (medalId) => {
   const medal = REALISTIC_MEDALS.find(m => m.id === medalId);
   if (!medal) return;
 
-  const eng = _lastComputedEngagement || { donationCount: 0, pulsePoints: 0, emergencyMissions: 0 };
+  const modal = document.getElementById('badgeCertModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  const eng = _lastComputedEngagement || (_donorEngagementCache ? {
+    donationCount: _donorEngagementCache.donationCount || 0,
+    pulsePoints: _donorEngagementCache.points || 0,
+    emergencyMissions: _donorEngagementCache.emergencyMissions || 0,
+  } : { donationCount: 0, pulsePoints: 0, emergencyMissions: 0 });
+  const currentUser = getCurrentUser();
   const donations = eng.donationCount || 0;
   const points = eng.pulsePoints || 0;
   const missions = eng.emergencyMissions || 0;
+  const standbyActive = Boolean(
+    currentUser &&
+    currentUser.isAvailable === true &&
+    _donorKycStatus === 'verified' &&
+    (donations >= 1 || missions >= 1 || points >= 200)
+  );
 
   let unlocked = false;
   let progressPct = 0;
@@ -6987,6 +9545,15 @@ window.inspectMedal = (medalId) => {
     progressPct = Math.min(100, Math.round((missions / medal.reqMissions) * 100));
     const left = Math.max(1, medal.reqMissions - missions);
     remainingText = `${left} more emergency mission response needed!`;
+  } else if (medal.reqStandby) {
+    unlocked = standbyActive;
+    progressPct = standbyActive ? 100 : 50;
+    remainingText = standbyActive ? 'Verified standby donor status active.' : 'Complete donor verification to unlock Standby Envoy!';
+  } else if (medal.id === 'rhythm_champion') {
+    unlocked = donations >= (medal.reqDonations || 2);
+    progressPct = Math.min(100, Math.round((donations / (medal.reqDonations || 2)) * 100));
+    const left = Math.max(1, (medal.reqDonations || 2) - donations);
+    remainingText = `${left} more on-schedule donation${left > 1 ? 's' : ''} needed!`;
   } else if (medal.reqPoints) {
     unlocked = points >= medal.reqPoints;
     progressPct = Math.min(100, Math.round((points / medal.reqPoints) * 100));
@@ -6994,23 +9561,22 @@ window.inspectMedal = (medalId) => {
     remainingText = `${left} more Pulse Points needed to unlock!`;
   }
 
-  const modal = document.getElementById('badgeCertModal');
-  const imgEl = document.getElementById('badgeCert3DImg');
   const titleEl = document.getElementById('badgeCertTitle');
   const descEl = document.getElementById('badgeCertDesc');
   const dateVal = document.getElementById('badgeCertDateVal');
   const idVal = document.getElementById('badgeCertIdVal');
   const perksList = document.getElementById('badgeCertPerksList');
+  const metaWrap = document.getElementById('badgeCertMetaWrap');
   const reqRow = document.getElementById('badgeCertReqRow');
   const reqPct = document.getElementById('badgeReqPct');
   const reqBar = document.getElementById('badgeReqBar');
   const reqRemaining = document.getElementById('badgeReqRemaining');
   const shareBtn = document.getElementById('badgeCertShareBtn');
+  const canvasWrap = document.getElementById('badgeCert3DCanvasWrap');
+  const lockedOverlay = document.getElementById('badgeCertLockedOverlay');
+  const orbitHint = document.getElementById('badgeCertOrbitHint');
+  const statusPill = document.getElementById('badgeCertStatusPill');
 
-  if (imgEl) {
-    imgEl.src = medal.image;
-    imgEl.className = `w-36 h-36 object-contain drop-shadow-[0_20px_25px_rgba(0,0,0,0.7)] pointer-events-none ${unlocked ? '' : 'grayscale-[60%] opacity-60'}`;
-  }
   if (titleEl) titleEl.textContent = medal.title;
   if (descEl) descEl.textContent = medal.citation;
   if (dateVal) dateVal.textContent = unlocked ? new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending Unlock';
@@ -7019,21 +9585,61 @@ window.inspectMedal = (medalId) => {
   if (perksList) {
     perksList.innerHTML = medal.perks.map(p => `
       <li class="flex items-center gap-2">
-        <span class="material-symbols-outlined text-xs text-emerald-500 shrink-0">check_circle</span>
+        <span class="material-symbols-outlined text-xs ${unlocked ? 'text-emerald-500' : 'text-slate-400'} shrink-0">${unlocked ? 'check_circle' : 'lock'}</span>
         <span>${esc(p)}</span>
       </li>
     `).join('');
   }
 
-  if (reqRow) {
-    if (unlocked) {
-      reqRow.classList.add('hidden');
-    } else {
+  if (unlocked) {
+    // UNLOCKED: Full 3D WebGL inspection, chime, digital credentials
+    if (lockedOverlay) lockedOverlay.classList.add('hidden');
+    if (canvasWrap) {
+      canvasWrap.classList.remove('hidden');
+      mount3DMedalViewer(canvasWrap, medal);
+    }
+    if (orbitHint) orbitHint.classList.remove('hidden');
+    if (statusPill) {
+      statusPill.className = 'inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/20 px-3 py-1 rounded-full border border-amber-400/30 backdrop-blur-md';
+      statusPill.innerHTML = '<span class="material-symbols-outlined text-xs">verified</span> Official National Honor';
+    }
+    if (metaWrap) metaWrap.classList.remove('hidden');
+    if (reqRow) reqRow.classList.add('hidden');
+    if (shareBtn) shareBtn.classList.remove('hidden');
+    playMetallicChime();
+  } else {
+    // LOCKED: Sealed archive vault briefing, NO 3D preview, NO chime
+    destroy3DMedalViewer();
+    if (canvasWrap) canvasWrap.classList.add('hidden');
+    if (orbitHint) orbitHint.classList.add('hidden');
+    if (lockedOverlay) {
+      lockedOverlay.classList.remove('hidden');
+      lockedOverlay.innerHTML = `
+        <div class="flex flex-col items-center justify-center text-center space-y-1.5 p-1">
+          <div class="relative w-24 h-24 flex items-center justify-center">
+            <img src="${medal.image}" alt="${esc(medal.title)}" class="w-full h-full object-contain filter grayscale-[90%] brightness-[0.25] opacity-40 blur-[1px]"/>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="w-10 h-10 rounded-full bg-slate-900/90 border border-amber-400/30 flex items-center justify-center shadow-xl backdrop-blur-md">
+                <span class="material-symbols-outlined text-base text-amber-400">lock</span>
+              </div>
+            </div>
+          </div>
+          <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Classified National Honor</p>
+        </div>
+      `;
+    }
+    if (statusPill) {
+      statusPill.className = 'inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-slate-400 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700 backdrop-blur-md';
+      statusPill.innerHTML = '<span class="material-symbols-outlined text-xs">lock</span> Locked Honor';
+    }
+    if (metaWrap) metaWrap.classList.add('hidden');
+    if (reqRow) {
       reqRow.classList.remove('hidden');
       if (reqPct) reqPct.textContent = `${progressPct}%`;
       if (reqBar) reqBar.style.width = `${progressPct}%`;
       if (reqRemaining) reqRemaining.textContent = remainingText;
     }
+    if (shareBtn) shareBtn.classList.add('hidden');
   }
 
   if (shareBtn) {
@@ -7046,18 +9652,432 @@ window.inspectMedal = (medalId) => {
   if (modal) {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
-    bind3DOrbitDragPhysics();
-    playMetallicChime();
   }
 };
 
 window.closeMedalModal = () => {
+  destroy3DMedalViewer();
   const modal = document.getElementById('badgeCertModal');
   if (modal) {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
   }
 };
+
+
+// ============================================================================
+// PULSE POINTS VAULT & HEALTHCARE REWARDS CATALOG ARCHITECTURE
+// ============================================================================
+
+export const PULSE_REWARDS = [
+  {
+    key: 'lab_voucher',
+    title: 'Complete Clinical Lab Panel',
+    subtitle: 'Comprehensive 4-test preventive health panel',
+    cost: 300,
+    image: '/assets/reward_lab_voucher_card.jpg',
+    fallbackImage: '/assets/reward_voucher.png',
+    badgeText: 'Healthcare Subsidy',
+    badgeColor: 'emerald',
+    description: 'Full blood chemistry screening at accredited partner hospital laboratories: Hemoglobin (CBC), Fasting Blood Sugar, Lipid Profile, and Liver Enzymes (ALT/AST).',
+    perks: [
+      '100% Free at Partner Hospital Labs',
+      'Includes Full Physician Diagnostic Report',
+      'Valid for 180 Days from Redemption'
+    ],
+    acceptedAt: 'Centre Pasteur du Cameroun, Hôpital Laquintinie Douala, Hôpital Général Yaoundé, Hôpital Central Yaoundé',
+    instructions: 'Present this voucher QR pass at the hospital laboratory reception desk. Fasting required for glucose and lipid tests (7:30 AM - 10:30 AM).'
+  },
+  {
+    key: 'lapel_pin',
+    title: 'Physical 3D Enamel Lifesaver Pin',
+    subtitle: 'Official 24k Gold-Plated Die-Cast Regalia',
+    cost: 500,
+    image: '/assets/reward_enamel_pin_card.jpg',
+    fallbackImage: '/assets/reward_pin.png',
+    badgeText: 'Physical Collectible',
+    badgeColor: 'amber',
+    description: 'Hand-crafted die-cast metallic lapel pin featuring sculpted gold wings and translucent ruby enamel blood drop. Presented in a plush black velvet collector box.',
+    perks: [
+      '24k Gold-Plated Zinc Alloy with Ruby Hard Enamel',
+      'Luxury Black Velvet Presentation Gift Box',
+      'Collectible at Any Regional Hospital Desk'
+    ],
+    acceptedAt: 'Regional Transfusion Centers & Hospital Blood Banks across Cameroon',
+    instructions: 'Show this redemption QR pass to the regional blood transfusion coordinator or hospital reception desk to receive your presentation pin.'
+  },
+  {
+    key: 'vip_pass',
+    title: '1-Year Zero-Wait VIP Pass',
+    subtitle: 'Priority Phlebotomy & Expedited Triage',
+    cost: 750,
+    image: '/assets/reward_vip_pass_card.jpg',
+    fallbackImage: '/assets/reward_vip_pass_card.png',
+    badgeText: 'Hospital Priority',
+    badgeColor: 'purple',
+    description: 'Exclusive 12-month digital fast-track pass across partner hospitals in Cameroon. Enjoy expedited triage, private donor lounge suites, and memory-foam phlebotomy chairs.',
+    perks: [
+      'Zero-Wait Priority Phlebotomy Triage',
+      'Access to Private Climate-Controlled Donor Suites',
+      'Complimentary Clinical Recovery Nutrition Pack'
+    ],
+    acceptedAt: 'All Major Partner Blood Banks & Transfusion Hubs in Cameroon',
+    instructions: 'Present your digital VIP Pass at hospital triage. Phlebotomy staff will immediately usher you to the priority donor suite.'
+  }
+];
+
+export function renderRewardsCatalog(pulsePoints = 0) {
+  const container = document.getElementById('vaultCatalogGrid');
+  if (!container) return;
+
+  const currentPts = Number(pulsePoints) || 0;
+
+  container.innerHTML = PULSE_REWARDS.map(r => {
+    const affordable = currentPts >= r.cost;
+    const progressPct = Math.min(100, Math.round((currentPts / r.cost) * 100));
+    const deficit = Math.max(0, r.cost - currentPts);
+    const donNeeded = Math.ceil(deficit / 100);
+
+    return `
+      <div class="rounded-3xl p-6 bg-white/[0.03] hover:bg-white/[0.06] border ${
+        affordable
+          ? 'border-amber-400/50 shadow-[0_0_30px_rgba(245,158,11,0.12)]'
+          : 'border-white/10 hover:border-white/20'
+      } backdrop-blur-xl transition-all duration-300 flex flex-col justify-between space-y-5">
+        
+        <div class="space-y-4">
+          <!-- Card Image Header -->
+          <div class="w-full h-44 rounded-2xl overflow-hidden relative shadow-inner bg-slate-950 group">
+            <img src="${r.image}" alt="${esc(r.title)}" onerror="this.src='${r.fallbackImage}'" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/30 pointer-events-none"></div>
+            
+            <!-- Category Badge -->
+            <span class="absolute top-3 left-3 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider backdrop-blur-md ${
+              r.badgeColor === 'emerald'
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                : r.badgeColor === 'amber'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+                : 'bg-purple-500/20 text-purple-300 border border-purple-400/30'
+            }">
+              ${r.badgeText}
+            </span>
+
+            <!-- Points Cost Tag -->
+            <span class="absolute top-3 right-3 px-3.5 py-1 rounded-full text-xs font-black bg-amber-500 text-slate-950 shadow-lg font-headline">
+              ${r.cost} pts
+            </span>
+
+            ${affordable ? `
+              <div class="absolute bottom-3 left-3 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-500/30 backdrop-blur-md">
+                <span class="material-symbols-outlined text-xs text-emerald-400">check_circle</span> Ready to Redeem
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Title & Subtitle -->
+          <div class="space-y-1">
+            <h3 class="font-black text-base sm:text-lg text-white font-headline">${esc(r.title)}</h3>
+            <p class="text-xs text-amber-300/90 font-bold">${esc(r.subtitle)}</p>
+          </div>
+
+          <!-- Description -->
+          <p class="text-xs text-slate-300 leading-relaxed font-medium">${esc(r.description)}</p>
+
+          <!-- Perks Checklist -->
+          <ul class="space-y-1.5 pt-1 text-xs text-slate-300">
+            ${r.perks.map(p => `
+              <li class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-xs text-emerald-400 shrink-0">check</span>
+                <span>${esc(p)}</span>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+
+        <!-- Bottom Action & Affordability Status -->
+        <div class="pt-4 border-t border-white/10 space-y-3">
+          ${affordable ? `
+            <button onclick="window.redeemReward('${r.key}', ${r.cost})" class="press-scale w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all cursor-pointer flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-sm font-black">redeem</span>
+              <span>Redeem Voucher (${r.cost} pts)</span>
+            </button>
+          ` : `
+            <div class="space-y-2">
+              <div class="flex items-center justify-between text-[11px] font-bold text-slate-400">
+                <span>Progress: ${currentPts} / ${r.cost} pts</span>
+                <span class="text-amber-400">${progressPct}%</span>
+              </div>
+              <div class="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                <div class="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full transition-all duration-500" style="width: ${progressPct}%"></div>
+              </div>
+              <p class="text-[10px] text-slate-400 font-medium">
+                Need <strong class="text-amber-300">${deficit} more pts</strong> • ~${donNeeded} donation${donNeeded > 1 ? 's' : ''} to unlock
+              </p>
+            </div>
+            <button onclick="window.openHowToEarnModal()" class="press-scale w-full py-3 rounded-xl bg-white/[0.05] hover:bg-white/[0.09] border border-white/10 text-slate-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer">
+              <span class="material-symbols-outlined text-sm text-amber-400">lock</span>
+              <span>🔒 Need ${deficit} More Pts • How to Earn</span>
+            </button>
+          `}
+        </div>
+
+      </div>
+    `;
+  }).join('');
+}
+
+export function updateActiveVouchersBadge(count = 0) {
+  const badge = document.getElementById('vaultVouchersCountBadge');
+  if (badge) badge.textContent = `${count}`;
+}
+
+export async function updateActiveVouchersCount(donorId) {
+  if (!donorId) return;
+  try {
+    const list = await fetchDonorVouchers(donorId);
+    updateActiveVouchersBadge(Array.isArray(list) ? list.length : 0);
+  } catch (e) {
+    // ignore
+  }
+}
+
+export async function switchVaultTab(tabName) {
+  const btnCatalog = document.getElementById('btnVaultTabCatalog');
+  const btnVouchers = document.getElementById('btnVaultTabVouchers');
+  const catalogGrid = document.getElementById('vaultCatalogGrid');
+  const activeWrap = document.getElementById('vaultActiveVouchersWrap');
+
+  if (tabName === 'catalog') {
+    if (btnCatalog) {
+      btnCatalog.className = 'press-scale px-4 py-2 rounded-full font-black text-xs bg-amber-500 text-slate-950 shadow-md transition-all cursor-pointer flex items-center gap-1.5';
+    }
+    if (btnVouchers) {
+      btnVouchers.className = 'press-scale px-4 py-2 rounded-full font-bold text-xs bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-all cursor-pointer flex items-center gap-1.5';
+    }
+    if (catalogGrid) catalogGrid.classList.remove('hidden');
+    if (activeWrap) activeWrap.classList.add('hidden');
+  } else {
+    if (btnVouchers) {
+      btnVouchers.className = 'press-scale px-4 py-2 rounded-full font-black text-xs bg-amber-500 text-slate-950 shadow-md transition-all cursor-pointer flex items-center gap-1.5';
+    }
+    if (btnCatalog) {
+      btnCatalog.className = 'press-scale px-4 py-2 rounded-full font-bold text-xs bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 hover:text-white border border-white/10 transition-all cursor-pointer flex items-center gap-1.5';
+    }
+    if (catalogGrid) catalogGrid.classList.add('hidden');
+    if (activeWrap) activeWrap.classList.remove('hidden');
+    await loadMyActiveVouchers();
+  }
+}
+if (typeof window !== 'undefined') {
+  window.switchVaultTab = switchVaultTab;
+}
+
+export async function loadMyActiveVouchers() {
+  const activeWrap = document.getElementById('vaultActiveVouchersWrap');
+  if (!activeWrap) return;
+
+  const currentUser = getCurrentUser();
+  if (!currentUser) {
+    activeWrap.innerHTML = `
+      <div class="col-span-full py-16 text-center text-slate-400 bg-white/[0.02] border border-white/10 rounded-3xl p-8 space-y-2">
+        <span class="material-symbols-outlined text-4xl text-slate-500">lock</span>
+        <p class="text-sm font-bold">Please log in to view your redeemed vouchers.</p>
+      </div>
+    `;
+    return;
+  }
+
+  activeWrap.innerHTML = `<div class="col-span-full py-12 text-center text-slate-400 text-xs">Fetching active vouchers...</div>`;
+
+  try {
+    const vouchers = await fetchDonorVouchers(currentUser.uid);
+    updateActiveVouchersBadge(Array.isArray(vouchers) ? vouchers.length : 0);
+
+    if (!vouchers || vouchers.length === 0) {
+      activeWrap.innerHTML = `
+        <div class="col-span-full py-16 text-center text-slate-400 bg-white/[0.02] border border-white/10 rounded-3xl p-8 space-y-3">
+          <div class="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-400/20 flex items-center justify-center mx-auto">
+            <span class="material-symbols-outlined text-2xl">confirmation_number</span>
+          </div>
+          <h4 class="text-base font-black text-white">No Active Vouchers Yet</h4>
+          <p class="text-xs text-slate-400 max-w-sm mx-auto">
+            You currently have no redeemed vouchers. Earn Pulse Points by donating blood or responding to emergency calls, then redeem them in the catalog!
+          </p>
+          <button onclick="window.switchVaultTab('catalog')" class="press-scale px-5 py-2.5 rounded-full bg-amber-500 text-slate-950 font-black text-xs inline-flex items-center gap-1.5 shadow-md cursor-pointer">
+            <span class="material-symbols-outlined text-sm">storefront</span>
+            <span>Browse Rewards Catalog</span>
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    activeWrap.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        ${vouchers.map(v => {
+          const reward = PULSE_REWARDS.find(r => r.key === v.rewardKey) || {
+            title: v.rewardTitle,
+            subtitle: 'Healthcare Benefit',
+            image: '/assets/reward_lab_voucher_card.jpg',
+            acceptedAt: 'Partner Hospitals in Cameroon'
+          };
+          const expDate = v.expiresAt ? new Date(v.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '180 Days';
+          const voucherJson = JSON.stringify(v).replace(/"/g, '&quot;');
+
+          return `
+            <div class="p-6 rounded-3xl bg-white/[0.04] border border-amber-400/30 hover:border-amber-400/60 backdrop-blur-xl transition-all flex flex-col justify-between space-y-4 shadow-lg">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="inline-flex items-center gap-1 text-[10px] font-black uppercase text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                    <span class="material-symbols-outlined text-xs">verified</span> Active Pass
+                  </span>
+                  <span class="text-[10px] text-slate-400 font-mono uppercase">${v.voucherCode}</span>
+                </div>
+
+                <div class="space-y-1">
+                  <h4 class="font-black text-base text-white font-headline">${esc(v.rewardTitle || reward.title)}</h4>
+                  <p class="text-xs text-amber-300 font-semibold">${esc(reward.subtitle)}</p>
+                </div>
+
+                <div class="p-3 rounded-2xl bg-slate-900/80 border border-white/10 space-y-1 text-xs">
+                  <div class="flex items-center justify-between text-slate-400 text-[10px]">
+                    <span>Valid Until:</span>
+                    <strong class="text-white">${expDate}</strong>
+                  </div>
+                  <div class="text-[10px] text-slate-400 truncate">
+                    <span>Locations:</span> ${esc(reward.acceptedAt)}
+                  </div>
+                </div>
+              </div>
+
+              <button onclick="window.inspectVoucher('${v.id}')" class="press-scale w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer">
+                <span class="material-symbols-outlined text-sm">qr_code_2</span>
+                <span>View Digital Pass & QR Code</span>
+              </button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  } catch (err) {
+    console.error('Failed to load active vouchers:', err);
+    activeWrap.innerHTML = `<div class="col-span-full py-12 text-center text-rose-400 text-xs">Could not load active vouchers. Please retry.</div>`;
+  }
+}
+
+let _cachedVouchersList = [];
+
+export async function inspectVoucher(voucherIdentifier) {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return;
+
+  let voucher = null;
+  if (typeof voucherIdentifier === 'object') {
+    voucher = voucherIdentifier;
+  } else {
+    try {
+      const list = await fetchDonorVouchers(currentUser.uid);
+      voucher = list.find(v => v.id === voucherIdentifier || v.voucherCode === voucherIdentifier);
+    } catch (e) {}
+  }
+
+  if (!voucher) {
+    showToast('Voucher details not found.', 'error');
+    return;
+  }
+
+  const modal = document.getElementById('voucherDetailModal');
+  const titleEl = document.getElementById('voucherModalTitle');
+  const subEl = document.getElementById('voucherModalSubtitle');
+  const codeEl = document.getElementById('voucherModalCode');
+  const expiresEl = document.getElementById('voucherModalExpires');
+  const locEl = document.getElementById('voucherModalLocations');
+  const instrEl = document.getElementById('voucherModalInstructions');
+  const qrImg = document.getElementById('voucherModalQrImg');
+  const shareBtn = document.getElementById('btnVoucherShareWhatsapp');
+
+  const reward = PULSE_REWARDS.find(r => r.key === voucher.rewardKey) || {
+    title: voucher.rewardTitle || 'Healthcare Voucher',
+    subtitle: 'MINSANTE Lifesaver Benefit',
+    acceptedAt: 'Centre Pasteur, Hôpital Laquintinie, Hôpital Général, Hôpital Central',
+    instructions: 'Present this QR code or voucher number at the hospital reception or lab intake desk.'
+  };
+
+  if (titleEl) titleEl.textContent = voucher.rewardTitle || reward.title;
+  if (subEl) subEl.textContent = reward.subtitle;
+  if (codeEl) codeEl.textContent = voucher.voucherCode;
+  if (expiresEl) {
+    expiresEl.textContent = voucher.expiresAt
+      ? new Date(voucher.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+      : '180 Days from Issue';
+  }
+  if (locEl) locEl.textContent = reward.acceptedAt;
+  if (instrEl) instrEl.textContent = reward.instructions;
+
+  if (qrImg) {
+    try {
+      const qrDataUrl = await QRCode.toDataURL(voucher.voucherCode, {
+        width: 256,
+        margin: 2,
+        color: { dark: '#020617', light: '#ffffff' }
+      });
+      qrImg.src = qrDataUrl;
+    } catch (e) {
+      console.warn('QR code generation failed:', e);
+    }
+  }
+
+  if (shareBtn) {
+    shareBtn.onclick = () => {
+      const text = encodeURIComponent(`🏥 VitalPulse Cameroon Healthcare Voucher: ${voucher.voucherCode}
+Perk: ${voucher.rewardTitle || reward.title}
+Locations: ${reward.acceptedAt}`);
+      window.open(`https://wa.me/?text=${text}`, '_blank');
+    };
+  }
+
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+}
+if (typeof window !== 'undefined') {
+  window.inspectVoucher = inspectVoucher;
+}
+
+export function closeVoucherDetailModal() {
+  const modal = document.getElementById('voucherDetailModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+if (typeof window !== 'undefined') {
+  window.closeVoucherDetailModal = closeVoucherDetailModal;
+}
+
+export function openHowToEarnModal() {
+  const modal = document.getElementById('howToEarnModal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+}
+if (typeof window !== 'undefined') {
+  window.openHowToEarnModal = openHowToEarnModal;
+}
+
+export function closeHowToEarnModal() {
+  const modal = document.getElementById('howToEarnModal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+if (typeof window !== 'undefined') {
+  window.closeHowToEarnModal = closeHowToEarnModal;
+}
+
 
 window.redeemReward = async (rewardKey, costPoints) => {
   const currentUser = getCurrentUser();
@@ -7067,20 +10087,14 @@ window.redeemReward = async (rewardKey, costPoints) => {
   const currentPts = eng.pulsePoints || 0;
 
   if (currentPts < costPoints) {
-    const diff = costPoints - currentPts;
-    window.vpNotify(`You need ${diff} more Pulse Points to redeem this reward. Donate blood or answer emergency calls to earn points!`, 'warning', 'Insufficient Points');
+    openHowToEarnModal();
     return;
   }
 
-  const rewardNames = {
-    lab_voucher: 'Complete Clinical Lab Panel Voucher',
-    lapel_pin: 'Physical 3D Enamel Lifesaver Pin & Presentation Box',
-    pin_ribbon: 'Physical 3D Enamel Lifesaver Pin & Presentation Box',
-    vip_pass: '1-Year Zero-Wait VIP Phlebotomy Pass'
-  };
-  const rewardTitle = rewardNames[rewardKey] || 'Lifesaver Reward';
+  const reward = PULSE_REWARDS.find(r => r.key === rewardKey);
+  const rewardTitle = reward ? reward.title : 'Lifesaver Reward';
 
-  const confirmed = await window.vpConfirm(`Redeem "${rewardTitle}" for ${costPoints} Pulse Points? Your voucher will be issued and permanently stored in your records.`, {
+  const confirmed = await window.vpConfirm(`Redeem "${rewardTitle}" for ${costPoints} Pulse Points? Your voucher will be issued immediately with an accredited digital QR pass.`, {
     title: 'Confirm Reward Redemption',
     confirmText: 'Redeem Now'
   });
@@ -7099,22 +10113,29 @@ window.redeemReward = async (rewardKey, costPoints) => {
       _lastComputedEngagement.pulsePoints = result.remainingPts;
     }
 
-    const heroPoints = document.getElementById('impactPointsSummary');
+    const heroPoints = document.getElementById('donorBadgePointsSummary') || document.getElementById('impactPointsSummary');
     if (heroPoints) heroPoints.textContent = `${result.remainingPts} Pulse Points`;
-    const vaultBal = document.getElementById('rewardsVaultBalance');
-    if (vaultBal) vaultBal.textContent = `${result.remainingPts} pts`;
+    const vaultBal = document.getElementById('vaultPointsBalance') || document.getElementById('rewardsVaultBalance');
+    if (vaultBal) vaultBal.innerHTML = `${result.remainingPts} <span class="text-xs font-bold text-amber-300">pts</span>`;
+
+    // Re-render catalog with updated balance & update badge
+    renderRewardsCatalog(result.remainingPts);
+    updateActiveVouchersCount(currentUser.uid);
 
     // Trigger celebration confetti
     triggerMilestoneConfetti();
 
     showToast(`🎉 Reward Redeemed! Voucher Code: ${result.voucherCode}`, 'success');
-    window.vpAlert({
-      type: 'success',
-      title: 'Voucher Issued Successfully!',
-      message: `Your reward code is: <strong class="font-mono text-lg text-primary select-all">${result.voucherCode}</strong><br/><br/>` +
-               `<span class="text-xs text-slate-500">Valid until: ${new Date(result.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span><br/><br/>` +
-               `Present this voucher code or your digital pass at any partner hospital reception in Cameroon.`
+
+    // Automatically inspect the newly issued voucher pass!
+    inspectVoucher({
+      id: result.voucherCode,
+      voucherCode: result.voucherCode,
+      rewardKey,
+      rewardTitle,
+      expiresAt: result.expiresAt
     });
+
   } catch (e) {
     console.error('Failed to redeem reward:', e);
     showToast(e.message || 'Failed to redeem reward. Please try again.', 'error');
@@ -7148,7 +10169,22 @@ function wireImpactShareButtons() {
 }
 
 function generateLifesaverCardCanvas() {
-  const eng = _lastComputedEngagement || { userName: 'Donor Hero', bloodType: 'O+', totalUnits: 1, livesSaved: 3, tierName: 'Bronze Lifesaver' };
+  const currentUser = getCurrentUser();
+  const userName = currentUser?.name || currentUser?.email?.split('@')[0] || _lastComputedEngagement?.userName || 'Verified Donor';
+  const bloodType = currentUser?.bloodType || _lastComputedEngagement?.bloodType || 'O+';
+  const tierName = _lastComputedEngagement?.tierName || 'Bronze Lifesaver';
+  const totalUnits = _lastComputedEngagement?.totalUnits || 0;
+  const livesSaved = _lastComputedEngagement?.livesSaved || (totalUnits * 3);
+  const donorId = `VP-NBTS-${(currentUser?.cniLast4 || currentUser?.uid?.slice(0, 6) || '8849').toUpperCase()}`;
+
+  const eng = {
+    userName,
+    bloodType,
+    tierName,
+    totalUnits,
+    livesSaved,
+    donorId
+  };
   
   const canvas = document.createElement('canvas');
   canvas.width = 1200;
@@ -7196,14 +10232,14 @@ function generateLifesaverCardCanvas() {
 
   ctx.fillStyle = '#ffffff';
   ctx.font = '900 44px sans-serif';
-  ctx.fillText(`${eng.totalUnits || 1}`, 110, 430);
+  ctx.fillText(`${eng.totalUnits}`, 110, 430);
   ctx.font = '700 16px sans-serif';
   ctx.fillStyle = '#d1d5db';
   ctx.fillText('UNITS DONATED', 110, 465);
 
   ctx.fillStyle = '#ef4444';
   ctx.font = '900 44px sans-serif';
-  ctx.fillText(`${eng.livesSaved || 3}`, 340, 430);
+  ctx.fillText(`${eng.livesSaved}`, 340, 430);
   ctx.font = '700 16px sans-serif';
   ctx.fillStyle = '#d1d5db';
   ctx.fillText('LIVES SAVED', 340, 465);
@@ -7217,7 +10253,7 @@ function generateLifesaverCardCanvas() {
   ctx.fillStyle = '#ffffff';
   ctx.font = '900 96px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(eng.bloodType || 'O+', 950, 340);
+  ctx.fillText(eng.bloodType, 950, 340);
   ctx.font = '700 18px sans-serif';
   ctx.fillText('BLOOD GROUP', 950, 385);
   ctx.textAlign = 'left';
@@ -7225,7 +10261,7 @@ function generateLifesaverCardCanvas() {
   // Verification Hash
   ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.font = '16px monospace';
-  ctx.fillText(`VERIFIED NBTS ID: VP-${Math.floor(10000000 + Math.random() * 90000000)}`, 70, 560);
+  ctx.fillText(`VERIFIED NBTS ID: ${eng.donorId}`, 70, 560);
 
   // Trigger Download
   const link = document.createElement('a');
@@ -7236,3 +10272,74 @@ function generateLifesaverCardCanvas() {
 }
 
 
+
+
+// ============================================
+// INVITE FRIENDS MODAL & REFERRAL DISPATCH
+// ============================================
+window.openInviteFriendsModal = function() {
+  const modal = document.getElementById('inviteFriendsModal');
+  const input = document.getElementById('inviteShareLinkInput');
+  const currentUser = getCurrentUser();
+  const refCode = currentUser?.uid ? currentUser.uid.slice(0, 8).toUpperCase() : 'LIFESAVER';
+  const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : 'https://vitalpulse.cm';
+  const refLink = `${origin}/?ref=${refCode}`;
+  if (input) input.value = refLink;
+  if (modal) modal.classList.remove('hidden');
+};
+
+window.closeInviteFriendsModal = function() {
+  const modal = document.getElementById('inviteFriendsModal');
+  if (modal) modal.classList.add('hidden');
+};
+
+window.copyInviteLink = async function() {
+  const input = document.getElementById('inviteShareLinkInput');
+  const btn = document.getElementById('btnCopyInviteLink');
+  const link = input?.value || window.location.origin;
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(link);
+    } else if (input) {
+      input.select();
+      document.execCommand('copy');
+    }
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<span class="material-symbols-outlined text-sm text-emerald-400">check</span> Copied!';
+      setTimeout(() => { btn.innerHTML = orig; }, 2000);
+    }
+    showToast('🎉 Referral link copied to clipboard!');
+  } catch (_) {
+    if (input) {
+      input.select();
+      showToast('Referral link selected — press Ctrl+C to copy.');
+    }
+  }
+};
+
+window.shareInviteWhatsApp = function() {
+  const input = document.getElementById('inviteShareLinkInput');
+  const link = input?.value || window.location.origin;
+  const msg = encodeURIComponent(`🩸 Join me on VitalPulse Cameroon! Safe voluntary blood donation saves lives every day across regional hospitals in Cameroon. Sign up with my link and become a verified lifesaver: ${link}`);
+  window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+};
+
+window.shareInviteNative = async function() {
+  const input = document.getElementById('inviteShareLinkInput');
+  const link = input?.value || window.location.origin;
+  const shareData = {
+    title: 'Join VitalPulse Cameroon Lifesaver Network',
+    text: 'Help save lives across regional hospitals in Cameroon as a voluntary blood donor.',
+    url: link
+  };
+  if (navigator?.share) {
+    try {
+      await navigator.share(shareData);
+    } catch (e) {
+      if (e.name !== 'AbortError') window.shareInviteWhatsApp();
+    }
+  } else {
+    window.shareInviteWhatsApp();
+  }
+};

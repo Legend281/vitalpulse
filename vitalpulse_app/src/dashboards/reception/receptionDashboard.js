@@ -227,6 +227,12 @@ function bindReceptionPasscodeCheckIn() {
         return;
       }
 
+      if (result.isVoucher) {
+        showToast(`🎁 Verified Voucher "${result.rewardTitle}" for ${result.donorName} (${result.code})`);
+        if (inputEl) inputEl.value = '';
+        return;
+      }
+
       showToast(`✅ Checked in ${result.donorName} (${result.code})`);
       if (inputEl) inputEl.value = '';
 

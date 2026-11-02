@@ -277,7 +277,12 @@ export async function fetchMatchedRequestsForDonor(bloodType, location, geo = {}
     results = results.filter(r => {
         const needed = r.bloodType || r.type;
         if (!needed) return false;
-        return getCompatibleDonorTypes(needed, r.componentType || 'Whole Blood').includes(bloodType);
+        if (bloodType && bloodType !== 'Unknown') {
+            return getCompatibleDonorTypes(needed, r.componentType || 'Whole Blood').includes(bloodType);
+        }
+        // Donors with Unknown / unverified blood group can see all urgent, critical, and emergency broadcasts
+        // in their area so they can volunteer as emergency walk-in / replacement donors!
+        return r.urgency === 'critical' || r.urgency === 'urgent' || r.isEmergency === true;
     });
     if (location) {
         // Own city, OR within radius of the donor's real position, OR a
@@ -642,16 +647,18 @@ export async function donorCancelAssignedRequest(requestId, donorId) {
 // DONOR NOTIFICATION SYSTEM (in-app)
 // ============================================
 
-export async function addDonorNotification(donorId, title, message, type = 'info') {
+export async function addDonorNotification(donorId, title, message, type = 'info', view = null) {
     try {
-        await addDoc(collection(db, 'donor_notifications'), {
+        const payload = {
             donorId,
             title,
             message,
             type,
             read: false,
             createdAt: new Date().toISOString()
-        });
+        };
+        if (view) payload.view = view;
+        await addDoc(collection(db, 'donor_notifications'), payload);
     } catch (e) {
         console.warn('Failed to add donor notification:', e);
     }
@@ -2175,12 +2182,30 @@ export async function recordDonationIntake(donationData) {
     // Refresh the donor's tier/points/badges now that this donation counts toward them.
     // Keeping this a cheap field on the user doc (rather than recomputing on every match)
     // is what lets autoMatchDonors sort by tier without an extra query per candidate.
+    let updatedEngagement = null;
     if (donorId) {
         try {
-            const engagement = await computeDonorEngagement(donorId);
-            if (engagement) await saveDonorEngagement(donorId, engagement);
+            updatedEngagement = await computeDonorEngagement(donorId);
+            if (updatedEngagement) await saveDonorEngagement(donorId, updatedEngagement);
         } catch (err) {
             console.warn('Could not refresh donor engagement tier:', err);
+        }
+
+        // Automatically issue an official Life Saver Certificate for this completed donation
+        try {
+            await generateLifeSaverCertificate({
+                donorId,
+                donorName: donorName || 'Verified Lifesaver',
+                hospitalName: hospital,
+                bloodType: intakeType,
+                donationCount: updatedEngagement?.donationCount || 1,
+                unitsDonated: Number(units) || 1,
+                donationId,
+                checkInToken: donationData.checkInToken || ('VP-' + String(donationId).slice(0, 6).toUpperCase()),
+                issuedBy: hospital
+            });
+        } catch (certErr) {
+            console.warn('Could not auto-generate life saver certificate:', certErr);
         }
     }
 
@@ -3124,24 +3149,53 @@ function extractUnits(text) {
 // ============================================
 
 export async function computeDonorEngagement(donorId) {
-    const userDoc = doc(db, 'users', donorId);
-    const snapshot = await getDoc(userDoc);
-    if (!snapshot.exists()) return null;
-
-    const donor = { id: snapshot.id, ...snapshot.data() };
-
-    // Query by donorId AND by cniHash so donation history follows the person across accounts
-    const donationsMap = new Map();
-
-    const byDonorQ = query(
-        collection(db, 'donation_requests'),
-        where('donorId', '==', donorId)
-    );
-    const byDonorSnap = await getDocs(byDonorQ);
-    for (const d of byDonorSnap.docs) {
-        donationsMap.set(d.id, { id: d.id, ...d.data() });
+    if (!donorId) return null;
+    let donor = { id: donorId };
+    try {
+        const userDoc = doc(db, 'users', donorId);
+        const snapshot = await getDoc(userDoc);
+        if (snapshot.exists()) {
+            donor = { id: snapshot.id, ...snapshot.data() };
+        }
+    } catch (e) {
+        console.warn('Could not read user doc for engagement:', e);
     }
 
+    const donationsMap = new Map();
+
+    // 1. Query donation_requests by donorId
+    try {
+        const byDonorQ = query(
+            collection(db, 'donation_requests'),
+            where('donorId', '==', donorId)
+        );
+        const byDonorSnap = await getDocs(byDonorQ);
+        for (const d of byDonorSnap.docs) {
+            donationsMap.set(d.id, { id: d.id, ...d.data() });
+        }
+    } catch (e) {
+        console.warn('Could not fetch donations by donorId:', e);
+    }
+
+    // 2. Query donation_requests by donorEmail
+    if (donor.email) {
+        try {
+            const byEmailQ = query(
+                collection(db, 'donation_requests'),
+                where('donorEmail', '==', donor.email)
+            );
+            const byEmailSnap = await getDocs(byEmailQ);
+            for (const d of byEmailSnap.docs) {
+                if (!donationsMap.has(d.id)) {
+                    donationsMap.set(d.id, { id: d.id, ...d.data() });
+                }
+            }
+        } catch (e) {
+            console.debug('Could not fetch donations by email:', e);
+        }
+    }
+
+    // 3. Query donation_requests by cniHash
     if (donor.cniHash && donor.id) {
         try {
             const byCniQ = query(
@@ -3160,24 +3214,93 @@ export async function computeDonorEngagement(donorId) {
         }
     }
 
+    // 4. Query completed emergency requests in `requests`
+    try {
+        const reqQ = query(
+            collection(db, 'requests'),
+            where('matchedDonor', '==', donorId)
+        );
+        const reqSnap = await getDocs(reqQ);
+        for (const d of reqSnap.docs) {
+            const data = d.data();
+            const s = (data.status || '').toLowerCase();
+            if (s === 'completed' || s === 'donation complete') {
+                if (!donationsMap.has(d.id)) {
+                    donationsMap.set(d.id, { id: d.id, ...data, status: 'completed' });
+                }
+            }
+        }
+    } catch (e) {
+        console.debug('Could not fetch completed requests for donor:', e);
+    }
+
+    // 5. Query completed public requests in `public_requests`
+    try {
+        const pubQ = query(
+            collection(db, 'public_requests'),
+            where('matchedDonor', '==', donorId)
+        );
+        const pubSnap = await getDocs(pubQ);
+        for (const d of pubSnap.docs) {
+            const data = d.data();
+            const s = (data.status || '').toLowerCase();
+            if (s === 'completed' || s === 'donation complete') {
+                if (!donationsMap.has(d.id)) {
+                    donationsMap.set(d.id, { id: d.id, ...data, status: 'completed' });
+                }
+            }
+        }
+    } catch (e) {
+        console.debug('Could not fetch completed public requests for donor:', e);
+    }
+
     const donations = Array.from(donationsMap.values());
-    const completedDonations = donations.filter(d => d.status === 'completed');
+    const isCompleted = (status) => {
+        const s = (status || '').toLowerCase();
+        return s === 'completed' || s === 'donation complete';
+    };
+    const completedDonations = donations.filter(d => isCompleted(d.status));
 
     const donationCount = completedDonations.length;
     const totalUnits = completedDonations.reduce((sum, d) => sum + (d.units || 1), 0);
-    const points = donationCount * 10 + totalUnits * 5;
+    const emergencyMissions = completedDonations.filter(
+        d => d.urgency === 'Critical' || d.urgency === 'Urgent' || d.isEmergency || d.matchedDonor === donorId
+    ).length;
+
+    // Canonical Pulse Points schedule:
+    // +100 pts per unit donated + 50 pts punctual/verified draw bonus per donation + 50 pts per emergency mission
+    const earnedPoints = donationCount * 50 + totalUnits * 100 + emergencyMissions * 50;
+
+    // Deduct points spent on redeemed rewards in the `vouchers` collection
+    let spentPoints = 0;
+    try {
+        const voucherSnap = await getDocs(query(
+            collection(db, 'vouchers'),
+            where('donorId', '==', donorId)
+        ));
+        spentPoints = voucherSnap.docs.reduce((sum, v) => sum + (Number(v.data()?.costPoints) || 0), 0);
+    } catch (e) {
+        console.debug('Could not fetch donor vouchers for points calculation:', e);
+    }
+
+    const basePoints = earnedPoints > 0
+        ? earnedPoints
+        : (typeof donor.points === 'number' ? donor.points : 0);
+    const points = Math.max(0, basePoints - spentPoints);
 
     let tier = 'Bronze';
     let tierIcon = 'shield';
     let tierColor = '#CD7F32';
     let nextTier = 'Silver';
-    let nextTierProgress = Math.min(100, (donationCount / 5) * 100);
-    if (donationCount >= 20) { tier = 'Platinum'; tierIcon = 'diamond'; tierColor = '#94A3B8'; nextTier = null; nextTierProgress = 100; }
-    else if (donationCount >= 10) { tier = 'Gold'; tierIcon = 'stars'; tierColor = '#FFD700'; nextTier = 'Platinum'; nextTierProgress = ((donationCount - 10) / 10) * 100; }
-    else if (donationCount >= 5) { tier = 'Silver'; tierIcon = 'workspace_premium'; tierColor = '#C0C0C0'; nextTier = 'Gold'; nextTierProgress = ((donationCount - 5) / 5) * 100; }
+    let nextTierProgress = Math.min(100, Math.round((donationCount / 3) * 100));
+    if (donationCount >= 20) { tier = 'Diamond'; tierIcon = 'diamond'; tierColor = '#38BDF8'; nextTier = null; nextTierProgress = 100; }
+    else if (donationCount >= 10) { tier = 'Platinum'; tierIcon = 'diamond'; tierColor = '#94A3B8'; nextTier = 'Diamond'; nextTierProgress = Math.round(((donationCount - 10) / 10) * 100); }
+    else if (donationCount >= 5) { tier = 'Gold'; tierIcon = 'stars'; tierColor = '#FFD700'; nextTier = 'Platinum'; nextTierProgress = Math.round(((donationCount - 5) / 5) * 100); }
+    else if (donationCount >= 3) { tier = 'Silver'; tierIcon = 'workspace_premium'; tierColor = '#C0C0C0'; nextTier = 'Gold'; nextTierProgress = Math.round(((donationCount - 3) / 2) * 100); }
 
     const badges = [];
     if (donationCount >= 1) badges.push({ name: 'First Donation', icon: 'favorite', color: '#EF4444' });
+    if (donationCount >= 3) badges.push({ name: 'Silver Sentinel', icon: 'workspace_premium', color: '#C0C0C0' });
     if (donationCount >= 5) badges.push({ name: 'Regular Donor', icon: 'repeat', color: '#8B5CF6' });
     if (donationCount >= 10) badges.push({ name: 'Life Saver', icon: 'favorite', color: '#FFD700' });
     if (donationCount >= 20) badges.push({ name: 'Guardian Angel', icon: 'shield', color: '#14B8A6' });
@@ -3187,6 +3310,9 @@ export async function computeDonorEngagement(donorId) {
     return {
         donationCount,
         totalUnits,
+        emergencyMissions,
+        earnedPoints,
+        spentPoints,
         points,
         tier,
         tierIcon,
@@ -3280,6 +3406,67 @@ export async function fetchDonorVouchers(donorId) {
         console.warn('Could not fetch vouchers:', e);
         return [];
     }
+}
+
+/**
+ * Look up a Pulse Points reward voucher by its `VP-VOUCHER-XXXXXX` code.
+ * Used at hospital reception / lab desks and admin portals to verify donor rewards.
+ */
+export async function findVoucherByCode(voucherCode) {
+    const normalized = (voucherCode || '').trim().toUpperCase();
+    if (!normalized) return null;
+    const snap = await getDocs(query(
+        collection(db, 'vouchers'),
+        where('voucherCode', '==', normalized),
+        limit(5)
+    ));
+    if (snap.empty) return null;
+    const d = snap.docs[0];
+    return { id: d.id, ...d.data() };
+}
+
+/**
+ * Verify and mark a donor's Pulse Points reward voucher as redeemed (`used`) at a hospital desk.
+ */
+export async function verifyAndRedeemDonorVoucher(voucherId, hospitalName, staffUid = null) {
+    if (!voucherId) throw new Error('Voucher ID is required');
+    const voucherRef = doc(db, 'vouchers', voucherId);
+    const snap = await getDoc(voucherRef);
+    if (!snap.exists()) throw new Error('Voucher not found');
+    const data = snap.data();
+    if (data.status === 'used') {
+        throw new Error(`This voucher has already been redeemed at ${data.verifiedByHospital || 'a partner hospital'}.`);
+    }
+    if (data.expiresAt && new Date(data.expiresAt) < new Date()) {
+        throw new Error('This reward voucher has expired.');
+    }
+
+    const nowIso = new Date().toISOString();
+    await updateDoc(voucherRef, {
+        status: 'used',
+        hospitalUsedAt: nowIso,
+        verifiedByHospital: hospitalName || 'Partner Hospital',
+        verifiedByStaffUid: staffUid || null,
+        updatedAt: nowIso,
+    });
+
+    if (data.donorId) {
+        await addDonorNotification(
+            data.donorId,
+            `🎁 Reward Voucher Fulfilled: ${data.rewardTitle || data.voucherCode}`,
+            `Your voucher (${data.voucherCode}) was verified and fulfilled at ${hospitalName || 'a partner hospital'}. Thank you for saving lives!`,
+            'reward',
+            'badges'
+        ).catch(() => {});
+    }
+
+    await logActivity(
+        'Reward Voucher Verified',
+        `Hospital ${hospitalName || 'Desk'} verified voucher ${data.voucherCode} (${data.rewardTitle || data.rewardKey}) for donor ${data.donorName || data.donorId}`,
+        'success'
+    ).catch(() => {});
+
+    return { id: voucherId, ...data, status: 'used', hospitalUsedAt: nowIso, verifiedByHospital: hospitalName || 'Partner Hospital' };
 }
 
 
@@ -3946,7 +4133,8 @@ export async function fetchPublicRequestsForDonor(donorLat, donorLng, donorBlood
     // from donors who can legally serve them (an O+ donor was never shown an A+,
     // B+ or AB+ plea) and ignored the plasma inversion entirely.
     const donorCanDonate = (requestedType, componentType) => {
-        if (!requestedType || !donorBloodType) return false;
+        if (!requestedType) return false;
+        if (!donorBloodType || donorBloodType === 'Unknown') return true;
         return getCompatibleDonorTypes(requestedType, componentType || 'Whole Blood').includes(donorBloodType);
     };
 
@@ -4812,8 +5000,20 @@ export async function fetchCareReminders(donorId) {
         const snap = await getDocs(q);
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
-        console.error('Failed to fetch care reminders:', e);
-        return [];
+        try {
+            const fallbackQ = query(
+                collection(db, 'care_reminders'),
+                where('donorId', '==', donorId)
+            );
+            const snap = await getDocs(fallbackQ);
+            return snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+                .slice(0, 20);
+        } catch (fallbackErr) {
+            console.error('Failed to fetch care reminders:', fallbackErr);
+            return [];
+        }
     }
 }
 
@@ -4945,8 +5145,20 @@ export async function fetchLifeSaverCertificates(donorId) {
         const snap = await getDocs(q);
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
-        console.error('Failed to fetch life saver certificates:', e);
-        return [];
+        try {
+            const fallbackQ = query(
+                collection(db, 'life_saver_certificates'),
+                where('donorId', '==', donorId)
+            );
+            const snap = await getDocs(fallbackQ);
+            return snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => new Date(b.issuedDate || 0) - new Date(a.issuedDate || 0))
+                .slice(0, 20);
+        } catch (fallbackErr) {
+            console.error('Failed to fetch life saver certificates:', fallbackErr);
+            return [];
+        }
     }
 }
 
@@ -4965,7 +5177,19 @@ export async function fetchHospitalIssuedCertificates(hospitalName, maxResults =
         const snap = await getDocs(q);
         return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
-        console.error('Failed to fetch hospital certificates:', e);
-        return [];
+        try {
+            const fallbackQ = query(
+                collection(db, 'life_saver_certificates'),
+                where('hospitalName', '==', hospitalName)
+            );
+            const snap = await getDocs(fallbackQ);
+            return snap.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => new Date(b.issuedDate || 0) - new Date(a.issuedDate || 0))
+                .slice(0, maxResults);
+        } catch (fallbackErr) {
+            console.error('Failed to fetch hospital certificates:', fallbackErr);
+            return [];
+        }
     }
 }

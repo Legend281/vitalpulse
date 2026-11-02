@@ -73,10 +73,15 @@
 }
 
 @layer base {
+  html {
+    max-width: 100vw;
+    overflow-x: clip;
+  }
   body {
     font-family: 'Inter', sans-serif;
     background-color: var(--color-surface);
     color: var(--color-on-surface);
+    max-width: 100vw;
 
     /* `clip`, not `hidden`. Both stop a stray wide element from producing a horizontal
        scrollbar, but `overflow-x: hidden` turns <body> into a scroll container, which breaks
@@ -307,13 +312,14 @@
     z-index: 45;
     transition: transform 350ms cubic-bezier(0.16, 1, 0.3, 1), opacity 300ms ease;
   }
-  @media (max-width: 640px) {
+  @media (max-width: 767px) {
     .floating-journey-widget {
-      bottom: max(1rem, env(safe-area-inset-bottom, 1rem));
+      bottom: calc(5.25rem + env(safe-area-inset-bottom, 0px));
       right: 0.875rem;
       left: 0.875rem;
       display: flex;
       justify-content: flex-end;
+      z-index: 45;
     }
   }
 
@@ -476,8 +482,14 @@
 }
 
 /* Slim custom scrollbar */
+.slim-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(217, 119, 6, 0.45) transparent;
+}
+
 .slim-scroll::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
 
 .slim-scroll::-webkit-scrollbar-track {
@@ -485,12 +497,12 @@
 }
 
 .slim-scroll::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: rgba(217, 119, 6, 0.45);
   border-radius: 99px;
 }
 
 .slim-scroll::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: rgba(217, 119, 6, 0.75);
 }
 
 /* ============================================
@@ -693,71 +705,83 @@
    ══════════════════════════════════════════════════════════════ */
 .medal-3d-card-wrap {
   perspective: 1200px;
-  transform-style: preserve-3d;
 }
 
 .medal-3d-card {
   position: relative;
-  transform-style: preserve-3d;
-  transition: transform 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.25s ease;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
   will-change: transform;
 }
 
-.medal-3d-card:hover {
-  box-shadow: 0 25px 35px -10px rgba(0, 0, 0, 0.35), 0 0 25px rgba(245, 158, 11, 0.15);
+/* UNLOCKED HONOR CARD: Subtle metallic focus, soft warm glow, tactile elevation */
+.medal-3d-card.is-unlocked {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(245, 158, 11, 0.06);
+}
+
+.medal-3d-card.is-unlocked:hover {
+  border-color: rgba(245, 158, 11, 0.65);
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.65), 0 0 28px rgba(245, 158, 11, 0.18);
+}
+
+.medal-3d-card.is-unlocked .medal-3d-img {
+  transform: scale(1);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), filter 0.35s ease;
+  filter: drop-shadow(0 14px 22px rgba(0, 0, 0, 0.65));
+}
+
+.medal-3d-card.is-unlocked:hover .medal-3d-img {
+  transform: scale(1.06) translateY(-3px);
+  filter: drop-shadow(0 22px 30px rgba(0, 0, 0, 0.8));
+}
+
+/* LOCKED HONOR CARD: Sealed obsidian vault feel, darkened silhouette, solemn lock presence */
+.medal-3d-card.is-locked {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: 0.72;
+  cursor: pointer;
+}
+
+.medal-3d-card.is-locked:hover {
+  opacity: 0.92;
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.6);
+}
+
+.medal-3d-card.is-locked .medal-3d-img {
+  filter: grayscale(90%) brightness(0.28) contrast(0.85);
+  opacity: 0.42;
+  transition: filter 0.3s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+
+.medal-3d-card.is-locked:hover .medal-3d-img {
+  opacity: 0.55;
+  filter: grayscale(85%) brightness(0.35) contrast(0.9);
+  transform: scale(1.02);
 }
 
 .medal-3d-graphic-wrap {
   position: relative;
-  transform-style: preserve-3d;
 }
 
-.medal-3d-img {
-  transform: translateZ(35px) scale(1);
-  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
-  filter: drop-shadow(0 15px 18px rgba(0, 0, 0, 0.45));
-}
-
-.medal-3d-card:hover .medal-3d-img {
-  transform: translateZ(60px) scale(1.08);
-}
-
-/* Dynamic Specular Sheen (follows cursor/touch) */
+/* Refined Specular Sheen (Subtle, authentic white-silver metallic reflection across unlocked medals) */
 .medal-specular-sheen {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
   background: radial-gradient(
-    circle at var(--sheen-x, 50%) var(--sheen-y, 50%),
-    rgba(255, 255, 255, 0.45) 0%,
-    rgba(255, 215, 0, 0.15) 30%,
-    transparent 65%
+    circle 280px at var(--sheen-x, 50%) var(--sheen-y, 50%),
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.06) 45%,
+    transparent 70%
   );
   opacity: var(--sheen-opacity, 0);
-  mix-blend-mode: overlay;
-  transition: opacity 0.25s ease;
+  mix-blend-mode: soft-light;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 15;
-}
-
-/* 4D Iridescent Holographic Rainbow Caustics */
-.medal-4d-hologram {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(
-    var(--holo-angle, 135deg),
-    rgba(255, 0, 128, 0.2) 0%,
-    rgba(0, 229, 255, 0.25) 25%,
-    rgba(255, 235, 59, 0.2) 50%,
-    rgba(0, 230, 118, 0.25) 75%,
-    rgba(213, 0, 249, 0.2) 100%
-  );
-  mix-blend-mode: color-dodge;
-  opacity: var(--holo-opacity, 0);
-  transition: opacity 0.3s ease;
-  z-index: 16;
 }
 
 /* 3D Interactive Orbit Inspection Stage */
@@ -807,4 +831,52 @@
   box-shadow: 0 0 8px #f59e0b;
   animation: sparkFloat 2.4s infinite ease-out;
   pointer-events: none;
-}
+}
+
+/* =========================================================================
+   LEAFLET MAP ISOLATION & Z-INDEX CLAMPING
+   Leaflet defaults to internal z-indexes between 400 and 1000 (.leaflet-pane: 400,
+   .leaflet-top/.leaflet-bottom: 1000). Without isolation, these escape to the root
+   stacking context and bleed over sticky headers (z-50), mobile drawers (z-90),
+   and modals (z-60 to z-100).
+   Trapping .leaflet-container inside isolation: isolate and clamping internal layers
+   guarantees maps stay strictly within their content card layer.
+   ========================================================================= */
+.leaflet-container {
+  isolation: isolate !important;
+  position: relative !important;
+  z-index: 0 !important;
+}
+
+.leaflet-pane {
+  z-index: 1 !important;
+}
+
+.leaflet-tile-pane {
+  z-index: 1 !important;
+}
+
+.leaflet-overlay-pane {
+  z-index: 2 !important;
+}
+
+.leaflet-shadow-pane {
+  z-index: 3 !important;
+}
+
+.leaflet-marker-pane {
+  z-index: 4 !important;
+}
+
+.leaflet-tooltip-pane {
+  z-index: 5 !important;
+}
+
+.leaflet-popup-pane {
+  z-index: 6 !important;
+}
+
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 10 !important;
+}

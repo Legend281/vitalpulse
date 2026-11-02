@@ -81,6 +81,46 @@
         { "fieldPath": "hospitalName", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "care_reminders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "donorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "life_saver_certificates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "donorId", "order": "ASCENDING" },
+        { "fieldPath": "issuedDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "life_saver_certificates",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "hospitalName", "order": "ASCENDING" },
+        { "fieldPath": "issuedDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "vouchers",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "donorId", "order": "ASCENDING" },
+        { "fieldPath": "issuedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "donor_engagement",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "donorId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
