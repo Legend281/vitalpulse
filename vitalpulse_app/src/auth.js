@@ -228,7 +228,6 @@ export async function registerUser(email, password, role, additionalData) {
         // client-side. `city` is intentionally kept: see the equivalent comment in
         // loginUser() — stripping it stamped every emergency request with
         // `city: 'Cameroon'` and silently disabled donor matching entirely.
-        delete newUser.phone;
         delete newUser.nationalId;
         localStorage.setItem('vitalpulse_user', JSON.stringify(newUser));
         return newUser;
@@ -496,9 +495,7 @@ export async function loginUser(email, password) {
         // entry in CITY_COORDINATES, so autoMatchDonors returned an empty candidate
         // set for every request ever created — no SMS, no in-app alert, nobody
         // notified. A city name is not PHI; it is already public on every request.
-        delete fullUser.phone;
         delete fullUser.nationalId;
-        delete fullUser.cniHash;
         localStorage.setItem('vitalpulse_user', JSON.stringify(fullUser));
 
         try {

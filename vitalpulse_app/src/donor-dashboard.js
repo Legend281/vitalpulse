@@ -959,7 +959,9 @@ const VIEW_TITLES = {
   'kyc': 'Identity Verification'
 };
 
+let _donorNavToken = 0;
 export async function switchDonorView(view, targetAnchor) {
+  const thisToken = ++_donorNavToken;
   if (view === 'impact') view = 'badges';
   if (typeof window !== 'undefined') window.switchDonorView = switchDonorView;
   if (!targetAnchor) window.scrollTo({ top: 0, behavior: 'instant' });
@@ -1093,22 +1095,33 @@ export async function switchDonorView(view, targetAnchor) {
     loader.style.display = 'none';
   }
 
-  const active = document.getElementById('view-' + view);
-  if (active) {
-    active.classList.remove('hidden');
-    if (view === 'dashboard') {
-      active.classList.add('flex');
-      active.style.display = 'flex';
+  // If a newer navigation was requested while this one was loading, abort immediately
+  if (thisToken !== _donorNavToken) {
+    console.log(`[Donor Navigation] Discarding stale view transition to "${view}" (current token: ${_donorNavToken})`);
+    return;
+  }
+
+  // Ensure absolute single-view exclusivity: strictly hide ALL other views
+  views.forEach(v => {
+    const el = document.getElementById('view-' + v);
+    if (!el) return;
+    if (v === view) {
+      el.classList.remove('hidden');
+      const d = (v === 'dashboard' ? 'flex' : 'block');
+      el.classList.add(d);
+      el.style.display = d;
     } else {
-      active.classList.add('block');
-      active.style.display = 'block';
+      el.classList.add('hidden');
+      el.classList.remove('block', 'flex');
+      el.style.display = 'none';
     }
-    if (targetAnchor) {
-      setTimeout(() => {
-        const anchorEl = document.getElementById(targetAnchor);
-        if (anchorEl) anchorEl.scrollIntoView({ behavior: 'smooth' });
-      }, 60);
-    }
+  });
+
+  if (targetAnchor) {
+    setTimeout(() => {
+      const anchorEl = document.getElementById(targetAnchor);
+      if (anchorEl) anchorEl.scrollIntoView({ behavior: 'smooth' });
+    }, 60);
   }
 }
 if (typeof window !== 'undefined') window.switchDonorView = switchDonorView;
@@ -6581,6 +6594,29 @@ window.switchProfileTab = (tabName) => {
 async function loadDonorProfile() {
   const currentUser = getCurrentUser();
   if (!currentUser) return;
+
+  // Live Firestore Sync: fetch the user's authentic record from Firestore so phone,
+  // emergency contacts, and verified status are always 100% up-to-date across all devices
+  try {
+    const userDocRef = doc(db, 'users', currentUser.uid);
+    const userSnap = await getDoc(userDocRef);
+    if (userSnap.exists()) {
+      const liveData = userSnap.data();
+      if (liveData.phone) currentUser.phone = liveData.phone;
+      if (liveData.name) currentUser.name = liveData.name;
+      if (liveData.bloodType) currentUser.bloodType = liveData.bloodType;
+      if (liveData.city) currentUser.city = liveData.city;
+      if (liveData.cniHash) currentUser.cniHash = liveData.cniHash;
+      if (liveData.cniLast4) currentUser.cniLast4 = liveData.cniLast4;
+      if (liveData.isCniVerified !== undefined) currentUser.isCniVerified = liveData.isCniVerified;
+      if (liveData.emergencyContactName) currentUser.emergencyContactName = liveData.emergencyContactName;
+      if (liveData.emergencyContactPhone) currentUser.emergencyContactPhone = liveData.emergencyContactPhone;
+      if (liveData.photoURL) currentUser.photoURL = liveData.photoURL;
+      localStorage.setItem('vitalpulse_user', JSON.stringify(currentUser));
+    }
+  } catch (err) {
+    console.warn('[Donor Profile] Could not fetch live user document:', err);
+  }
 
   initProfilePhotoUpload();
   renderUserAvatars(currentUser);

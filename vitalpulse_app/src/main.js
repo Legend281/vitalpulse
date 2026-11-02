@@ -1179,18 +1179,7 @@ function showFallbackError() {
     }
   });
 
-  // Wire buttons with basic implementations as safety net
-  document.querySelectorAll('[onclick*="switchDonorView"]').forEach(el => {
-    const match = el.getAttribute('onclick')?.match(/switchDonorView\('(\w+)'\)/);
-    if (match) {
-      el.removeAttribute('onclick');
-      el.addEventListener('click', () => {
-        document.querySelectorAll('[id^="view-"]').forEach(v => v.classList.add('hidden'));
-        const target = document.getElementById('view-' + match[1]);
-        if (target) { target.classList.remove('hidden'); target.classList.add('block'); }
-      });
-    }
-  });
+  // Safety net removed: switchDonorView in donor-dashboard.js handles all view switching and lifecycle
 
   // Fallback: open donation modal for FAB and schedule buttons.
   // This used to reveal #donationModal directly, which skipped BOTH gates the real entry
