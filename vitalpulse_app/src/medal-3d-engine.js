@@ -54,14 +54,14 @@ function createMedalViewerInstance(slotKey, container, medalData, options = {}) 
   const autoRotate360 = Boolean(options.autoRotate360);
   const onClickCallback = typeof options.onClick === 'function' ? options.onClick : null;
 
-  const width = container.clientWidth || (slotKey === 'hero' ? 224 : 128);
-  const height = container.clientHeight || (slotKey === 'hero' ? 224 : 128);
+  const width = container.clientWidth || (slotKey === 'hero' ? 224 : 240);
+  const height = container.clientHeight || (slotKey === 'hero' ? 224 : 240);
 
-  // 1. Scene & Camera — Calibrated for normal, comfortably proportioned medal sizing (prevents clipping/overflow)
+  // 1. Scene & Camera — Calibrated for large, prominent, die-cast badge inspection
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
-  // Distance: modal=9.2 frames the 3.7-unit medal at ~142px (matching original w-36 container); hero=8.8 frames it at ~148px (matching pedestal)
-  camera.position.set(0, 0, slotKey === 'hero' ? 8.8 : 9.2);
+  // Distance: modal=6.4 frames the 3.7-unit medal at ~215px (large prominent die-cast display); hero=8.8 frames it at ~148px (matching pedestal)
+  camera.position.set(0, 0, slotKey === 'hero' ? 8.8 : 6.4);
 
   // 2. WebGL Renderer with High-DPI and ACES Filmic Tone Mapping
   let renderer;
@@ -92,6 +92,19 @@ function createMedalViewerInstance(slotKey, container, medalData, options = {}) 
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
+
+  // Ensure correct sizing immediately after DOM mount
+  requestAnimationFrame(() => {
+    if (container && renderer && camera) {
+      const rw = container.clientWidth;
+      const rh = container.clientHeight;
+      if (rw > 0 && rh > 0 && (rw !== width || rh !== height)) {
+        camera.aspect = rw / rh;
+        camera.updateProjectionMatrix();
+        renderer.setSize(rw, rh);
+      }
+    }
+  });
 
   // 3. Studio 4-Point Lighting Rig
   const ambLight = new THREE.AmbientLight(0xffffff, 2.25);
@@ -289,8 +302,8 @@ function createMedalViewerInstance(slotKey, container, medalData, options = {}) 
 
   const onResize = () => {
     if (!state.renderer || !state.camera || !container) return;
-    const w = container.clientWidth || (slotKey === 'hero' ? 224 : 360);
-    const h = container.clientHeight || (slotKey === 'hero' ? 224 : 224);
+    const w = container.clientWidth || (slotKey === 'hero' ? 224 : 240);
+    const h = container.clientHeight || (slotKey === 'hero' ? 224 : 240);
     if (w > 0 && h > 0) {
       state.camera.aspect = w / h;
       state.camera.updateProjectionMatrix();

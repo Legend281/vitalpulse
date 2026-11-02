@@ -3150,7 +3150,7 @@
 <!-- 3D REALISTIC MEDAL INSPECTION & CITATION MODAL -->
 <div id="badgeCertModal" class="hidden fixed inset-0 z-[95] items-center justify-center p-4">
   <div class="absolute inset-0 bg-slate-950/80 backdrop-blur-md transition-opacity cursor-pointer" id="badgeCertBackdrop" onclick="window.closeMedalModal()"></div>
-  <div class="relative animate-in bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl border border-amber-500/30 overflow-hidden text-slate-900 dark:text-white">
+  <div class="relative animate-in bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl border border-amber-500/30 overflow-hidden text-slate-900 dark:text-white">
     
     <!-- Top-right Close Button -->
     <button type="button" id="badgeCertCloseBtn" onclick="window.closeMedalModal()" class="press-scale absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-slate-100/80 dark:bg-slate-800/80 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center z-20 cursor-pointer transition-colors shadow-xs">
@@ -3162,9 +3162,9 @@
       <!-- Silver & Gold Ribbon Trim -->
       <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-slate-400 via-white to-slate-400 opacity-60"></div>
 
-      <!-- Medal Display Container (Proportional normal size) -->
-      <div id="badgeCert3DOrbitStage" class="relative flex items-center justify-center my-1.5 w-28 h-28 sm:w-32 sm:h-32 mx-auto select-none">
-        <div class="w-24 h-24 rounded-full bg-slate-700/20 blur-xl absolute pointer-events-none"></div>
+      <!-- Medal Display Container (Large prominent 3D WebGL stage) -->
+      <div id="badgeCert3DOrbitStage" class="relative flex items-center justify-center my-2 w-52 h-52 sm:w-60 sm:h-60 mx-auto select-none">
+        <div class="w-44 h-44 sm:w-52 sm:h-52 rounded-full bg-amber-500/15 dark:bg-slate-700/30 blur-2xl absolute pointer-events-none"></div>
         <div id="badgeCert3DCanvasWrap" class="w-full h-full relative z-10 flex items-center justify-center"></div>
         <div id="badgeCertLockedOverlay" class="hidden w-full h-full relative z-10 flex items-center justify-center"></div>
       </div>

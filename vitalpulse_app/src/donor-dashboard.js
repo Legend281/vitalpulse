@@ -9615,16 +9615,16 @@ window.inspectMedal = (medalId) => {
     if (lockedOverlay) {
       lockedOverlay.classList.remove('hidden');
       lockedOverlay.innerHTML = `
-        <div class="flex flex-col items-center justify-center text-center space-y-1.5 p-1">
-          <div class="relative w-24 h-24 flex items-center justify-center">
+        <div class="flex flex-col items-center justify-center text-center space-y-2 p-1">
+          <div class="relative w-44 h-44 sm:w-48 sm:h-48 flex items-center justify-center">
             <img src="${medal.image}" alt="${esc(medal.title)}" class="w-full h-full object-contain filter grayscale-[90%] brightness-[0.25] opacity-40 blur-[1px]"/>
             <div class="absolute inset-0 flex items-center justify-center">
-              <div class="w-10 h-10 rounded-full bg-slate-900/90 border border-amber-400/30 flex items-center justify-center shadow-xl backdrop-blur-md">
-                <span class="material-symbols-outlined text-base text-amber-400">lock</span>
+              <div class="w-14 h-14 rounded-full bg-slate-900/90 border border-amber-400/40 flex items-center justify-center shadow-2xl backdrop-blur-md">
+                <span class="material-symbols-outlined text-2xl text-amber-400">lock</span>
               </div>
             </div>
           </div>
-          <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">Classified National Honor</p>
+          <p class="text-[11px] font-black uppercase tracking-widest text-slate-400">Classified National Honor</p>
         </div>
       `;
     }
