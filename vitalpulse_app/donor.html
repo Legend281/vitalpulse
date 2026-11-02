@@ -59,6 +59,24 @@
   }
   @keyframes shimmer { 100% { transform: translateX(100%); } }
 </style>
+<script>
+  (function () {
+    function hideLoader() {
+      var l = document.getElementById('global-loader');
+      if (l) {
+        l.style.opacity = '0';
+        setTimeout(function () { if (l && l.parentNode) l.parentNode.removeChild(l); }, 300);
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', hideLoader);
+    } else {
+      hideLoader();
+    }
+    window.addEventListener('load', hideLoader);
+    setTimeout(hideLoader, 800); // Guarantees loader never freezes the page
+  })();
+</script>
 </head>
 <body class="bg-surface font-body text-on-surface antialiased selection:bg-primary selection:text-white overflow-x-clip max-w-full">
 <div id="global-loader"><div class="loader-spinner"></div></div>

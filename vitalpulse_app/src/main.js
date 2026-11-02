@@ -202,16 +202,32 @@ function initThemeToggle() {
     window.addEventListener('storage', (e) => { if (e.key === THEME_KEY) applyTheme(getStoredTheme()); });
 }
 // Apply immediately (idempotent; forces light on non-donor pages even if `.dark` was left on)
+// Bulletproof DOM ready utility that handles both pending and already-fired DOMContentLoaded states
+export function onDOMReady(fn) {
+    if (typeof document === 'undefined') return;
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        setTimeout(fn, 0);
+    } else {
+        document.addEventListener('DOMContentLoaded', fn);
+    }
+}
 applyTheme(getStoredTheme());
-document.addEventListener('DOMContentLoaded', initThemeToggle);
+onDOMReady(initThemeToggle);
 
-document.addEventListener('DOMContentLoaded', () => {
+function dismissGlobalLoader() {
     const loader = document.getElementById('global-loader');
     if (loader) {
         loader.style.opacity = '0';
-        setTimeout(() => loader.remove(), 400); // Wait for transition
+        setTimeout(() => {
+            if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+        }, 300);
     }
-});
+}
+onDOMReady(dismissGlobalLoader);
+if (typeof window !== 'undefined') {
+    window.addEventListener('load', dismissGlobalLoader);
+    setTimeout(dismissGlobalLoader, 800); // Fail-safe fallback so no view ever gets stuck on a spinner
+}
 
 // ============================================
 // OFFLINE-FIRST: connection status banner
@@ -307,10 +323,10 @@ function initGlobalUserSessionGuard() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', initOfflineBanner);
+onDOMReady(initOfflineBanner);
 
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, checking page...');
+onDOMReady(() => {
+    console.log('DOM ready, checking page...');
     
     // Check if we are on a page that requires auth
     const path = window.location.pathname;
@@ -4963,7 +4979,7 @@ window.downloadCSVFromTable = (tableBodyId, filename) => {
     document.body.removeChild(link);
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+onDOMReady(() => {
     const btnExportUsers = document.getElementById('btnExportUsersCSV');
     if(btnExportUsers) {
         btnExportUsers.addEventListener('click', (e) => {
@@ -9287,7 +9303,7 @@ function initStaffModalHandlers() {
 
 // Call initStaffModalHandlers once on DOMContentLoaded
 if (typeof window !== 'undefined') {
-    window.addEventListener('DOMContentLoaded', () => {
+    onDOMReady(() => {
         initStaffModalHandlers();
     });
 }

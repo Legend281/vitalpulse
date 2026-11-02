@@ -15,25 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 
 <style>
-  #global-loader {
-    position: fixed;
-    inset: 0;
-    z-index: 99999;
-    background-color: #f8fafc;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: opacity 0.4s ease;
-  }
-  .loader-spinner {
-    width: 40px;
-    height: 40px;
-    border: 3px solid rgba(220, 38, 38, 0.2);
-    border-top-color: #dc2626;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+
 
   /* Decorative background — gives the signup card a "donor" feel by default and crossfades
      to a "hospital" feel when the Hospital role is selected (toggled via data-role in
@@ -77,6 +59,12 @@
     #authBgDecor .abg-icon { display: none; }
   }
 </style>
+<script>
+  (function () {
+    var l = document.getElementById('global-loader');
+    if (l) l.remove();
+  })();
+</script>
 </head>
 <body class="bg-surface font-body text-on-surface antialiased min-h-screen flex flex-col">
 <div id="authBgDecor" data-role="donor" aria-hidden="true">
@@ -102,7 +90,6 @@
     <div class="abg-cross-grid"></div>
   </div>
 </div>
-<div id="global-loader"><div class="loader-spinner"></div></div>
 
 <main class="flex-1 flex items-center justify-center px-4 py-12">
   <div class="w-full max-w-[480px] lg:max-w-[70vw] lg:grid lg:grid-cols-2 bg-surface-container-lowest border border-outline-variant/15 rounded-3xl shadow-sm overflow-hidden">
@@ -453,17 +440,24 @@ function toggleRoleFields() {
     toggleHospitalCategoryFields();
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const params = new URLSearchParams(window.location.search);
-    const roleParam = params.get('role') || window.location.hash.replace('#', '');
-    if (roleParam === 'hospital') {
-        const hospitalRadio = document.getElementById('roleHospital');
-        if (hospitalRadio) {
-            hospitalRadio.checked = true;
-            toggleRoleFields();
+(function() {
+    function initRoleParam() {
+        const params = new URLSearchParams(window.location.search);
+        const roleParam = params.get('role') || window.location.hash.replace('#', '');
+        if (roleParam === 'hospital') {
+            const hospitalRadio = document.getElementById('roleHospital');
+            if (hospitalRadio) {
+                hospitalRadio.checked = true;
+                if (typeof toggleRoleFields === 'function') toggleRoleFields();
+            }
         }
     }
-});
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initRoleParam);
+    } else {
+        initRoleParam();
+    }
+})();
 </script>
 <script type="module" src="/src/main.js"></script>
 </body></html>
