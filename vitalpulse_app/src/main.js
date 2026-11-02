@@ -961,10 +961,22 @@ onDOMReady(() => {
     // Handle Profile/Dashboard hydration based on currentUser
     if (isDashboard && currentUser) {
         if (path.includes('donor.html')) {
+            const firstName = (currentUser.name || currentUser.displayName || currentUser.email?.split('@')[0] || 'Lifesaver').split(' ')[0];
             const welcomeEl = document.getElementById('donorWelcomeMsg');
             if (welcomeEl) {
-                const firstName = (currentUser.name || currentUser.email?.split('@')[0] || 'Donor').split(' ')[0];
                 welcomeEl.textContent = `Welcome back, ${firstName} 👋`;
+            }
+            const welcomeNameEl = document.getElementById('donorWelcomeName');
+            if (welcomeNameEl) {
+                welcomeNameEl.textContent = firstName;
+            }
+            const navNameEl = document.getElementById('donorNavName');
+            if (navNameEl) {
+                navNameEl.textContent = firstName;
+            }
+            const initialsEl = document.getElementById('donorUserInitials');
+            if (initialsEl) {
+                initialsEl.textContent = firstName.slice(0, 2).toUpperCase();
             }
             // blood type is rendered by donor-dashboard.js hero section
         } else if (path.includes('hospital.html')) {

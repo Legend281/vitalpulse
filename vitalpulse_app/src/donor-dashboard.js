@@ -1156,6 +1156,9 @@ export function hydrateDonorProfileUI(currentUser) {
   const navNameEl = document.getElementById('donorNavName');
   if (navNameEl) navNameEl.textContent = firstName;
 
+  const welcomeNameEl = document.getElementById('donorWelcomeName');
+  if (welcomeNameEl) welcomeNameEl.textContent = firstName;
+
   const menuNameEl = document.getElementById('donorMenuName');
   if (menuNameEl) menuNameEl.textContent = fullName;
 
@@ -3374,22 +3377,12 @@ export async function loadDonorDashboard() {
   if (!currentUser) return;
 
   try {
-    const engagement = await computeDonorEngagement(currentUser.uid).catch(() => null);
-
-    // ONE location model for both feeds (see getEffectiveDonorLocation): GPS
-    // position and its nearest-city label when live GPS is on, registered-city
-    // centroid otherwise. Previously the two feeds disagreed — the public feed
-    // moved to the donor's true GPS position while hospital requests kept
-    // matching on the registered city string — so enabling GPS made requests
-    // vanish from the feed while the banner cheerfully reported the new city.
-    await ensureDonorRequestsLoaded(true);
-
-    const firstName = (currentUser.name || currentUser.email?.split('@')[0] || 'Mai').split(' ')[0];
+    const firstName = (currentUser.name || currentUser.displayName || currentUser.email?.split('@')[0] || 'Lifesaver').split(' ')[0];
     const city = currentUser.city || 'Yaoundé';
     const bloodType = currentUser.bloodType || 'B+';
     const bloodInfo = getBloodTypeDisplayInfo(bloodType);
 
-    // Dynamic Header & Welcome Name
+    // Dynamic Header & Welcome Name - Synchronous immediate render (zero wait)
     const welcomeGreetingEl = document.getElementById('donorWelcomeGreeting');
     if (welcomeGreetingEl) welcomeGreetingEl.textContent = getTimeAwareGreeting();
 
@@ -3419,6 +3412,17 @@ export async function loadDonorDashboard() {
 
     const bloodLabelEl = document.getElementById('donorBloodTypeLabel');
     if (bloodLabelEl) bloodLabelEl.textContent = bloodInfo.label || 'Common';
+
+    // Async data fetching for engagement and requests
+    const engagement = await computeDonorEngagement(currentUser.uid).catch(() => null);
+
+    // ONE location model for both feeds (see getEffectiveDonorLocation): GPS
+    // position and its nearest-city label when live GPS is on, registered-city
+    // centroid otherwise. Previously the two feeds disagreed — the public feed
+    // moved to the donor's true GPS position while hospital requests kept
+    // matching on the registered city string — so enabling GPS made requests
+    // vanish from the feed while the banner cheerfully reported the new city.
+    await ensureDonorRequestsLoaded(true);
 
     // Stats — D8: gated by KYC verification status inside renderDonorEngagementStats itself
     // (also cached there so the KYC listener can re-render this reactively on approval).
@@ -8813,7 +8817,8 @@ let _lastComputedEngagement = null;
 let _cachedDonationList = [];
 
 export async function loadDonorBadges() {
-  const currentUser = getCurrentUser() || { uid: 'demo-donor', name: 'Alex Mbah', bloodType: 'O+' };
+  const currentUser = getCurrentUser();
+  if (!currentUser) return;
   wireImpactShareButtons();
 
   try {
