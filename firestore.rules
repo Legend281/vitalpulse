@@ -573,10 +573,16 @@ service cloud.firestore {
 
     // ---------- Campaigns (cross-hospital; not owned by a single hospital) ----------
     match /campaigns/{id} {
-      allow get, list: if hasRole();
+      allow get, list: if true;
       allow create, delete: if isSystemAdmin();
       allow update: if isSystemAdmin()
                     || (isHospitalRole() && unchangedExcept(['participants', 'participantCount', 'updatedAt']));
+    }
+
+    // ---------- Public System Statistics & Telemetry (world-readable snapshot) ----------
+    match /public_stats/{docId} {
+      allow read: if true;
+      allow write: if isSystemAdmin();
     }
 
     // ---------- Global system settings ----------

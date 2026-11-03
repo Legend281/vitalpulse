@@ -120,6 +120,8 @@ import Chart from 'chart.js/auto';
 import { initReceptionDashboard, loadReceptionOverview } from './dashboards/reception/receptionDashboard.js';
 import { initNurseDashboard, loadNurseOverview } from './dashboards/nurse/nurseDashboard.js';
 import { initLabDashboard, loadLabPipeline } from './dashboards/lab/labDashboard.js';
+import { publishPublicSnapshot } from './publicStats.js';
+import { initHomePage } from './home.js';
 
 // Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
 // https, so this rejects javascript:/data: and other dangerous schemes without breaking
@@ -275,6 +277,10 @@ let _globalUserSessionUnsubscribe = null;
 function initGlobalUserSessionGuard() {
     const path = window.location.pathname;
     const isDashboard = path.includes('donor.html') || path.includes('hospital.html') || path.includes('admin.html');
+    const isIndex = path === '/' || path.endsWith('/') || path.endsWith('index.html');
+    if (isIndex) {
+        initHomePage();
+    }
     if (!isDashboard) return;
 
     waitForAuthUser().then(user => {
@@ -4031,7 +4037,16 @@ async function loadAdminDashboard() {
                     </div>
                 `;
             } else {
-                overviewCampaignsGrid.innerHTML = activeCampaigns.map(c => {
+                // Publish fresh snapshot for public homepage
+        publishPublicSnapshot({
+            hospitals: allRegisteredHospitals,
+            donors: allRegisteredDonors,
+            activeRequests: requests,
+            resolvedRequests: resolvedReqs,
+            campaigns: campaigns
+        });
+
+        overviewCampaignsGrid.innerHTML = activeCampaigns.map(c => {
                     const progress = c.targetUnits ? Math.round((c.unitsCollected || 0) / c.targetUnits * 100) : 0;
                     const statusColors = c.status === 'active' 
                         ? { badge: 'bg-green-500', text: 'text-green-600' }

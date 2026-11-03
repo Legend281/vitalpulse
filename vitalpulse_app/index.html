@@ -145,7 +145,6 @@
 <nav class="hidden md:flex items-center gap-8">
 <a href="/" class="text-sm font-bold text-primary relative after:absolute after:-bottom-1 after:left-0 after:w-full after:h-0.5 after:bg-primary after:rounded-full">Home</a>
 <a href="/about.html" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">About</a>
-<a href="#campaigns" class="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">Outreach</a>
 <a href="/public-request.html" class="text-sm font-semibold text-red-600 hover:text-red-700 transition-colors flex items-center gap-1.5">
   <span class="material-symbols-outlined text-sm text-red-600" style="font-variation-settings:'FILL' 1">emergency</span>Emergency
 </a>
@@ -190,10 +189,6 @@ Join Free
       <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">info</span>About Initiative</span>
       <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
     </a>
-    <a href="#campaigns" class="text-sm font-semibold text-slate-700 hover:text-slate-900 flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors">
-      <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-slate-500">campaign</span>Community Outreach</span>
-      <span class="material-symbols-outlined text-base text-slate-400">chevron_right</span>
-    </a>
     <a href="/public-request.html" class="text-sm font-bold text-red-600 flex items-center justify-between p-3 rounded-xl bg-red-50/30 hover:bg-red-50 transition-colors">
       <span class="flex items-center gap-2.5"><span class="material-symbols-outlined text-lg text-red-600" style="font-variation-settings:'FILL' 1">emergency</span>Emergency Blood Request</span>
       <span class="material-symbols-outlined text-base text-red-600">chevron_right</span>
@@ -210,447 +205,333 @@ Join Free
       <span class="material-symbols-outlined text-base">arrow_forward</span>
     </a>
     <a href="/login.html" class="text-sm font-bold text-slate-700 flex items-center justify-center py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-colors">
-      <span class="material-symbols-outlined text-base mr-2 text-slate-500">key</span> Hospital Staff Portal Sign In
+      <span class="material-symbols-outlined text-base mr-2 text-slate-500">key</span> Account Sign In
     </a>
   </div>
 </div>
 </header>
 
 <main>
-<!-- ===== HERO SECTION (CLEAN LIGHT THEME WITH SPLIT HERO & VIVID BACKGROUND IMAGE) ===== -->
-<section class="relative min-h-[90vh] flex items-center pt-24 sm:pt-32 md:pt-36 pb-16 sm:pb-24 overflow-hidden text-slate-900 bg-slate-50">
+<!-- ===== HERO SECTION (CENTERED HIGH-IMPACT WITH REALISTIC PHOTOGRAPHY) ===== -->
+<section class="relative min-h-[90vh] flex items-center justify-center pt-28 sm:pt-36 md:pt-40 pb-20 sm:pb-28 overflow-hidden text-white bg-slate-950">
   
-  <!-- Full-Bleed Background Image (Vivid Distinct Medical Photo with Light Scrim) -->
+  <!-- Full-Bleed Realistic Medical Canvas (Sun-Drenched Cameroonian Donation Center) -->
   <div class="absolute inset-0 z-0 overflow-hidden">
-    <img src="https://images.unsplash.com/photo-1516549655169-df83a0774514?q=80&w=2000&auto=format&fit=crop" 
-         alt="Doctor and clinical medical team in emergency care center" 
-         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out opacity-45"/>
-    <div class="absolute inset-0 bg-gradient-to-r from-slate-50/92 via-slate-50/80 to-slate-50/60"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-slate-50 via-transparent to-slate-50/50"></div>
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(175,16,26,0.12),transparent_70%)] pointer-events-none"></div>
+    <img src="/assets/home_hero_donation.jpg" 
+         alt="Cameroonian voluntary blood donor and clinical nurse in modern sunlit donation center" 
+         class="w-full h-full object-cover object-[center_32%] scale-100 transition-transform duration-1000 ease-out"/>
+    <!-- Subtle Vignette Scrim (Image remains clearly visible, centered text has 100% crisp contrast) -->
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-950/92 via-slate-950/50 to-slate-950/45"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0.3)_0%,rgba(15,23,42,0.85)_100%)]"></div>
   </div>
 
-  <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center">
-      
-      <!-- Left Hero Column (6 Cols) -->
-      <div class="lg:col-span-6 xl:col-span-7 reveal">
-        <!-- Live Status Pill -->
-        <div class="inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-red-100/90 border border-red-200 text-red-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-5 sm:mb-6 shadow-xs">
-          <span class="relative flex w-2 h-2">
-            <span class="animate-ping absolute inline-flex w-full h-full rounded-full bg-red-500 opacity-75"></span>
-            <span class="relative inline-flex w-2 h-2 rounded-full bg-red-600"></span>
-          </span>
-          Cameroon Emergency Blood Coordination
-        </div>
-
-        <h1 class="font-headline text-3xl sm:text-5xl lg:text-6xl xl:text-7xl font-black leading-[1.08] tracking-tight text-slate-950 mb-4 sm:mb-6">
-          <span class="block">Blood when</span>
-          <span class="block bg-gradient-to-r from-red-600 via-primary to-rose-600 bg-clip-text text-transparent">seconds count.</span>
-        </h1>
-
-        <p class="text-sm sm:text-base md:text-lg text-slate-600 leading-relaxed mb-6 sm:mb-8 max-w-xl font-normal">
-          The real-time coordination system connecting healthcare facilities and voluntary blood donors across Cameroon to eliminate fatal delays during medical emergencies.
-        </p>
-
-        <!-- CTAs -->
-        <div class="flex flex-col sm:flex-row gap-3 sm:gap-3.5 mb-8 sm:mb-10">
-          <a href="/signup.html" class="group relative inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base overflow-hidden shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
-            <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">favorite</span>
-            Become a Donor
-            <span class="material-symbols-outlined text-base group-hover:translate-x-1 transition-transform">arrow_forward</span>
-          </a>
-          <a href="/login.html" class="inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-800 px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base border border-slate-200/90 shadow-sm transition-all duration-200">
-            <span class="material-symbols-outlined text-primary text-lg">local_hospital</span>
-            Hospital Staff Portal
-          </a>
-        </div>
-
-        <!-- Trust bar -->
-        <div class="flex flex-wrap items-center gap-4 sm:gap-6 pt-4 border-t border-slate-200/80">
-          <div class="flex items-center text-xs">
-            <span class="font-black text-slate-900 text-sm">100% Free</span>
-            <span class="text-slate-500 ml-1.5 font-medium">&bull; Altruistic Voluntary Donation</span>
-          </div>
-          <div class="hidden sm:block w-px h-5 bg-slate-200"></div>
-          <div class="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-            <span class="material-symbols-outlined text-amber-500 text-base" style="font-variation-settings:'FILL'1">verified</span>
-            Standardized Transfusion Quality Protocols
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Hero Column (6 Cols) — Honest Emergency Dispatch Architecture Preview (Light Theme) -->
-      <div class="lg:col-span-6 xl:col-span-5 reveal" style="animation-delay:0.15s">
-        <div class="relative bg-white/95 backdrop-blur-2xl rounded-3xl p-5 sm:p-7 border border-slate-200/90 shadow-2xl shadow-slate-300/40 overflow-hidden text-slate-800">
-          
-          <!-- Dispatch Flow Header -->
-          <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
-                <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL'1">share_location</span>
-              </div>
-              <div>
-                <span class="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-400 block">System Architecture</span>
-                <span class="font-headline font-black text-xs sm:text-sm text-slate-900">How Emergency Dispatch Works</span>
-              </div>
-            </div>
-            <span class="px-2.5 py-1 rounded-lg bg-red-50 text-red-700 border border-red-200/80 text-[10px] sm:text-xs font-mono font-bold flex items-center gap-1 shrink-0">
-              <span class="material-symbols-outlined text-xs">bolt</span> &lt; 30s Latency
-            </span>
-          </div>
-
-          <!-- 3-Step Clear Visual Workflow -->
-          <div class="space-y-3 mb-5">
-            
-            <!-- Step 1 -->
-            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-start gap-3">
-              <div class="w-7 h-7 rounded-xl bg-red-600 text-white font-headline font-black text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-                1
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <h4 class="font-bold text-xs sm:text-sm text-slate-900 truncate">Clinical Requisition Logged</h4>
-                  <span class="text-[10px] font-mono text-slate-400 shrink-0">Step 1</span>
-                </div>
-                <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Hospital doctor or triage nurse submits urgent required blood group and units needed.</p>
-              </div>
-            </div>
-
-            <!-- Step 2 -->
-            <div class="p-3.5 rounded-2xl bg-blue-50/70 border border-blue-200/80 flex items-start gap-3">
-              <div class="w-7 h-7 rounded-xl bg-blue-600 text-white font-headline font-black text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-                2
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <h4 class="font-bold text-xs sm:text-sm text-slate-900 truncate">Spatial Geohash & Compatibility Match</h4>
-                  <span class="text-[10px] font-mono text-blue-600 font-bold shrink-0">Automatic</span>
-                </div>
-                <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">System filters nearby eligible donors in the hospital catchment area by antigen compatibility.</p>
-              </div>
-            </div>
-
-            <!-- Step 3 -->
-            <div class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex items-start gap-3">
-              <div class="w-7 h-7 rounded-xl bg-emerald-600 text-white font-headline font-black text-xs flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
-                3
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between gap-2">
-                  <h4 class="font-bold text-xs sm:text-sm text-slate-900 truncate">Instant Alert & Facility Check-In</h4>
-                  <span class="text-[10px] font-mono text-emerald-700 font-bold shrink-0">SMS / Push</span>
-                </div>
-                <p class="text-[11px] text-slate-600 leading-relaxed mt-0.5">Nearby donors receive actionable alerts and arrive at the authorized facility blood bank.</p>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- Direct Emergency Requisition Action -->
-          <div class="pt-3.5 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div class="text-[11px] text-slate-500 text-center sm:text-left">
-              Need blood for a hospitalized patient?
-            </div>
-            <a href="/public-request.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-white font-bold text-xs shadow-md shadow-primary/20 hover:bg-[#8f0d15] transition-all">
-              <span class="material-symbols-outlined text-sm">emergency</span> Submit Emergency Request
-            </a>
-          </div>
-
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ===== HIGH-IMPACT CLINICAL READINESS METRICS BAR (HONEST ARCHITECTURAL SPECIFICATIONS) ===== -->
-<section class="relative z-20 -mt-6 sm:-mt-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 reveal">
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 bg-white/95 backdrop-blur-2xl p-3.5 sm:p-6 rounded-3xl border border-slate-200/90 shadow-xl shadow-slate-200/50">
+  <div id="heroContent" class="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center reveal">
     
-    <div class="flex items-center gap-3 sm:gap-3.5 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-      <div class="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
-        <span class="material-symbols-outlined text-xl sm:text-2xl" style="font-variation-settings:'FILL'1">bolt</span>
-      </div>
-      <div>
-        <span class="font-headline font-black text-lg sm:text-2xl lg:text-3xl text-slate-950 block leading-none">&lt; 30 sec</span>
-        <span class="text-[9px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">Dispatch Latency</span>
-      </div>
+    <!-- Live Status Pill (Dynamic based on realtime dispatch) -->
+    <div id="heroLiveNeedBadge" class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900/80 text-emerald-300 text-[11px] sm:text-xs font-bold uppercase tracking-wider backdrop-blur-md border border-emerald-500/30 mb-6 shadow-xl">
+      <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span>Active National Blood Network &bull; Cameroon</span>
     </div>
 
-    <div class="flex items-center gap-3 sm:gap-3.5 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-      <div class="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-        <span class="material-symbols-outlined text-xl sm:text-2xl" style="font-variation-settings:'FILL'1">map</span>
-      </div>
-      <div>
-        <span class="font-headline font-black text-lg sm:text-2xl lg:text-3xl text-slate-950 block leading-none">10 Regions</span>
-        <span class="text-[9px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">National Scope</span>
-      </div>
+    <!-- Main Headline: Centered with proper leading -->
+    <h1 class="font-headline text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black leading-[1.08] tracking-tight text-white mb-5 sm:mb-6 max-w-4xl mx-auto drop-shadow-md">
+      Blood when <span class="bg-gradient-to-r from-red-400 via-rose-300 to-red-100 bg-clip-text text-transparent">seconds count.</span>
+    </h1>
+
+    <!-- Subtitle: Centered, clean, spacious -->
+    <p class="text-sm sm:text-base md:text-lg lg:text-xl text-slate-100/90 leading-relaxed max-w-2xl mx-auto mb-8 sm:mb-10 font-normal drop-shadow-sm">
+      The real-time coordination system connecting healthcare facilities and voluntary blood donors across Cameroon to eliminate fatal delays during medical emergencies.
+    </p>
+
+    <!-- Dual Centralized CTAs (Zero hacker-bait buttons) -->
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4 mb-10 sm:mb-12">
+      <a href="/signup.html" class="btn-spring w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-7 sm:px-8 py-4 rounded-2xl font-headline font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
+        <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">favorite</span>
+        Register as a Lifesaver
+        <span class="material-symbols-outlined text-base">arrow_forward</span>
+      </a>
+      <a href="/public-request.html" class="btn-spring w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-7 sm:px-8 py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/25 backdrop-blur-md shadow-lg transition-all">
+        <span class="material-symbols-outlined text-red-400 text-lg" style="font-variation-settings:'FILL'1">emergency</span>
+        Request Emergency Blood
+      </a>
     </div>
 
-    <div class="flex items-center gap-3 sm:gap-3.5 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-      <div class="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-        <span class="material-symbols-outlined text-xl sm:text-2xl" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+    <!-- Trust Micro-Bar: Centered -->
+    <div class="inline-flex flex-wrap items-center justify-center gap-4 sm:gap-6 py-2 px-5 rounded-2xl bg-slate-900/60 backdrop-blur-md border border-white/10 text-xs text-slate-200">
+      <div class="flex items-center gap-1.5 font-bold">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span>100% Free &amp; Voluntary</span>
       </div>
-      <div>
-        <span class="font-headline font-black text-lg sm:text-2xl lg:text-3xl text-slate-950 block leading-none">100% Free</span>
-        <span class="text-[9px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">Voluntary Altruism</span>
+      <div class="hidden sm:block w-px h-3.5 bg-white/20"></div>
+      <div class="flex items-center gap-1.5 font-bold">
+        <span class="material-symbols-outlined text-xs text-red-400" style="font-variation-settings:'FILL'1">bolt</span>
+        <span>&lt; 30s Catchment Dispatch</span>
       </div>
-    </div>
-
-    <div class="flex items-center gap-3 sm:gap-3.5 p-3 rounded-2xl bg-slate-50 border border-slate-100">
-      <div class="w-10 sm:w-12 h-10 sm:h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-        <span class="material-symbols-outlined text-xl sm:text-2xl" style="font-variation-settings:'FILL'1">no_sim</span>
-      </div>
-      <div>
-        <span class="font-headline font-black text-lg sm:text-2xl lg:text-3xl text-slate-950 block leading-none">Zero Cost</span>
-        <span class="text-[9px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">Hospital Licensing</span>
+      <div class="hidden sm:block w-px h-3.5 bg-white/20"></div>
+      <div class="flex items-center gap-1.5 text-slate-300">
+        <span class="material-symbols-outlined text-amber-400 text-xs" style="font-variation-settings:'FILL'1">verified</span>
+        <span>Standardized Clinical Protocols</span>
       </div>
     </div>
 
   </div>
 </section>
 
-<!-- ===== NATIONAL HEALTH ARCHITECTURE (INFINITE EDGE-TO-EDGE SCROLLING MARQUEE) ===== -->
-<!-- ===== NATIONAL HEALTH ARCHITECTURE (INFINITE EDGE-TO-EDGE SCROLLING MARQUEE) ===== -->
-<section class="py-16 sm:py-24 bg-white border-t border-slate-200/80 relative z-20 overflow-hidden">
+<!-- ===== CLINICAL NETWORK INTEGRATION (COMPACT SLEEK TICKER) ===== -->
+<section class="py-12 sm:py-16 bg-white relative z-10 overflow-hidden border-b border-slate-100">
   
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 sm:mb-12 reveal">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6 sm:mb-8 reveal">
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
       <div>
-        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
-          <span class="material-symbols-outlined text-sm">domain</span>
-          Healthcare Architecture Compatibility
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-50 text-primary border border-red-100 text-xs font-bold uppercase tracking-wider mb-2.5">
+          <span class="material-symbols-outlined text-sm">local_hospital</span>
+          Clinical Network Integration
         </div>
-        <h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-900">
-          Designed for Cameroon's Regional Healthcare Architecture
+        <h2 class="font-headline text-2xl sm:text-3xl lg:text-4xl font-black leading-tight tracking-tight text-slate-900">
+          Coordinating Across Cameroon's Regional Facilities
         </h2>
       </div>
       <p class="text-slate-600 text-xs sm:text-sm max-w-md">
-        Built for technical compatibility across national reference hospitals, regional centers, and district blood banks nationwide.
+        Direct blood requisition routing and inventory coordination with accredited regional hospital blood banks nationwide.
       </p>
     </div>
   </div>
 
   <!-- Infinite Scrolling Marquee Track with Dual Fade Masks -->
-  <div class="relative w-full overflow-hidden py-4">
+  <div class="relative w-full overflow-hidden py-2">
     <!-- Left and Right Gradient Fade Overlays -->
     <div class="absolute left-0 top-0 bottom-0 w-12 sm:w-28 bg-gradient-to-r from-white via-white/80 to-transparent z-10 pointer-events-none"></div>
     <div class="absolute right-0 top-0 bottom-0 w-12 sm:w-28 bg-gradient-to-l from-white via-white/80 to-transparent z-10 pointer-events-none"></div>
 
     <!-- Scrolling Track Container -->
-    <div class="marquee-track flex gap-5 items-center">
+    <div id="hospitalMarqueeTrack" class="marquee-track flex gap-4 items-center">
       
       <!-- ITEM 1: CHU Yaoundé -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">local_hospital</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wider border border-red-200">Category 1 Reference</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">CHU de Yaoundé</h3>
-          <p class="text-xs text-slate-500 mb-3">Academic referral &bull; Oncology &amp; Acute Surgery</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">local_hospital</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-600">location_on</span> Yaoundé (Centre)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Reference Scope</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">CHU de Yaoundé</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Yaoundé &bull; Centre</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 2: Hôpital Général Douala -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">emergency</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-wider border border-blue-200">Category 1 Referral</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Hôpital Général Douala</h3>
-          <p class="text-xs text-slate-500 mb-3">Littoral regional referral &bull; ICU &amp; Surgery</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">emergency</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-blue-600">location_on</span> Douala (Littoral)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Regional Hub</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Hôpital Général Douala</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Douala &bull; Littoral</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 3: Hôpital Laquintinie -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">child_care</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">Category 2 Regional</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Hôpital Laquintinie</h3>
-          <p class="text-xs text-slate-500 mb-3">Maternal, pediatric anemia &amp; acute triage</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">child_care</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-emerald-600">location_on</span> Douala (Littoral)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Maternal Target</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Hôpital Laquintinie</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Douala &bull; Littoral</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 4: Regional Hospital Buea -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">bloodtype</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-wider border border-purple-200">Category 2 Regional</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Regional Hospital Buea</h3>
-          <p class="text-xs text-slate-500 mb-3">Southwest central blood bank &amp; inpatient ward</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">bloodtype</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-purple-600">location_on</span> Buea (Southwest)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span> District Scope</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Regional Hospital Buea</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Buea &bull; Southwest</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 5: HR Bafoussam -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">car_crash</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-wider border border-amber-200">Category 2 Regional</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">HR Bafoussam</h3>
-          <p class="text-xs text-slate-500 mb-3">West region transit corridor trauma &amp; triage</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">medical_services</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-amber-600">location_on</span> Bafoussam (West)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Trauma Corridor</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">HR Bafoussam</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Bafoussam &bull; West</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 6: Hôpital Central de Yaoundé -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">domain</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 text-[10px] font-black uppercase tracking-wider border border-rose-200">Category 1 Reference</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Hôpital Central</h3>
-          <p class="text-xs text-slate-500 mb-3">National trauma &amp; surgical inpatient center</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">domain</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-rose-600">location_on</span> Yaoundé (Centre)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-rose-500"></span> Reference Scope</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Hôpital Central</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Yaoundé &bull; Centre</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
-      <!-- ITEM 7: Regional Hospital Garoua -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-teal-100 text-teal-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">medical_services</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-teal-50 text-teal-700 text-[10px] font-black uppercase tracking-wider border border-teal-200">Category 2 Regional</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">HR Garoua</h3>
-          <p class="text-xs text-slate-500 mb-3">Northern regional referral &amp; district network</p>
+      <!-- ITEM 7: HR Garoua -->
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">health_and_safety</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-teal-600">location_on</span> Garoua (North)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span> Northern Scope</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">HR Garoua</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Garoua &bull; North</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ITEM 8: Regional Hospital Limbe -->
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">local_hospital</span>
+        </div>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Regional Hospital Limbe</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Limbe &bull; Southwest</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ===== DUPLICATE SET FOR SEAMLESS -50% INFINITE LOOP ===== -->
       <!-- ITEM 1 DUP -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between" aria-hidden="true">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">local_hospital</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wider border border-red-200">Category 1 Reference</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">CHU de Yaoundé</h3>
-          <p class="text-xs text-slate-500 mb-3">Academic referral &bull; Oncology &amp; Acute Surgery</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default" aria-hidden="true">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">local_hospital</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-red-600">location_on</span> Yaoundé (Centre)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-red-500"></span> Reference Scope</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">CHU de Yaoundé</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Yaoundé &bull; Centre</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 2 DUP -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between" aria-hidden="true">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">emergency</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-wider border border-blue-200">Category 1 Referral</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Hôpital Général Douala</h3>
-          <p class="text-xs text-slate-500 mb-3">Littoral regional referral &bull; ICU &amp; Surgery</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default" aria-hidden="true">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">emergency</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-blue-600">location_on</span> Douala (Littoral)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Regional Hub</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Hôpital Général Douala</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Douala &bull; Littoral</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 3 DUP -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between" aria-hidden="true">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">child_care</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">Category 2 Regional</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Hôpital Laquintinie</h3>
-          <p class="text-xs text-slate-500 mb-3">Maternal, pediatric anemia &amp; acute triage</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default" aria-hidden="true">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">child_care</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-emerald-600">location_on</span> Douala (Littoral)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Maternal Target</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Hôpital Laquintinie</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Douala &bull; Littoral</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
       <!-- ITEM 4 DUP -->
-      <div class="w-[280px] sm:w-[320px] bg-slate-50 hover:bg-white rounded-3xl p-5 border border-slate-200/80 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 shrink-0 group flex flex-col justify-between" aria-hidden="true">
-        <div>
-          <div class="flex items-center justify-between mb-3.5">
-            <div class="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-2xl">bloodtype</span>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 text-[10px] font-black uppercase tracking-wider border border-purple-200">Category 2 Regional</span>
-          </div>
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-1">Regional Hospital Buea</h3>
-          <p class="text-xs text-slate-500 mb-3">Southwest central blood bank &amp; inpatient ward</p>
+      <div class="w-[240px] sm:w-[260px] bg-slate-50/80 hover:bg-white rounded-2xl p-3.5 border border-slate-200/80 hover:border-red-300 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 shrink-0 flex items-center gap-3.5 group cursor-default" aria-hidden="true">
+        <div class="w-10 h-10 rounded-xl bg-red-50 text-red-600 border border-red-100/80 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-red-600 group-hover:text-white transition-all duration-200 shadow-xs">
+          <span class="material-symbols-outlined text-xl">bloodtype</span>
         </div>
-        <div class="pt-3 border-t border-slate-200/70 flex items-center justify-between text-[11px] font-bold">
-          <span class="text-slate-600 flex items-center gap-1"><span class="material-symbols-outlined text-xs text-purple-600">location_on</span> Buea (Southwest)</span>
-          <span class="text-slate-700 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span> District Scope</span>
+        <div class="min-w-0 flex-1">
+          <h3 class="font-headline font-bold text-xs sm:text-sm text-slate-900 tracking-tight leading-snug truncate">Regional Hospital Buea</h3>
+          <div class="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
+            <span class="material-symbols-outlined text-xs text-red-500 shrink-0">location_on</span>
+            <span class="truncate">Buea &bull; Southwest</span>
+          </div>
+          <div class="flex items-center gap-1.5 text-[10px] font-bold text-emerald-600 mt-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Connected Node</span>
+          </div>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- Transparent Architecture Disclaimer -->
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 text-center">
-    <p class="text-[11px] text-slate-600 max-w-2xl mx-auto leading-relaxed">
-      * <em>VitalPulse is an independent digital health coordination platform designed for technical alignment with Cameroon's healthcare facilities. Facility names reflect regional compatibility models and public healthcare tiers.</em>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-5 text-center">
+    <p class="text-[11px] text-slate-500 max-w-2xl mx-auto leading-relaxed">
+      * <em>VitalPulse coordinates voluntary blood donations with public and regional hospital blood banks across Cameroon.</em>
     </p>
   </div>
 </section>
-
 <!-- ===== SECTION 2: CORE PLATFORM PILLARS (LIGHT THEME) ===== -->
 <section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 relative overflow-hidden">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1071,8 +952,8 @@ Join Free
               Register Your Healthcare Facility
             </a>
             <a href="/login.html" class="w-full py-3 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-white/15 transition-all">
-              <span class="material-symbols-outlined text-lg">key</span>
-              Existing Staff PIN Sign In
+              <span class="material-symbols-outlined text-lg">login</span>
+              Authorized Sign In
             </a>
           </div>
         </div>
@@ -1156,105 +1037,6 @@ Join Free
           </p>
           <div class="flex items-center gap-1.5 pt-2.5 border-t border-white/15 text-[11px] font-bold text-amber-400">
             <span class="material-symbols-outlined text-sm">car_crash</span> Emergency Surgery
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ===== SECTION 7: ACTIVE REGIONAL BLOOD DRIVES (LIGHT THEME) ===== -->
-<section id="campaigns" class="py-20 sm:py-28 lg:py-36 bg-white border-t border-slate-200/80">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-12 sm:mb-16 reveal">
-      <div>
-        <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
-          <span class="material-symbols-outlined text-sm">campaign</span> Community Outreach
-        </span>
-        <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-2">
-          Community Outreach &amp; Mobile Drives
-        </h2>
-        <p class="text-slate-600 text-sm sm:text-base">Organize or request a life-saving mobile blood drive for your university, faith congregation, or corporate workplace in Cameroon.</p>
-      </div>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
-      
-      <!-- Drive 1 (Campus) -->
-      <div class="bg-slate-50 rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-lg transition-all reveal flex flex-col">
-        <div class="relative h-44 sm:h-48 overflow-hidden">
-          <img src="https://images.unsplash.com/photo-1536856136534-bb679c52a9aa?q=80&w=800&auto=format&fit=crop" alt="Volunteer student blood donor donating blood" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500"/>
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
-          <div class="absolute top-3.5 left-3.5">
-            <span class="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black uppercase tracking-wider shadow">Youth &bull; Students</span>
-          </div>
-          <div class="absolute bottom-3 left-3.5 text-white text-xs font-bold flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm text-red-400">school</span> University Campuses
-          </div>
-        </div>
-        <div class="p-6 sm:p-7 flex-1 flex flex-col justify-between">
-          <div>
-            <h4 class="font-headline font-black text-lg sm:text-xl text-slate-900 mb-2">University &amp; Campus Drives</h4>
-            <p class="text-xs text-slate-600 leading-relaxed mb-6">Mobilizing youth volunteer cohorts across tertiary institutions in Yaoundé, Douala, Buea, and Dschang to build continuous blood reserves.</p>
-          </div>
-          <div>
-            <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20organize%20a%20Campus%20Blood%20Drive." target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-primary text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-primary/20 hover:bg-[#8f0d15] transition-all">
-              <span class="material-symbols-outlined text-base">chat</span>
-              Schedule Campus Drive
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Drive 2 (Faith-based & Community) -->
-      <div class="bg-slate-50 rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-lg transition-all reveal flex flex-col" style="animation-delay: 0.1s">
-        <div class="relative h-44 sm:h-48 overflow-hidden">
-          <img src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?q=80&w=800&auto=format&fit=crop" alt="Community gathering and healthcare support" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500"/>
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
-          <div class="absolute top-3.5 left-3.5">
-            <span class="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider shadow">Faith &bull; Community</span>
-          </div>
-          <div class="absolute bottom-3 left-3.5 text-white text-xs font-bold flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm text-emerald-400">church</span> Churches &amp; Associations
-          </div>
-        </div>
-        <div class="p-6 sm:p-7 flex-1 flex flex-col justify-between">
-          <div>
-            <h4 class="font-headline font-black text-lg sm:text-xl text-slate-900 mb-2">Faith-Based &amp; Community Outreach</h4>
-            <p class="text-xs text-slate-600 leading-relaxed mb-6">Partnering with religious congregations, youth associations, and cultural community halls for weekend mobile blood drives.</p>
-          </div>
-          <div>
-            <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20organize%20a%20Community%20Blood%20Drive." target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-emerald-700/20 hover:bg-emerald-800 transition-all">
-              <span class="material-symbols-outlined text-base">chat</span>
-              Schedule Community Drive
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Drive 3 (Corporate / Workplace) -->
-      <div class="bg-slate-50 rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm hover:shadow-lg transition-all reveal flex flex-col" style="animation-delay: 0.2s">
-        <div class="relative h-44 sm:h-48 overflow-hidden">
-          <img src="https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?q=80&w=800&auto=format&fit=crop" alt="Clinical blood draw and corporate blood donation" class="w-full h-full object-cover hover:scale-105 transition-transform duration-500"/>
-          <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent"></div>
-          <div class="absolute top-3.5 left-3.5">
-            <span class="px-2.5 py-0.5 rounded-full bg-blue-600 text-white text-[10px] font-black uppercase tracking-wider shadow">Corporate &bull; CSR</span>
-          </div>
-          <div class="absolute bottom-3 left-3.5 text-white text-xs font-bold flex items-center gap-1">
-            <span class="material-symbols-outlined text-sm text-blue-400">corporate_fare</span> Workplaces &amp; Offices
-          </div>
-        </div>
-        <div class="p-6 sm:p-7 flex-1 flex flex-col justify-between">
-          <div>
-            <h4 class="font-headline font-black text-lg sm:text-xl text-slate-900 mb-2">Corporate Workplace Blood Days</h4>
-            <p class="text-xs text-slate-600 leading-relaxed mb-6">Empowering corporate institutions and businesses to schedule dedicated voluntary donation days for staff as corporate social impact.</p>
-          </div>
-          <div>
-            <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20organize%20a%20Corporate%20Blood%20Drive." target="_blank" rel="noopener noreferrer" class="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all">
-              <span class="material-symbols-outlined text-base">chat</span>
-              Schedule Corporate Drive
-            </a>
           </div>
         </div>
       </div>
@@ -1393,9 +1175,9 @@ Join Free
         <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
         Register as a Donor
       </a>
-      <a href="/login.html" class="inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
-        <span class="material-symbols-outlined text-lg">local_hospital</span>
-        Hospital Staff Portal
+      <a href="/public-request.html" class="btn-spring inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
+        <span class="material-symbols-outlined text-red-400 text-lg" style="font-variation-settings:'FILL' 1">emergency</span>
+        Request Emergency Blood
       </a>
     </div>
   </div>
@@ -1568,6 +1350,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.blood-matrix-pill').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       renderMatrix(btn.dataset.blood);
+      window.animateMatrixChange?.();
     });
   });
 
