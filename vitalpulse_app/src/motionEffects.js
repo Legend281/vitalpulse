@@ -169,3 +169,195 @@ function initCardMicroMotion() {
         });
     });
 }
+
+// ============================================================================
+// ABOUT PAGE MOTION CONTROLLER (Framer Motion / Spring-driven)
+// ============================================================================
+
+let _aboutMotionInitialized = false;
+
+export function initAboutMotion() {
+    if (_aboutMotionInitialized) return;
+    _aboutMotionInitialized = true;
+
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        document.querySelectorAll('.reveal').forEach(el => el.classList.add('revealed'));
+        return;
+    }
+
+    // 1. Hero Stagger Entrance (Spring-driven with Framer Motion)
+    initAboutHeroEntrance();
+
+    // 2. Scroll-Triggered Section Reveals
+    initAboutScrollReveals();
+
+    // 3. Narrative Streams Stagger (Section 1)
+    initAboutStreamMotion();
+
+    // 4. Principles Manifesto Stagger (Section 3)
+    initManifestoMotion();
+
+    // 5. Timeline Ribbon Progression (Section 4)
+    initTimelineRibbonMotion();
+
+    // 6. Interactive Spring Micro-Motion on buttons
+    initCardMicroMotion();
+}
+
+function initAboutHeroEntrance() {
+    const heroElements = document.querySelectorAll('#aboutHeroContent > *');
+    if (heroElements.length > 0) {
+        animate(
+            heroElements,
+            {
+                opacity: [0, 1],
+                y: [28, 0],
+                scale: [0.97, 1]
+            },
+            {
+                delay: stagger(0.09, { start: 0.12 }),
+                duration: 0.85,
+                easing: [0.16, 1, 0.3, 1]
+            }
+        );
+    }
+}
+
+function initAboutStreamMotion() {
+    const streams = document.querySelectorAll('.about-stream-item');
+    if (streams.length > 0) {
+        inView(
+            streams[0].parentElement,
+            () => {
+                animate(
+                    streams,
+                    {
+                        opacity: [0, 1],
+                        x: [24, 0]
+                    },
+                    {
+                        delay: stagger(0.12),
+                        duration: 0.75,
+                        easing: [0.16, 1, 0.3, 1]
+                    }
+                );
+            },
+            { margin: '0px 0px -40px 0px' }
+        );
+    }
+
+    const dataCallout = document.getElementById('aboutDataCallout');
+    if (dataCallout) {
+        inView(
+            dataCallout,
+            () => {
+                animate(
+                    dataCallout,
+                    {
+                        opacity: [0, 1],
+                        scale: [0.95, 1],
+                        y: [20, 0]
+                    },
+                    {
+                        duration: 0.7,
+                        easing: [0.16, 1, 0.3, 1]
+                    }
+                );
+            },
+            { margin: '0px 0px -40px 0px' }
+        );
+    }
+}
+
+function initManifestoMotion() {
+    const manifestoItems = document.querySelectorAll('.manifesto-item');
+    if (manifestoItems.length > 0) {
+        inView(
+            manifestoItems[0].parentElement,
+            () => {
+                animate(
+                    manifestoItems,
+                    {
+                        opacity: [0, 1],
+                        y: [24, 0]
+                    },
+                    {
+                        delay: stagger(0.09),
+                        duration: 0.7,
+                        easing: [0.16, 1, 0.3, 1]
+                    }
+                );
+            },
+            { margin: '0px 0px -50px 0px' }
+        );
+    }
+}
+
+function initTimelineRibbonMotion() {
+    const ribbonTrack = document.getElementById('timelineRibbonTrack');
+    if (ribbonTrack) {
+        inView(
+            ribbonTrack,
+            () => {
+                animate(
+                    ribbonTrack,
+                    {
+                        scaleX: [0, 1]
+                    },
+                    {
+                        duration: 0.85,
+                        easing: [0.16, 1, 0.3, 1]
+                    }
+                );
+            },
+            { margin: '0px 0px -40px 0px' }
+        );
+    }
+
+    const timelineNodes = document.querySelectorAll('.timeline-step-node');
+    if (timelineNodes.length > 0) {
+        inView(
+            timelineNodes[0].parentElement,
+            () => {
+                animate(
+                    timelineNodes,
+                    {
+                        opacity: [0, 1],
+                        y: [22, 0],
+                        scale: [0.94, 1]
+                    },
+                    {
+                        delay: stagger(0.1, { start: 0.08 }),
+                        duration: 0.65,
+                        easing: [0.16, 1, 0.3, 1]
+                    }
+                );
+            },
+            { margin: '0px 0px -40px 0px' }
+        );
+    }
+}
+
+function initAboutScrollReveals() {
+    const revealTargets = document.querySelectorAll('.reveal');
+    revealTargets.forEach(el => {
+        inView(
+            el,
+            () => {
+                animate(
+                    el,
+                    {
+                        opacity: [0, 1],
+                        y: [22, 0]
+                    },
+                    {
+                        duration: 0.75,
+                        easing: [0.16, 1, 0.3, 1]
+                    }
+                );
+                el.classList.add('revealed');
+            },
+            { margin: '0px 0px -30px 0px' }
+        );
+    });
+}

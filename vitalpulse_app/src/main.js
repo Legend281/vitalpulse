@@ -122,6 +122,7 @@ import { initNurseDashboard, loadNurseOverview } from './dashboards/nurse/nurseD
 import { initLabDashboard, loadLabPipeline } from './dashboards/lab/labDashboard.js';
 import { publishPublicSnapshot } from './publicStats.js';
 import { initHomePage } from './home.js';
+import { initAboutMotion } from './motionEffects.js';
 
 // Only http(s) URLs may go into href/src attributes. Firebase Storage download URLs are
 // https, so this rejects javascript:/data: and other dangerous schemes without breaking
@@ -280,6 +281,10 @@ function initGlobalUserSessionGuard() {
     const isIndex = path === '/' || path.endsWith('/') || path.endsWith('index.html');
     if (isIndex) {
         initHomePage();
+    }
+    const isAbout = path.includes('about.html');
+    if (isAbout) {
+        initAboutMotion();
     }
     if (!isDashboard) return;
 

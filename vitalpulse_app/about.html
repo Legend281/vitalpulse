@@ -63,6 +63,12 @@
     border-bottom: 1px solid rgba(226, 232, 240, 0.9) !important;
     box-shadow: 0 4px 25px rgba(0,0,0,0.06) !important;
   }
+
+  .btn-spring {
+    transform-origin: center center;
+    will-change: transform;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body class="bg-white selection:bg-primary selection:text-white overflow-x-hidden text-slate-700 font-sans antialiased">
@@ -100,7 +106,7 @@
   <button id="lang-fr" class="px-2 py-1 rounded-lg text-slate-500 hover:text-slate-900 transition-all">FR</button>
 </div>
 <a href="/login.html" class="hidden md:inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-primary transition-colors px-3.5 py-2 rounded-xl hover:bg-slate-100">Sign In</a>
-<a href="/signup.html" class="hidden md:inline-flex items-center gap-2 bg-primary hover:bg-[#8f0d15] text-white px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-primary/20 hover:shadow-primary/35 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200">
+<a href="/signup.html" class="hidden md:inline-flex items-center gap-2 bg-primary hover:bg-[#8f0d15] text-white px-4 sm:px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-primary/20 hover:shadow-primary/35 hover:scale-[1.02] active:scale-[0.97] transition-all duration-200 btn-spring">
 Join Free
 <span class="material-symbols-outlined text-base">arrow_forward</span>
 </a>
@@ -139,7 +145,7 @@ Join Free
   <div class="h-px w-full bg-slate-100 my-1"></div>
 
   <div class="flex flex-col gap-2.5">
-    <a href="/signup.html" class="flex items-center justify-center gap-2 bg-primary hover:bg-[#8f0d15] text-white py-3.5 rounded-2xl text-sm font-bold shadow-lg shadow-primary/25 transition-all">
+    <a href="/signup.html" class="flex items-center justify-center gap-2 bg-primary hover:bg-[#8f0d15] text-white py-3.5 rounded-2xl text-sm font-bold shadow-lg shadow-primary/25 transition-all btn-spring">
       <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">volunteer_activism</span>
       Join Free Donor Network
       <span class="material-symbols-outlined text-base">arrow_forward</span>
@@ -152,7 +158,7 @@ Join Free
 </header>
 
 <main>
-<!-- ===== HERO SECTION (VIVID CINEMATIC AFRICAN CLINICAL HERO) ===== -->
+<!-- ===== HERO SECTION (VIVID CINEMATIC AFRICAN CLINICAL HERO WITH SPRING STAGGER) ===== -->
 <section class="relative min-h-[85vh] flex items-center justify-center pt-24 sm:pt-32 pb-20 sm:pb-28 overflow-hidden text-center bg-slate-950">
   
   <!-- Authentic Cameroonian Healthcare Team Photography with Enhanced Visibility -->
@@ -165,7 +171,8 @@ Join Free
     <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(220,38,38,0.22),transparent_70%)] pointer-events-none"></div>
   </div>
 
-  <div class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 w-full reveal">
+  <!-- Framer Motion Animated Hero Content Container (#aboutHeroContent) -->
+  <div id="aboutHeroContent" class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
     
     <!-- Mission Badge -->
     <div class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-950/60 backdrop-blur-md border border-white/20 text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-6 shadow-lg">
@@ -186,14 +193,14 @@ Join Free
       VitalPulse is an altruistic emergency health coordination initiative founded to solve Cameroon’s critical blood shortages. We connect hospital blood banks, frontline clinicians, and voluntary donors under a single transparent, non-commercial umbrella.
     </p>
 
-    <!-- CTAs -->
+    <!-- CTAs with Spring Physics -->
     <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-10 sm:mb-12">
-      <a href="/signup.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base shadow-xl shadow-primary/30 hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
+      <a href="/signup.html" class="btn-spring w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base shadow-xl shadow-primary/30 hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
         <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">favorite</span>
         Become a Voluntary Donor
         <span class="material-symbols-outlined text-base">arrow_forward</span>
       </a>
-      <a href="/public-request.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base border border-white/25 backdrop-blur-md transition-all duration-200">
+      <a href="/public-request.html" class="btn-spring w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base border border-white/25 backdrop-blur-md transition-all duration-200">
         <span class="material-symbols-outlined text-red-400 text-lg" style="font-variation-settings:'FILL'1">emergency</span>
         Request Emergency Blood
       </a>
@@ -226,7 +233,7 @@ Join Free
     
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
       
-      <!-- Left Column: Command Editorial Headline & Data Callout -->
+      <!-- Left Column: Command Editorial Headline & Data Callout (#aboutDataCallout) -->
       <div class="lg:col-span-5 lg:sticky lg:top-28 reveal">
         <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black uppercase tracking-wider mb-4">
           <span class="material-symbols-outlined text-sm">clinical_notes</span> Public Health Context
@@ -238,8 +245,8 @@ Join Free
           In Cameroon, public reference centers, regional hospitals, and district clinics face a severe, continuous shortage. Blood cannot be manufactured — yet emergency availability is the critical divide between life and loss.
         </p>
 
-        <!-- Bold Fact Callout Strip -->
-        <div class="p-6 rounded-2xl bg-slate-50 border-l-4 border-primary space-y-4">
+        <!-- Bold Fact Callout Strip Animated by Framer Motion -->
+        <div id="aboutDataCallout" class="p-6 rounded-2xl bg-slate-50 border-l-4 border-primary space-y-4 shadow-xs">
           <div>
             <div class="text-3xl font-black font-headline text-slate-950 tracking-tight">&gt; 400,000 Units</div>
             <div class="text-xs uppercase tracking-wider font-extrabold text-slate-500">Estimated Annual Clinical Need</div>
@@ -255,11 +262,11 @@ Join Free
         </div>
       </div>
 
-      <!-- Right Column: Open Connected Narrative Streams (Zero Card Boxes) -->
-      <div class="lg:col-span-7 space-y-12 lg:pl-4 reveal" style="animation-delay: 0.1s">
+      <!-- Right Column: Open Connected Narrative Streams (.about-stream-item) -->
+      <div class="lg:col-span-7 space-y-12 lg:pl-4">
         
         <!-- Stream 01: The Structural Blood Deficit -->
-        <div class="relative pl-8 border-l-2 border-rose-200">
+        <div class="about-stream-item relative pl-8 border-l-2 border-rose-200">
           <span class="absolute -left-2 top-0 w-3.5 h-3.5 rounded-full bg-rose-600 ring-4 ring-rose-100"></span>
           <span class="text-[10px] font-black uppercase tracking-widest text-rose-700 block mb-1">Challenge 01</span>
           <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-2">The Structural Deficit in Blood Banks</h3>
@@ -269,7 +276,7 @@ Join Free
         </div>
 
         <!-- Stream 02: Moving Beyond Family Replacement Panic -->
-        <div class="relative pl-8 border-l-2 border-amber-200">
+        <div class="about-stream-item relative pl-8 border-l-2 border-amber-200">
           <span class="absolute -left-2 top-0 w-3.5 h-3.5 rounded-full bg-amber-500 ring-4 ring-amber-100"></span>
           <span class="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1">Challenge 02</span>
           <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-2">Ending Bedside Replacement Panic</h3>
@@ -279,7 +286,7 @@ Join Free
         </div>
 
         <!-- Stream 03: The Three High-Risk Clinical Battlegrounds -->
-        <div class="relative pl-8 border-l-2 border-blue-200">
+        <div class="about-stream-item relative pl-8 border-l-2 border-blue-200">
           <span class="absolute -left-2 top-0 w-3.5 h-3.5 rounded-full bg-blue-600 ring-4 ring-blue-100"></span>
           <span class="text-[10px] font-black uppercase tracking-widest text-blue-700 block mb-1">Challenge 03</span>
           <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-2">Protecting Cameroon's Most Vulnerable</h3>
@@ -328,7 +335,7 @@ Join Free
     </div>
 
     <!-- Editorial Quote Banner -->
-    <div class="mt-10 p-6 sm:p-8 rounded-2xl bg-white border border-slate-200/80 shadow-xs text-center">
+    <div class="mt-10 p-6 sm:p-8 rounded-2xl bg-white border border-slate-200/80 shadow-xs text-center reveal">
       <span class="material-symbols-outlined text-3xl text-primary mb-2">format_quote</span>
       <blockquote class="font-headline font-bold text-base sm:text-lg text-slate-900 leading-snug max-w-2xl mx-auto mb-2">
         &ldquo;Blood is an irreplaceable gift of humanity. Our mission is to ensure no Cameroonian mother, child, or patient dies waiting for that gift to arrive.&rdquo;
@@ -341,7 +348,7 @@ Join Free
   <div class="max-w-6xl mx-auto h-px bg-gradient-to-r from-transparent via-slate-200/80 to-transparent mt-16"></div>
 </section>
 
-<!-- ===== SECTION 3: OUR GUIDING PRINCIPLES & ETHICAL STANDARDS (OPEN MANIFESTO, NO CARDS) ===== -->
+<!-- ===== SECTION 3: OUR GUIDING PRINCIPLES & ETHICAL STANDARDS (OPEN MANIFESTO WITH STAGGER) ===== -->
 <section class="py-20 sm:py-28 bg-white relative">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     
@@ -357,11 +364,11 @@ Join Free
       </p>
     </div>
 
-    <!-- Open 4-Column Typographic Manifesto -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-10 lg:gap-14 reveal">
+    <!-- Open 4-Column Typographic Manifesto (.manifesto-item) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-10 lg:gap-14">
       
       <!-- Principle 01 -->
-      <div class="space-y-3 pb-8 border-b border-slate-100 md:border-b-0">
+      <div class="manifesto-item space-y-3 pb-8 border-b border-slate-100 md:border-b-0">
         <div class="flex items-center justify-between">
           <span class="font-headline font-black text-3xl text-red-600/30">01</span>
           <span class="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-black uppercase tracking-wider">WHO &bull; MINSANTE Aligned</span>
@@ -373,7 +380,7 @@ Join Free
       </div>
 
       <!-- Principle 02 -->
-      <div class="space-y-3 pb-8 border-b border-slate-100 md:border-b-0">
+      <div class="manifesto-item space-y-3 pb-8 border-b border-slate-100 md:border-b-0">
         <div class="flex items-center justify-between">
           <span class="font-headline font-black text-3xl text-emerald-600/30">02</span>
           <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider">Zero Untested Transfusion</span>
@@ -385,7 +392,7 @@ Join Free
       </div>
 
       <!-- Principle 03 -->
-      <div class="space-y-3 pb-8 border-b border-slate-100 md:border-b-0">
+      <div class="manifesto-item space-y-3 pb-8 border-b border-slate-100 md:border-b-0">
         <div class="flex items-center justify-between">
           <span class="font-headline font-black text-3xl text-blue-600/30">03</span>
           <span class="px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-black uppercase tracking-wider">Donor Health Guarded</span>
@@ -397,7 +404,7 @@ Join Free
       </div>
 
       <!-- Principle 04 -->
-      <div class="space-y-3">
+      <div class="manifesto-item space-y-3">
         <div class="flex items-center justify-between">
           <span class="font-headline font-black text-3xl text-purple-600/30">04</span>
           <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-black uppercase tracking-wider">Nationwide Reach</span>
@@ -413,7 +420,7 @@ Join Free
   </div>
 </section>
 
-<!-- ===== SECTION 4: THE EMERGENCY COORDINATION FLOW (CONNECTED HORIZONTAL TIMELINE RIBBON) ===== -->
+<!-- ===== SECTION 4: THE EMERGENCY COORDINATION FLOW (CONNECTED HORIZONTAL PROGRESSION RIBBON) ===== -->
 <section class="py-20 sm:py-28 bg-gradient-to-b from-white via-slate-50/50 to-white relative overflow-hidden">
   <div class="max-w-6xl mx-auto h-px bg-gradient-to-r from-transparent via-slate-200/80 to-transparent mb-16"></div>
   
@@ -431,16 +438,16 @@ Join Free
       </p>
     </div>
 
-    <!-- Connected Horizontal Progression Ribbon (Zero Card Boxes) -->
-    <div class="relative reveal">
+    <!-- Connected Horizontal Progression Ribbon -->
+    <div class="relative">
       
-      <!-- Continuous Timeline Connecting Spine (Desktop Only) -->
-      <div class="hidden lg:block absolute top-7 left-[8%] right-[8%] h-0.5 bg-gradient-to-r from-red-500 via-amber-500 via-blue-500 to-emerald-500 z-0"></div>
+      <!-- Continuous Timeline Connecting Spine Animated by Framer Motion (#timelineRibbonTrack) -->
+      <div id="timelineRibbonTrack" class="hidden lg:block absolute top-7 left-[8%] right-[8%] h-0.5 bg-gradient-to-r from-red-500 via-amber-500 via-blue-500 to-emerald-500 z-0" style="transform-origin: left;"></div>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-6 relative z-10">
         
         <!-- Step 01 -->
-        <div class="space-y-3 text-center sm:text-left">
+        <div class="timeline-step-node space-y-3 text-center sm:text-left">
           <div class="flex items-center justify-center sm:justify-start">
             <span class="w-14 h-14 rounded-full bg-white border-2 border-red-500 text-red-600 font-headline font-black text-base flex items-center justify-center shadow-md">
               01
@@ -454,7 +461,7 @@ Join Free
         </div>
 
         <!-- Step 02 -->
-        <div class="space-y-3 text-center sm:text-left">
+        <div class="timeline-step-node space-y-3 text-center sm:text-left">
           <div class="flex items-center justify-center sm:justify-start">
             <span class="w-14 h-14 rounded-full bg-white border-2 border-amber-500 text-amber-700 font-headline font-black text-base flex items-center justify-center shadow-md">
               02
@@ -468,7 +475,7 @@ Join Free
         </div>
 
         <!-- Step 03 -->
-        <div class="space-y-3 text-center sm:text-left">
+        <div class="timeline-step-node space-y-3 text-center sm:text-left">
           <div class="flex items-center justify-center sm:justify-start">
             <span class="w-14 h-14 rounded-full bg-white border-2 border-blue-500 text-blue-700 font-headline font-black text-base flex items-center justify-center shadow-md">
               03
@@ -482,7 +489,7 @@ Join Free
         </div>
 
         <!-- Step 04 -->
-        <div class="space-y-3 text-center sm:text-left">
+        <div class="timeline-step-node space-y-3 text-center sm:text-left">
           <div class="flex items-center justify-center sm:justify-start">
             <span class="w-14 h-14 rounded-full bg-white border-2 border-emerald-500 text-emerald-700 font-headline font-black text-base flex items-center justify-center shadow-md">
               04
@@ -525,10 +532,10 @@ Join Free
       </div>
 
       <div class="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
-        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20partner%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
+        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20partner%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="btn-spring inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
           <span class="material-symbols-outlined text-base">chat</span> WhatsApp Facility Team
         </a>
-        <a href="/login.html" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
+        <a href="/login.html" class="btn-spring inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
           <span class="material-symbols-outlined text-base">login</span> Authorized Sign In
         </a>
       </div>
@@ -562,11 +569,11 @@ Join Free
     </p>
 
     <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-      <a href="/signup.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-8 py-4 rounded-2xl font-headline font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
+      <a href="/signup.html" class="btn-spring w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-8 py-4 rounded-2xl font-headline font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
         <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
         Register as a Donor
       </a>
-      <a href="/public-request.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-8 py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
+      <a href="/public-request.html" class="btn-spring w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-8 py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
         <span class="material-symbols-outlined text-red-400 text-lg" style="font-variation-settings:'FILL' 1">emergency</span>
         Request Emergency Blood
       </a>
@@ -647,7 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 150);
   }
 
-  // Smooth Reveal Animations
+  // Fallback observer if Motion JS is not active
   const observer = new IntersectionObserver(entries => {
     entries.forEach(e => {
       if (e.isIntersecting) {
@@ -706,6 +713,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+</script>
+
+<!-- Framer Motion Vanilla JS Spring Animation Engine Execution -->
+<script type="module">
+  import { initAboutMotion } from '/src/motionEffects.js';
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => initAboutMotion());
+  } else {
+    initAboutMotion();
+  }
 </script>
 
 <script type="module" src="/src/main.js"></script>
