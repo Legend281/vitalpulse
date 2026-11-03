@@ -65,7 +65,7 @@
   }
 </style>
 </head>
-<body class="bg-slate-50 selection:bg-primary selection:text-white overflow-x-hidden text-slate-700 font-sans antialiased">
+<body class="bg-white selection:bg-primary selection:text-white overflow-x-hidden text-slate-700 font-sans antialiased">
 <div id="global-loader"><div class="loader-spinner"></div></div>
 
 <!-- ===== TOP EMERGENCY ANNOUNCEMENT BANNER ===== -->
@@ -111,7 +111,7 @@ Join Free
 </div>
 </div>
 
-<!-- Mobile Nav Dropdown (World-Class Light Floating Drawer) -->
+<!-- Mobile Nav Dropdown -->
 <div id="mobileMenu" class="absolute top-full left-0 w-full bg-white/98 backdrop-blur-2xl border-b border-slate-200 shadow-2xl hidden flex-col px-5 py-6 gap-4 md:hidden text-slate-800 transition-all duration-300">
   
   <!-- Mobile Language Switcher Row -->
@@ -156,186 +156,140 @@ Join Free
 </header>
 
 <main>
-<!-- ===== HERO SECTION (SPLIT LAYOUT WITH MEDICAL BACKDROP) ===== -->
-<section class="relative min-h-[85vh] flex items-center pt-20 sm:pt-28 pb-16 sm:pb-24 overflow-hidden text-slate-900 bg-slate-50">
+<!-- ===== HERO SECTION (CENTERED, CINEMATIC AFRICAN CLINICAL BACKDROP) ===== -->
+<section class="relative min-h-[85vh] flex items-center justify-center pt-24 sm:pt-32 pb-20 sm:pb-28 overflow-hidden text-center bg-slate-950">
   
-  <!-- Full-Bleed Background Image (African Clinical Team & Hospital Setting) -->
+  <!-- Authentic African Clinical Photography Backdrop -->
   <div class="absolute inset-0 z-0 overflow-hidden">
-    <img src="https://images.unsplash.com/photo-1579684385127-1ef15d508118?q=80&w=2000&auto=format&fit=crop" 
-         alt="Cameroon clinical doctor and healthcare emergency staff" 
-         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out opacity-35"/>
-    <div class="absolute inset-0 bg-gradient-to-r from-slate-50/95 via-slate-50/85 to-slate-50/65"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-slate-50 via-transparent to-slate-50/50"></div>
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(175,16,26,0.1),transparent_70%)] pointer-events-none"></div>
+    <img src="/assets/about_hero_doctors.jpg" 
+         alt="Cameroon clinical doctor and healthcare team dedicated to emergency blood coordination" 
+         class="w-full h-full object-cover object-center scale-105 transform duration-1000 ease-out opacity-40"/>
+    <div class="absolute inset-0 bg-gradient-to-b from-slate-950/85 via-slate-950/70 to-slate-950"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(220,38,38,0.22),transparent_70%)] pointer-events-none"></div>
   </div>
 
-  <div class="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 xl:gap-16 items-center">
-      
-      <!-- Left Hero Column (7 Cols) -->
-      <div class="lg:col-span-6 xl:col-span-7 reveal">
-        <div class="inline-flex items-center gap-2 px-3.5 sm:px-4 py-1.5 rounded-full bg-red-100/90 border border-red-200 text-red-700 text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-5 sm:mb-6 shadow-xs">
-          <span class="material-symbols-outlined text-sm text-red-600" style="font-variation-settings:'FILL'1">health_and_safety</span>
-          Cameroon Healthcare Technology Initiative
-        </div>
-
-        <h1 class="font-headline text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.08] tracking-tight text-slate-950 mb-4 sm:mb-6">
-          <span class="block">Eliminating fatal delays in</span>
-          <span class="block bg-gradient-to-r from-red-600 via-primary to-rose-600 bg-clip-text text-transparent">emergency blood coordination.</span>
-        </h1>
-
-        <p class="text-sm sm:text-base md:text-lg text-slate-600 leading-relaxed mb-6 sm:mb-8 max-w-xl font-normal">
-          VitalPulse is Cameroon's dedicated digital health coordination platform. We bridge the critical gap between emergency hospital triage wards and eligible voluntary blood donors to save lives when seconds matter most.
-        </p>
-
-        <!-- CTAs -->
-        <div class="flex flex-col sm:flex-row gap-3 sm:gap-3.5 mb-8 sm:mb-10">
-          <a href="/signup.html" class="group relative inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base overflow-hidden shadow-xl shadow-primary/25 hover:shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
-            <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">favorite</span>
-            Become a Voluntary Donor
-            <span class="material-symbols-outlined text-base group-hover:translate-x-1 transition-transform">arrow_forward</span>
-          </a>
-          <a href="/public-request.html" class="inline-flex items-center justify-center gap-2 bg-white hover:bg-slate-100 text-slate-800 px-6 sm:px-7 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base border border-slate-200/90 shadow-sm transition-all duration-200">
-            <span class="material-symbols-outlined text-red-600 text-lg" style="font-variation-settings:'FILL'1">emergency</span>
-            Request Emergency Blood
-          </a>
-        </div>
-
-        <!-- Trust bar -->
-        <div class="flex flex-wrap items-center gap-4 sm:gap-6 pt-4 border-t border-slate-200/80">
-          <div class="flex items-center text-xs">
-            <span class="font-black text-slate-900 text-sm">100% Free</span>
-            <span class="text-slate-500 ml-1.5 font-medium">&bull; Altruistic Voluntary Donation</span>
-          </div>
-          <div class="hidden sm:block w-px h-5 bg-slate-200"></div>
-          <div class="flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-            <span class="material-symbols-outlined text-emerald-600 text-base" style="font-variation-settings:'FILL'1">verified_user</span>
-            Strict Role-Gated Clinical Security
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Hero Column (5 Cols) — The Response Gap Comparison Card -->
-      <div class="lg:col-span-6 xl:col-span-5 reveal" style="animation-delay:0.15s">
-        <div class="relative bg-white/95 backdrop-blur-2xl rounded-3xl p-5 sm:p-7 border border-slate-200/90 shadow-2xl shadow-slate-300/40 overflow-hidden text-slate-800">
-          
-          <div class="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Emergency Protocol Analysis</span>
-            <span class="px-2.5 py-0.5 rounded-lg bg-red-100 text-red-700 text-[10px] font-mono font-bold">Cameroon Context</span>
-          </div>
-
-          <h3 class="font-headline font-black text-base sm:text-lg text-slate-900 mb-4">
-            Closing the 4-Hour Response Gap
-          </h3>
-
-          <div class="space-y-3.5 mb-5">
-            <!-- Problem state -->
-            <div class="p-3.5 rounded-2xl bg-red-50/60 border border-red-200/70">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-black uppercase tracking-wider text-red-700 flex items-center gap-1.5">
-                  <span class="material-symbols-outlined text-sm">cancel</span> Traditional Manual Process
-                </span>
-                <span class="text-[10px] font-mono font-bold text-red-600">2 — 6 Hours Delay</span>
-              </div>
-              <p class="text-[11px] text-slate-600 leading-relaxed">
-                Families frantically calling relatives, uncoordinated social media posts, and hospital phone trees during urgent hemorrhages and surgeries.
-              </p>
-            </div>
-
-            <!-- VitalPulse solution -->
-            <div class="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80">
-              <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                  <span class="material-symbols-outlined text-sm text-emerald-600" style="font-variation-settings:'FILL'1">check_circle</span> VitalPulse Digital Architecture
-                </span>
-                <span class="text-[10px] font-mono font-bold text-emerald-700">&lt; 30 Seconds Match</span>
-              </div>
-              <p class="text-[11px] text-slate-700 leading-relaxed">
-                Automated spatial geohash calculation routes alert directly to verified nearby compatible donors with multi-channel SMS and facility guidance.
-              </p>
-            </div>
-          </div>
-
-          <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-            <span>Standardized clinical triage flow</span>
-            <a href="/public-request.html" class="text-primary font-bold hover:underline flex items-center gap-1">
-              Test Request Flow &rarr;
-            </a>
-          </div>
-
-        </div>
-      </div>
-
+  <div class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 w-full reveal">
+    
+    <!-- Mission Badge -->
+    <div class="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-[11px] sm:text-xs font-bold uppercase tracking-wider mb-6 shadow-md">
+      <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+      Cameroon Public Health Coordination Initiative
     </div>
+
+    <!-- Main Headline -->
+    <h1 class="font-headline text-3xl sm:text-5xl lg:text-6xl font-black leading-[1.1] tracking-tight text-white mb-6">
+      Closing the fatal delay in <br class="hidden sm:inline"/>
+      <span class="bg-gradient-to-r from-red-500 via-rose-400 to-amber-300 bg-clip-text text-transparent">
+        emergency blood coordination.
+      </span>
+    </h1>
+
+    <!-- Narrative Intro -->
+    <p class="text-base sm:text-lg md:text-xl text-slate-200 leading-relaxed mb-8 sm:mb-10 max-w-2xl mx-auto font-normal">
+      VitalPulse is an altruistic emergency health coordination initiative founded to solve Cameroon’s critical blood shortages. We connect hospital blood banks, frontline clinicians, and voluntary donors under a single transparent, non-commercial umbrella.
+    </p>
+
+    <!-- CTAs -->
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-10 sm:mb-12">
+      <a href="/signup.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base shadow-xl shadow-primary/30 hover:shadow-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
+        <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL'1">favorite</span>
+        Become a Voluntary Donor
+        <span class="material-symbols-outlined text-base">arrow_forward</span>
+      </a>
+      <a href="/public-request.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-bold text-sm sm:text-base border border-white/20 backdrop-blur-md transition-all duration-200">
+        <span class="material-symbols-outlined text-red-400 text-lg" style="font-variation-settings:'FILL'1">emergency</span>
+        Request Emergency Blood
+      </a>
+    </div>
+
+    <!-- Grounded Ethical Trust Indicators -->
+    <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-8 pt-6 border-t border-white/10 text-xs sm:text-sm text-slate-300">
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-emerald-400 text-base" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+        <span><strong>100% Voluntary</strong> &bull; Non-Remunerated</span>
+      </div>
+      <div class="hidden sm:block w-px h-4 bg-white/20"></div>
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-rose-400 text-base" style="font-variation-settings:'FILL'1">verified_user</span>
+        <span><strong>Mandatory 4-Marker</strong> Pathogen Clearance</span>
+      </div>
+      <div class="hidden sm:block w-px h-4 bg-white/20"></div>
+      <div class="flex items-center gap-2">
+        <span class="material-symbols-outlined text-amber-400 text-base" style="font-variation-settings:'FILL'1">block</span>
+        <span><strong>Zero Hawking</strong> &bull; Anti-Commercialization</span>
+      </div>
+    </div>
+
   </div>
 </section>
 
-<!-- ===== SECTION 2: THE 3 CRITICAL CLINICAL EMERGENCY DRIVERS ===== -->
-<section class="py-20 sm:py-28 bg-white border-t border-slate-200/80">
+<!-- ===== SECTION 1: THE HEALTHCARE REALITY IN CAMEROON (WHY WE EXIST) ===== -->
+<section class="py-20 sm:py-28 bg-white relative">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     
-    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
-      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
-        <span class="material-symbols-outlined text-sm">medical_services</span> Clinical Realities
+    <div class="text-center max-w-3xl mx-auto mb-16 sm:mb-20 reveal">
+      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-100 text-red-700 text-xs font-black uppercase tracking-wider mb-3">
+        <span class="material-symbols-outlined text-sm">clinical_notes</span> Clinical Realities
       </span>
-      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
-        Why Rapid Blood Dispatch Matters in Cameroon
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-4">
+        Why Rapid Blood Coordination Matters in Cameroon
       </h2>
       <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
-        Blood cannot be manufactured. In Cameroon's public and regional health centers, three critical medical conditions account for the vast majority of urgent blood requisitions.
+        Blood cannot be synthesized or manufactured in a laboratory. In Cameroon's public referral centers, regional hospitals, and district clinics, emergency blood availability is the critical dividing line between life and loss.
       </p>
     </div>
 
+    <!-- 3 Root Public Health Challenges -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
       
-      <!-- Driver 1: Maternal Hemorrhage -->
-      <div class="bg-slate-50 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal flex flex-col justify-between">
+      <!-- Challenge 1: The Acute National Deficit -->
+      <div class="bg-slate-50/70 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal flex flex-col justify-between">
         <div>
           <div class="w-12 h-12 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center mb-5">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">pregnant_woman</span>
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">trending_down</span>
           </div>
-          <span class="text-[10px] font-black uppercase tracking-widest text-rose-700 block mb-1">Maternal Health</span>
-          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Postpartum Hemorrhage (PPH)</h3>
+          <span class="text-[10px] font-black uppercase tracking-widest text-rose-700 block mb-1">National Supply Gap</span>
+          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">The Structural Blood Deficit</h3>
           <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
-            Postpartum hemorrhage remains the leading direct cause of maternal mortality in Sub-Saharan Africa. Having matched blood available within minutes turns fatal delivery complications into manageable deliveries.
+            Cameroon’s health facilities require over 400,000 units of blood annually to treat medical emergencies. However, national blood collections consistently fall below 100,000 units, leaving a severe deficit that strains public hospital blood banks.
           </p>
         </div>
         <div class="pt-4 border-t border-slate-200/60 text-xs font-bold text-slate-700 flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-rose-500"></span> Priority Triage Requisition
+          <span class="w-2 h-2 rounded-full bg-rose-500"></span> Public Health Priority
         </div>
       </div>
 
-      <!-- Driver 2: Road Trauma & Surgeries -->
-      <div class="bg-slate-50 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal flex flex-col justify-between" style="animation-delay: 0.1s">
+      <!-- Challenge 2: Family Replacement Panic -->
+      <div class="bg-slate-50/70 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal flex flex-col justify-between" style="animation-delay: 0.1s">
         <div>
           <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center mb-5">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">car_crash</span>
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">groups</span>
           </div>
-          <span class="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1">Trauma &amp; Surgery</span>
-          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Accident &amp; Surgical Trauma</h3>
+          <span class="text-[10px] font-black uppercase tracking-widest text-amber-800 block mb-1">Transfusion Culture</span>
+          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Ending Bedside Replacement Panic</h3>
           <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
-            Along major transit corridors (Yaoundé-Douala, West, and Northern corridors), severe road traffic injuries require immediate whole blood and red cell units to stabilize hemorrhagic shock before emergency surgery.
+            Over 70% of donations in Cameroon are currently reactive "replacement donations" organized in distress by anxious relatives in hospital corridors. VitalPulse aims to shift the nation toward proactive, regular, voluntary blood giving before crises occur.
           </p>
         </div>
         <div class="pt-4 border-t border-slate-200/60 text-xs font-bold text-slate-700 flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-amber-500"></span> Trauma Corridor Protocol
+          <span class="w-2 h-2 rounded-full bg-amber-500"></span> Altruistic Transition
         </div>
       </div>
 
-      <!-- Driver 3: Pediatric Anemia & Sickle Cell -->
-      <div class="bg-slate-50 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal flex flex-col justify-between" style="animation-delay: 0.2s">
+      <!-- Challenge 3: Clinical Emergency Battlegrounds -->
+      <div class="bg-slate-50/70 rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal flex flex-col justify-between" style="animation-delay: 0.2s">
         <div>
           <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mb-5">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">child_care</span>
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">emergency_heat</span>
           </div>
-          <span class="text-[10px] font-black uppercase tracking-widest text-blue-700 block mb-1">Pediatric Care</span>
-          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Severe Anemia &amp; Sickle Cell</h3>
+          <span class="text-[10px] font-black uppercase tracking-widest text-blue-700 block mb-1">Vulnerable Patients</span>
+          <h3 class="font-headline font-black text-xl text-slate-900 mb-3">Urgent Clinical Battlegrounds</h3>
           <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
-            Children suffering from severe malarial anemia and sickle cell disease patients require frequent, safe, pathogen-screened blood transfusions across regional referral and district hospitals.
+            The acute need concentrates where seconds count: post-partum hemorrhage during childbirth, children battling severe malarial anemia or sickle cell crises (over 4,000 children born annually with Drépanocytose), and highway trauma along major transit axes.
           </p>
         </div>
         <div class="pt-4 border-t border-slate-200/60 text-xs font-bold text-slate-700 flex items-center gap-1.5">
-          <span class="w-2 h-2 rounded-full bg-blue-500"></span> Chronic Transfusion Support
+          <span class="w-2 h-2 rounded-full bg-blue-500"></span> Life-Saving Rapid Response
         </div>
       </div>
 
@@ -344,292 +298,97 @@ Join Free
   </div>
 </section>
 
-<!-- ===== SECTION 3: THE 4 CORE ENGINEERING & ETHICAL PILLARS ===== -->
-<section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 border-t border-slate-200/80">
+<!-- ===== SECTION 2: OUR GUIDING ETHICAL & OPERATIONAL COMMITMENTS ===== -->
+<section class="py-20 sm:py-28 bg-slate-50/70 border-t border-slate-200/70 relative">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     
-    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
+    <div class="text-center max-w-3xl mx-auto mb-16 sm:mb-20 reveal">
       <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
-        <span class="material-symbols-outlined text-sm">tune</span> System Architecture
+        <span class="material-symbols-outlined text-sm">shield</span> Ethical Foundations
       </span>
-      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
-        Engineered for Reliability and Trust
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-4">
+        Our Guiding Principles of Care
       </h2>
       <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
-        VitalPulse is built from the ground up for low-bandwidth African mobile networks, strict clinical verification, and altruistic voluntary donation.
+        VitalPulse is guided by strict medical ethics, international public health standards, and a solemn commitment to protecting patients and voluntary donors across Cameroon.
       </p>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
       
-      <!-- Pillar 1 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal">
+      <!-- Principle 1: 100% Altruistic & Non-Commercial -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal">
         <div class="flex items-center gap-3.5 mb-4">
           <div class="w-12 h-12 rounded-2xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">near_me</span>
-          </div>
-          <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 01</span>
-            <h3 class="font-headline font-black text-xl text-slate-900">Spatial Proximity Geohashing</h3>
-          </div>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          When an emergency requisition is logged, the engine calculates geographic coordinates and dispatches alerts strictly to eligible donors within the facility's reachable travel radius.
-        </p>
-        <div class="flex items-center gap-2 text-xs font-bold text-red-700">
-          <span class="material-symbols-outlined text-base">timer</span> Instant spatial matchmaking in &lt; 30 seconds
-        </div>
-      </div>
-
-      <!-- Pillar 2 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.1s">
-        <div class="flex items-center gap-3.5 mb-4">
-          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">signal_cellular_alt</span>
-          </div>
-          <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 02</span>
-            <h3 class="font-headline font-black text-xl text-slate-900">Low-Bandwidth 3G &amp; SMS Failover</h3>
-          </div>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          Designed specifically for Cameroon's mobile environment. The platform functions seamlessly on 3G connections and utilizes automated SMS broadcast failover when mobile data is unavailable.
-        </p>
-        <div class="flex items-center gap-2 text-xs font-bold text-blue-700">
-          <span class="material-symbols-outlined text-base">sms</span> Works across all regional mobile networks
-        </div>
-      </div>
-
-      <!-- Pillar 3 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.2s">
-        <div class="flex items-center gap-3.5 mb-4">
-          <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">lock</span>
-          </div>
-          <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 03</span>
-            <h3 class="font-headline font-black text-xl text-slate-900">Role-Gated Clinical Security</h3>
-          </div>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          Hospital access is strictly partitioned by clinical role — reception, ward nurses, phlebotomists, and lab technicians operate with authenticated PIN credentials with immutable audit logs.
-        </p>
-        <div class="flex items-center gap-2 text-xs font-bold text-emerald-700">
-          <span class="material-symbols-outlined text-base">history_edu</span> Complete end-to-end transfusion traceability
-        </div>
-      </div>
-
-      <!-- Pillar 4 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.3s">
-        <div class="flex items-center gap-3.5 mb-4">
-          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
             <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">volunteer_activism</span>
           </div>
           <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 04</span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Commitment 01</span>
             <h3 class="font-headline font-black text-xl text-slate-900">100% Voluntary &amp; Non-Commercial</h3>
           </div>
         </div>
         <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          VitalPulse operates strictly as a public health coordination service. We strictly prohibit any commercialization or sale of donated blood, upholding WHO and national voluntary donation standards.
-        </p>
-        <div class="flex items-center gap-2 text-xs font-bold text-amber-800">
-          <span class="material-symbols-outlined text-base">favorite</span> 100% Free for donors and healthcare facilities
-        </div>
-      </div>
-
-    </div>
-
-  </div>
-</section>
-
-<!-- ===== SECTION 4: HONEST SYSTEM ARCHITECTURE SPECIFICATIONS ===== -->
-<section class="py-16 sm:py-24 bg-white border-t border-slate-200/80">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 reveal">
-      
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">&lt; 30 sec</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-red-700 block mb-1">Dispatch Latency</span>
-        <p class="text-[11px] text-slate-500">Multi-channel SMS &amp; instant notifications</p>
-      </div>
-
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">10 Regions</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-blue-700 block mb-1">National Scope</span>
-        <p class="text-[11px] text-slate-500">Architected for nationwide facility integration</p>
-      </div>
-
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">100% Free</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-emerald-700 block mb-1">Voluntary Donors</span>
-        <p class="text-[11px] text-slate-500">Altruistic non-remunerated donation ethics</p>
-      </div>
-
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">Zero Cost</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-purple-700 block mb-1">Hospital Software</span>
-        <p class="text-[11px] text-slate-500">Free open workstation access for all wards</p>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ===== SECTION 5: HOW WE PARTNER WITH HEALTHCARE FACILITIES ===== -->
-<section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 border-t border-slate-200/80">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    
-    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
-      <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
-        <span class="material-symbols-outlined text-sm">local_hospital</span> Facility Integration
-      </span>
-      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
-        How Healthcare Facilities Onboard
-      </h2>
-      <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
-        A seamless 3-step setup enabling public referral centers, regional hospitals, and district clinics to coordinate blood emergency requisitions.
-      </p>
-    </div>
-
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
-      
-      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal">
-        <div class="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-headline font-black text-base flex items-center justify-center mb-5">
-          01
-        </div>
-        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Facility Technical Verification</h3>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Authorized hospital administrators verify facility identity, regional health tier, and emergency contact endpoints.
-        </p>
-      </div>
-
-      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.1s">
-        <div class="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 font-headline font-black text-base flex items-center justify-center mb-5">
-          02
-        </div>
-        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Staff Workstation Setup</h3>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Triage doctors, maternity staff, and phlebotomy labs receive role-gated PIN credentials for authorized terminal access.
-        </p>
-      </div>
-
-      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.2s">
-        <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 font-headline font-black text-base flex items-center justify-center mb-5">
-          03
-        </div>
-        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Instant Emergency Requisitions</h3>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Staff log urgent blood group requirements and immediately trigger spatial broadcasts to verified local voluntary donors.
-        </p>
-      </div>
-
-    </div>
-
-    <!-- Hospital Onboarding Callout -->
-    <div class="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-md flex flex-col md:flex-row items-center justify-between gap-6 reveal">
-      <div>
-        <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-1.5">
-          Are you a hospital director or blood bank coordinator?
-        </h3>
-        <p class="text-xs sm:text-sm text-slate-600">
-          Onboard your medical facility or schedule a technical demonstration with our clinical integration team.
-        </p>
-      </div>
-      <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20onboard%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
-          <span class="material-symbols-outlined text-sm">chat</span> WhatsApp Facility Team
-        </a>
-        <a href="/login.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
-          <span class="material-symbols-outlined text-sm">key</span> Staff PIN Portal
-        </a>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<!-- ===== SECTION 6: FINAL HIGH-CONVERSION CTA ===== -->
-<section class="relative py-24 sm:py-32 lg:py-36 overflow-hidden text-white">
-  
-  <!-- Full-Bleed Background Image Canvas -->
-  <div class="absolute inset-0 z-0 overflow-hidden">
-    <img src="https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?q=80&w=2000&auto=format&fit=crop" 
-         alt="Doctor holding patient hands in solidarity and emergency care" 
-         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out"/>
-    <div class="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/75 to-slate-950/60"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/70"></div>
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(175,16,26,0.35),transparent_70%)]"></div>
-  </div>
-
-  <div class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center reveal">
-    <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/20 mb-5">
-      Join the Cameroon Life-Saving Network
-    </span>
-          </div>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          When an emergency requisition is logged, the engine calculates geographic coordinates and dispatches alerts strictly to eligible donors within the facility's reachable travel radius.
+          Blood is an irreplaceable human gift that should never be commercialized. VitalPulse strictly adheres to World Health Organization (WHO) and Cameroon Ministry of Public Health directives prohibiting any financial exchange or brokering of blood.
         </p>
         <div class="flex items-center gap-2 text-xs font-bold text-red-700">
-          <span class="material-symbols-outlined text-base">timer</span> Instant spatial matchmaking in &lt; 30 seconds
+          <span class="material-symbols-outlined text-base">favorite</span> Free for all voluntary donors and healthcare facilities
         </div>
       </div>
 
-      <!-- Pillar 2 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.1s">
-        <div class="flex items-center gap-3.5 mb-4">
-          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">signal_cellular_alt</span>
-          </div>
-          <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 02</span>
-            <h3 class="font-headline font-black text-xl text-slate-900">Low-Bandwidth 3G &amp; SMS Failover</h3>
-          </div>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          Designed specifically for Cameroon's mobile environment. The platform functions seamlessly on 3G connections and utilizes automated SMS broadcast failover when mobile data is unavailable.
-        </p>
-        <div class="flex items-center gap-2 text-xs font-bold text-blue-700">
-          <span class="material-symbols-outlined text-base">sms</span> Works across all regional mobile networks
-        </div>
-      </div>
-
-      <!-- Pillar 3 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.2s">
+      <!-- Principle 2: Clinical Transfusion Safety -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal" style="animation-delay: 0.1s">
         <div class="flex items-center gap-3.5 mb-4">
           <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">lock</span>
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">verified</span>
           </div>
           <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 03</span>
-            <h3 class="font-headline font-black text-xl text-slate-900">Role-Gated Clinical Security</h3>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Commitment 02</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Uncompromising Pathogen Screening</h3>
           </div>
         </div>
         <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          Hospital access is strictly partitioned by clinical role — reception, ward nurses, phlebotomists, and lab technicians operate with authenticated PIN credentials with immutable audit logs.
+          Patient safety is non-negotiable. Every unit coordinated through accredited facilities must complete mandatory 4-marker laboratory screening (HIV 1/2, Hepatitis B, Hepatitis C, Syphilis) and rigorous ABO/Rh compatibility testing before clinical issuance.
         </p>
         <div class="flex items-center gap-2 text-xs font-bold text-emerald-700">
-          <span class="material-symbols-outlined text-base">history_edu</span> Complete end-to-end transfusion traceability
+          <span class="material-symbols-outlined text-base">biotech</span> Untested blood is never cleared for transfusion
         </div>
       </div>
 
-      <!-- Pillar 4 -->
-      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-sm hover:shadow-md transition-all reveal" style="animation-delay: 0.3s">
+      <!-- Principle 3: Donor Stewardship & Protection -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal" style="animation-delay: 0.2s">
         <div class="flex items-center gap-3.5 mb-4">
-          <div class="w-12 h-12 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
-            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">volunteer_activism</span>
+          <div class="w-12 h-12 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">health_and_safety</span>
           </div>
           <div>
-            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Pillar 04</span>
-            <h3 class="font-headline font-black text-xl text-slate-900">100% Voluntary &amp; Non-Commercial</h3>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Commitment 03</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Donor Wellness &amp; Stewardship</h3>
           </div>
         </div>
         <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
-          VitalPulse operates strictly as a public health coordination service. We strictly prohibit any commercialization or sale of donated blood, upholding WHO and national voluntary donation standards.
+          Voluntary donors are community champions whose wellbeing must be protected. We enforce biological donation intervals (90 days for men, 120 days for women), confidential health pre-screening, and celebratory civic recognition.
         </p>
-        <div class="flex items-center gap-2 text-xs font-bold text-amber-800">
-          <span class="material-symbols-outlined text-base">favorite</span> 100% Free for donors and healthcare facilities
+        <div class="flex items-center gap-2 text-xs font-bold text-blue-700">
+          <span class="material-symbols-outlined text-base">calendar_month</span> Enforced safe inter-donation intervals
+        </div>
+      </div>
+
+      <!-- Principle 4: Nationwide Collaborative Health Access -->
+      <div class="bg-white rounded-3xl p-7 sm:p-9 border border-slate-200/80 shadow-xs hover:shadow-md transition-all reveal" style="animation-delay: 0.3s">
+        <div class="flex items-center gap-3.5 mb-4">
+          <div class="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined text-2xl" style="font-variation-settings:'FILL'1">domain</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Commitment 04</span>
+            <h3 class="font-headline font-black text-xl text-slate-900">Open Public Health Collaboration</h3>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+          VitalPulse operates in constructive partnership with Cameroon's healthcare network — from central reference hospitals to faith-based and regional clinics. Our coordination infrastructure is engineered to serve without administrative overhead.
+        </p>
+        <div class="flex items-center gap-2 text-xs font-bold text-purple-700">
+          <span class="material-symbols-outlined text-base">handshake</span> Bridging regional and district healthcare tiers
         </div>
       </div>
 
@@ -638,105 +397,118 @@ Join Free
   </div>
 </section>
 
-<!-- ===== SECTION 4: HONEST SYSTEM ARCHITECTURE SPECIFICATIONS ===== -->
-<section class="py-16 sm:py-24 bg-white border-t border-slate-200/80">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 reveal">
-      
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">&lt; 30 sec</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-red-700 block mb-1">Dispatch Latency</span>
-        <p class="text-[11px] text-slate-500">Multi-channel SMS &amp; instant notifications</p>
-      </div>
-
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">10 Regions</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-blue-700 block mb-1">National Scope</span>
-        <p class="text-[11px] text-slate-500">Architected for nationwide facility integration</p>
-      </div>
-
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">100% Free</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-emerald-700 block mb-1">Voluntary Donors</span>
-        <p class="text-[11px] text-slate-500">Altruistic non-remunerated donation ethics</p>
-      </div>
-
-      <div class="p-6 rounded-3xl bg-slate-50 border border-slate-200/80 text-center">
-        <span class="font-headline font-black text-3xl sm:text-4xl text-slate-950 block mb-1">Zero Cost</span>
-        <span class="text-xs font-bold uppercase tracking-wider text-purple-700 block mb-1">Hospital Software</span>
-        <p class="text-[11px] text-slate-500">Free open workstation access for all wards</p>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ===== SECTION 5: HOW WE PARTNER WITH HEALTHCARE FACILITIES ===== -->
-<section class="py-20 sm:py-28 lg:py-36 bg-slate-50/60 border-t border-slate-200/80">
+<!-- ===== SECTION 3: HOW EMERGENCY COORDINATION WORKS (PATIENT JOURNEY) ===== -->
+<section class="py-20 sm:py-28 bg-white border-t border-slate-200/70 relative">
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     
-    <div class="text-center max-w-3xl mx-auto mb-14 sm:mb-20 reveal">
+    <div class="text-center max-w-3xl mx-auto mb-16 sm:mb-20 reveal">
       <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-black uppercase tracking-wider mb-3">
-        <span class="material-symbols-outlined text-sm">local_hospital</span> Facility Integration
+        <span class="material-symbols-outlined text-sm">sync_saved_locally</span> Clinical Workflow
       </span>
-      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-3">
-        How Healthcare Facilities Onboard
+      <h2 class="font-headline text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-slate-900 mb-4">
+        The Emergency Coordination Flow
       </h2>
       <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
-        A seamless 3-step setup enabling public referral centers, regional hospitals, and district clinics to coordinate blood emergency requisitions.
+        From the moment an emergency is declared in the hospital ward to the safe transfusion at the patient's bedside.
       </p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 mb-12 sm:mb-16">
+    <!-- 4 Progressive Steps -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       
-      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal">
-        <div class="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-headline font-black text-base flex items-center justify-center mb-5">
-          01
+      <div class="bg-slate-50/80 rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-xs reveal flex flex-col justify-between">
+        <div>
+          <div class="w-10 h-10 rounded-2xl bg-red-100 text-red-700 font-headline font-black text-sm flex items-center justify-center mb-5">
+            01
+          </div>
+          <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Clinical Requisition</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-4">
+            Authorized hospital staff log an urgent requisition indicating patient blood group, units required, and clinical urgency tier.
+          </p>
         </div>
-        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Facility Technical Verification</h3>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Authorized hospital administrators verify facility identity, regional health tier, and emergency contact endpoints.
-        </p>
+        <span class="text-[11px] font-bold text-red-700 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">assignment</span> Triage Verification
+        </span>
       </div>
 
-      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.1s">
-        <div class="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 font-headline font-black text-base flex items-center justify-center mb-5">
-          02
+      <div class="bg-slate-50/80 rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-xs reveal flex flex-col justify-between" style="animation-delay: 0.1s">
+        <div>
+          <div class="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 font-headline font-black text-sm flex items-center justify-center mb-5">
+            02
+          </div>
+          <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Donor Mobilization</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-4">
+            Compatible, verified voluntary donors in the facility's reachable vicinity receive immediate dispatch alerts with collection point details.
+          </p>
         </div>
-        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Staff Workstation Setup</h3>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Triage doctors, maternity staff, and phlebotomy labs receive role-gated PIN credentials for authorized terminal access.
-        </p>
+        <span class="text-[11px] font-bold text-amber-800 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">notifications_active</span> Rapid Dispatch
+        </span>
       </div>
 
-      <div class="bg-white rounded-3xl p-7 sm:p-8 border border-slate-200/80 shadow-xs reveal" style="animation-delay: 0.2s">
-        <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 font-headline font-black text-base flex items-center justify-center mb-5">
-          03
+      <div class="bg-slate-50/80 rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-xs reveal flex flex-col justify-between" style="animation-delay: 0.2s">
+        <div>
+          <div class="w-10 h-10 rounded-2xl bg-blue-100 text-blue-700 font-headline font-black text-sm flex items-center justify-center mb-5">
+            03
+          </div>
+          <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Hospital Phlebotomy</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-4">
+            The donor presents at the hospital blood bank for pre-donation medical evaluation, hemoglobin testing, and safe clinical collection.
+          </p>
         </div>
-        <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Instant Emergency Requisitions</h3>
-        <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-          Staff log urgent blood group requirements and immediately trigger spatial broadcasts to verified local voluntary donors.
-        </p>
+        <span class="text-[11px] font-bold text-blue-700 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">bloodtype</span> Medical Collection
+        </span>
+      </div>
+
+      <div class="bg-slate-50/80 rounded-3xl p-6 sm:p-7 border border-slate-200/80 shadow-xs reveal flex flex-col justify-between" style="animation-delay: 0.3s">
+        <div>
+          <div class="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 font-headline font-black text-sm flex items-center justify-center mb-5">
+            04
+          </div>
+          <h3 class="font-headline font-black text-lg text-slate-900 mb-2">Safety Clearance</h3>
+          <p class="text-xs text-slate-600 leading-relaxed mb-4">
+            Laboratory conducts mandatory 4-marker pathogen testing and cross-matching before issuing the unit directly to the patient's bedside.
+          </p>
+        </div>
+        <span class="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+          <span class="material-symbols-outlined text-sm">verified</span> Transfusion Issue
+        </span>
       </div>
 
     </div>
 
-    <!-- Hospital Onboarding Callout -->
-    <div class="bg-white rounded-3xl p-6 sm:p-10 border border-slate-200/90 shadow-md flex flex-col md:flex-row items-center justify-between gap-6 reveal">
-      <div>
-        <h3 class="font-headline font-black text-xl sm:text-2xl text-slate-900 mb-1.5">
-          Are you a hospital director or blood bank coordinator?
+  </div>
+</section>
+
+<!-- ===== SECTION 4: HEALTHCARE FACILITY PARTNERSHIP CALLOUT ===== -->
+<section class="py-16 sm:py-24 bg-slate-50/70 border-t border-slate-200/70">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    
+    <div class="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/90 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-8 reveal">
+      <div class="max-w-2xl">
+        <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-extrabold uppercase tracking-wider mb-3">
+          <span class="material-symbols-outlined text-sm text-red-600">local_hospital</span> Facility Partnership
+        </span>
+        <h3 class="font-headline font-black text-2xl sm:text-3xl text-slate-950 mb-3">
+          Partner your medical center with VitalPulse
         </h3>
-        <p class="text-xs sm:text-sm text-slate-600">
-          Onboard your medical facility or schedule a technical demonstration with our clinical integration team.
+        <p class="text-sm sm:text-base text-slate-600 leading-relaxed mb-4">
+          Are you a hospital director, blood bank head, or clinical coordinator? Connect with the VitalPulse coordination team to streamline donor mobilization and eliminate emergency transfusion delays at your facility.
         </p>
+        <div class="flex flex-wrap items-center gap-4 text-xs font-semibold text-slate-500">
+          <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Zero Integration Cost</span>
+          <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Fast Facility Verification</span>
+          <span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Dedicated Coordinator Desk</span>
+        </div>
       </div>
-      <div class="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20onboard%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
-          <span class="material-symbols-outlined text-sm">chat</span> WhatsApp Facility Team
+
+      <div class="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
+        <a href="https://wa.me/237674922015?text=Hello%20VitalPulse%20Team,%20we%20want%20to%20partner%20our%20hospital%20facility." target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider shadow-md hover:bg-emerald-800 transition-all">
+          <span class="material-symbols-outlined text-base">chat</span> WhatsApp Facility Team
         </a>
-        <a href="/login.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
-          <span class="material-symbols-outlined text-sm">key</span> Staff PIN Portal
+        <a href="/login.html" class="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-all">
+          <span class="material-symbols-outlined text-base">key</span> Hospital Staff Portal
         </a>
       </div>
     </div>
@@ -744,38 +516,37 @@ Join Free
   </div>
 </section>
 
-<!-- ===== SECTION 6: FINAL HIGH-CONVERSION CTA ===== -->
-<section class="relative py-24 sm:py-32 lg:py-36 overflow-hidden text-white">
+<!-- ===== SECTION 5: FINAL CLEAN HIGH-CONVERSION CTA ===== -->
+<section class="relative py-24 sm:py-32 overflow-hidden text-white bg-slate-950">
   
-  <!-- Full-Bleed Background Image Canvas -->
+  <!-- Backdrop Canvas -->
   <div class="absolute inset-0 z-0 overflow-hidden">
-    <img src="https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?q=80&w=2000&auto=format&fit=crop" 
-         alt="Doctor holding patient hands in solidarity and emergency care" 
-         class="w-full h-full object-cover object-center scale-105 transform duration-700 ease-out"/>
-    <div class="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/75 to-slate-950/60"></div>
-    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-slate-950/70"></div>
-    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(175,16,26,0.35),transparent_70%)]"></div>
+    <img src="/assets/home_cta_donor.jpg" 
+         alt="Doctor and voluntary blood donor standing in solidarity" 
+         class="w-full h-full object-cover object-center scale-105 opacity-35"/>
+    <div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-950/90"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(220,38,38,0.25),transparent_70%)]"></div>
   </div>
 
   <div class="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center reveal">
-    <span class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/20 mb-5">
-      Join the Cameroon Life-Saving Network
+    <span class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-white text-xs font-black uppercase tracking-wider border border-white/20 mb-6">
+      Join the Cameroon Life-Saving Movement
     </span>
     
-    <h2 class="font-headline text-3xl sm:text-4xl lg:text-6xl font-black tracking-tight text-white mb-4 sm:mb-6">
+    <h2 class="font-headline text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-6">
       Every registered donor is a lifeline ready to respond.
     </h2>
     
-    <p class="text-white/90 text-sm sm:text-base md:text-lg max-w-xl mx-auto mb-8 sm:mb-10 leading-relaxed font-medium">
+    <p class="text-white/85 text-base sm:text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed font-normal">
       Whether you are ready to give blood or coordinate hospital requisitions, VitalPulse gives Cameroon the tools to act when seconds matter.
     </p>
 
-    <div class="flex flex-col sm:flex-row justify-center gap-3.5">
-      <a href="/signup.html" class="inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-headline font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
+    <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+      <a href="/signup.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-primary hover:bg-[#8f0d15] text-white px-8 py-4 rounded-2xl font-headline font-black text-xs sm:text-sm uppercase tracking-wider shadow-2xl shadow-primary/40 hover:scale-[1.02] active:scale-[0.98] transition-all">
         <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">volunteer_activism</span>
         Register as a Donor
       </a>
-      <a href="/public-request.html" class="inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-7 sm:px-8 py-3.5 sm:py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
+      <a href="/public-request.html" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white/15 hover:bg-white/25 text-white px-8 py-4 rounded-2xl font-headline font-bold text-xs sm:text-sm uppercase tracking-wider border border-white/30 backdrop-blur-md transition-all">
         <span class="material-symbols-outlined text-red-400 text-lg" style="font-variation-settings:'FILL' 1">emergency</span>
         Request Emergency Blood
       </a>
@@ -811,7 +582,7 @@ Join Free
           <a href="/about.html" class="text-white font-bold transition-colors">About the Initiative</a>
           <a href="/public-request.html" class="text-slate-400 hover:text-white transition-colors">Emergency Blood Request</a>
           <a href="/index.html#matrix" class="text-slate-400 hover:text-white transition-colors">Blood Compatibility Guide</a>
-          <a href="/login.html" class="text-slate-400 hover:text-white transition-colors">Staff PIN Workstation</a>
+          <a href="/login.html" class="text-slate-400 hover:text-white transition-colors">Hospital Staff Portal</a>
         </div>
       </div>
 
