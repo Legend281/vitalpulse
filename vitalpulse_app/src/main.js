@@ -1382,53 +1382,67 @@ export function updateHospitalNavVisibility() {
         }
     });
 
-    // Sub-account Dashboard Control Heroes
+    // Sub-account Dashboard Control Heroes vs Executive Hospital Mode
     const staffSession = getActiveStaffSession();
     const isStaffSessionActive = !!staffSession;
-    const activeRoles = staffSession?.roles || (user?.roles ? user.roles : [user?.role || 'hospital_admin']);
+    const activeRoles = staffSession?.roles || [];
 
-    const isReception = activeRoles.includes('reception');
-    const isNurse = activeRoles.includes('nurse');
-    const isLabTech = activeRoles.includes('lab_tech');
-    const isAdmin = isLegacyAccount(user) || activeRoles.includes('hospital_admin') || !isStaffSessionActive;
+    const isReception = isStaffSessionActive && activeRoles.includes('reception');
+    const isNurse = isStaffSessionActive && activeRoles.includes('nurse');
+    const isLabTech = isStaffSessionActive && activeRoles.includes('lab_tech');
+    const isAdmin = !isStaffSessionActive || activeRoles.includes('hospital_admin');
 
     const receptionSec = document.getElementById('receptionDashboardSection');
     const nurseSec = document.getElementById('nurseDashboardSection');
     const adminSec = document.getElementById('adminDashboardSection');
     const nurseHero = document.getElementById('nurseControlHero');
     const labTechHero = document.getElementById('labTechControlHero');
-
     const labSec = document.getElementById('labTechDashboardSection');
 
-    // FIX 1: Multi-role non-exclusive section checks (supports Reception + Nurse, Nurse + Lab Tech, etc.)
-    if (isReception) {
-        if (receptionSec) receptionSec.classList.remove('hidden');
-        initReceptionDashboard();
-        loadReceptionOverview();
-    } else {
+    // Strict Mode Separation:
+    // If no staff PIN session is active, render the Unified Executive Admin Command Center.
+    // Raw sub-account stations are kept off the executive overview so dashboards never mix.
+    if (!isStaffSessionActive) {
         if (receptionSec) receptionSec.classList.add('hidden');
-    }
-
-    if (isNurse) {
-        if (nurseSec) nurseSec.classList.remove('hidden');
-        initNurseDashboard();
-        loadNurseOverview();
-    } else {
         if (nurseSec) nurseSec.classList.add('hidden');
-    }
-
-    if (isLabTech) {
-        if (labSec) labSec.classList.remove('hidden');
-        initLabDashboard();
-        loadLabPipeline();
-    } else {
         if (labSec) labSec.classList.add('hidden');
-    }
-
-    if (isAdmin) {
         if (adminSec) adminSec.classList.remove('hidden');
     } else {
+        // Staff Sub-Account Workstation Mode (PIN activated)
         if (adminSec) adminSec.classList.add('hidden');
+
+        // Determine which department station to render based on the authenticated staff member
+        const activeStation = isNurse ? 'nurse' : isLabTech ? 'lab' : isReception ? 'reception' : null;
+
+        if (receptionSec) {
+            if (activeStation === 'reception') {
+                receptionSec.classList.remove('hidden');
+                initReceptionDashboard();
+                loadReceptionOverview();
+            } else {
+                receptionSec.classList.add('hidden');
+            }
+        }
+
+        if (nurseSec) {
+            if (activeStation === 'nurse') {
+                nurseSec.classList.remove('hidden');
+                initNurseDashboard();
+                loadNurseOverview();
+            } else {
+                nurseSec.classList.add('hidden');
+            }
+        }
+
+        if (labSec) {
+            if (activeStation === 'lab') {
+                labSec.classList.remove('hidden');
+                initLabDashboard();
+                loadLabPipeline();
+            } else {
+                labSec.classList.add('hidden');
+            }
+        }
     }
 
     const donorReactionLogSec = document.getElementById('donorReactionLogSection');
@@ -2049,6 +2063,32 @@ async function loadHospitalDashboard() {
             if (lowEl) lowEl.textContent = lowStockTypes.length;
             if (incEl) incEl.textContent = myReqs.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
             if (totalEl) totalEl.textContent = totalUnits;
+
+            // Update Clinical Workstations Quick-Access Hub badges
+            const hubNurse = document.getElementById('adminHubNurseReqCount');
+            const hubNurseSummary = document.getElementById('adminHubNurseSummary');
+            if (hubNurse) hubNurse.textContent = myReqs.length;
+            if (hubNurseSummary) hubNurseSummary.innerHTML = `<strong class="text-rose-600 font-black">${myReqs.length}</strong> active request${myReqs.length === 1 ? '' : 's'}`;
+
+            const hubLab = document.getElementById('adminHubLabPendingCount');
+            const hubLabSummary = document.getElementById('adminHubLabSummary');
+            let pendingQuarantineUnits = 0;
+            Object.values(inventory).forEach(inv => {
+                (inv.batches || []).forEach(b => {
+                    if (b.testStatus === 'Waiting for Lab Test') pendingQuarantineUnits += (b.units || 1);
+                });
+            });
+            if (hubLab) hubLab.textContent = pendingQuarantineUnits;
+            if (hubLabSummary) hubLabSummary.innerHTML = `<strong class="text-indigo-600 font-black">${pendingQuarantineUnits}</strong> in quarantine`;
+
+            const hubLobby = document.getElementById('adminHubLobbyCount');
+            const hubLobbySummary = document.getElementById('adminHubLobbySummary');
+            fetchIncomingDonors(hospitalName).then(donors => {
+                const lobbyCount = (donors || []).filter(d => d.status === 'Checked In' || d.receptionStatus === 'Calling').length;
+                const enRouteCount = (donors || []).filter(d => d.status === 'Donor En Route').length;
+                if (hubLobby) hubLobby.textContent = lobbyCount;
+                if (hubLobbySummary) hubLobbySummary.innerHTML = `<strong class="text-amber-600 font-black">${lobbyCount}</strong> waiting · <span class="text-slate-500 font-bold">${enRouteCount} en route</span>`;
+            }).catch(() => {});
 
             const feedEl = document.getElementById('dashRequestsFeed');
             if (feedEl) {

@@ -630,7 +630,7 @@
       </div>
 
       <!-- RECEPTIONIST DASHBOARD SECTION (Visible ONLY for Reception role) -->
-      <div id="receptionDashboardSection" class="space-y-6">
+      <div id="receptionDashboardSection" class="hidden space-y-6">
         <!-- RECEPTION FRONT-DESK CONTROL HERO -->
         <div id="receptionControlHero" class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
           <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -921,65 +921,88 @@
         </div>
       </div>
       <div id="adminDashboardSection" class="space-y-6">
-        <!-- NURSE PATIENT CARE CONTROL HERO -->
-        <div id="nurseControlHero" class="hidden bg-gradient-to-r from-rose-900 via-red-950 to-rose-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-rose-900/50 relative">
-          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl pointer-events-none"></div>
-          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div class="flex items-start lg:items-center gap-4">
-              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-                <span class="material-symbols-outlined text-3xl text-rose-300" style="font-variation-settings:'FILL' 1">medical_services</span>
-              </div>
-              <div>
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/20 text-rose-200 border border-rose-500/30 flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse"></span>
-                    Nurse Patient Care Station
-                  </span>
-                </div>
-                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">Clinical Requests & Patient Intakes</h3>
-                <p class="text-xs text-rose-100 font-medium mt-0.5">Manage active patient blood requests, issue blood bags, and report adverse transfusion reactions</p>
-              </div>
+        <!-- CLINICAL WORKSTATIONS QUICK-ACCESS HUB -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Department Overview</p>
+              <h3 class="text-base font-black text-slate-900 tracking-tight">Active Clinical Workstations</h3>
             </div>
-            <div class="flex items-center gap-3 shrink-0">
-              <button id="btnNurseNewRequest" class="px-5 py-2.5 bg-white text-rose-700 hover:bg-rose-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
-                <span class="material-symbols-outlined text-sm">add_circle</span>
-                New Patient Request
-              </button>
-              <button id="btnNurseIssueBlood" class="px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer border border-rose-400/40">
-                <span class="material-symbols-outlined text-sm">bloodtype</span>
-                Issue Blood Bag
-              </button>
-            </div>
+            <span class="text-[11px] font-extrabold text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200/60 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 3 Departments Linked
+            </span>
           </div>
-        </div>
 
-        <!-- LAB TECH DIAGNOSTICS CONTROL HERO -->
-        <div id="labTechControlHero" class="hidden bg-gradient-to-r from-indigo-900 via-slate-950 to-indigo-900 rounded-3xl p-6 md:p-8 text-white shadow-xl overflow-hidden border border-indigo-900/50 relative">
-          <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-          <div class="relative flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div class="flex items-start lg:items-center gap-4">
-              <div class="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shrink-0 shadow-inner">
-                <span class="material-symbols-outlined text-3xl text-indigo-300" style="font-variation-settings:'FILL' 1">science</span>
-              </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Workstation 1: Reception & Lobby -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group">
               <div>
-                <div class="flex items-center gap-2 mb-1">
-                  <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-indigo-500/20 text-indigo-200 border border-indigo-500/30 flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-                    Laboratory Diagnostics Station
+                <div class="flex items-center justify-between mb-3">
+                  <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200/60 shadow-2xs group-hover:scale-105 transition-transform">
+                    <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">how_to_reg</span>
+                  </div>
+                  <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Front Desk
                   </span>
                 </div>
-                <h3 class="text-xl md:text-2xl font-black text-white tracking-tight">TTI Screening & Tested Stock Control</h3>
-                <p class="text-xs text-indigo-100 font-medium mt-0.5">Run viral marker screening (HIV, Hep B/C, Syphilis), clear quarantine units, and log refrigeration cold-chain</p>
+                <h4 class="text-sm font-black text-slate-900">Reception & Donor Intake</h4>
+                <p class="text-xs text-slate-500 mt-1 font-medium">Donor check-in, lobby queue & arrival verification.</p>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span class="text-slate-400 font-bold">Lobby Queue</span>
+                  <span class="font-black text-slate-800" id="adminHubLobbySummary"><strong class="text-amber-600 font-black" id="adminHubLobbyCount">0</strong> waiting</span>
+                </div>
               </div>
-            </div>
-            <div class="flex items-center gap-3 shrink-0">
-              <button id="btnLabTechRunTests" class="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
-                <span class="material-symbols-outlined text-sm">biotech</span>
-                Go to Lab Queue
+              <button type="button" onclick="window.switchHospitalView('donors')" class="mt-4 w-full py-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 font-extrabold text-xs border border-slate-200/80 hover:border-emerald-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer btn-spring">
+                Open Reception Desk
+                <span class="material-symbols-outlined text-sm">arrow_forward</span>
               </button>
-              <button id="btnLabTechAddStock" class="px-5 py-2.5 bg-white text-indigo-900 hover:bg-indigo-50 font-bold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer">
-                <span class="material-symbols-outlined text-sm">add_box</span>
-                + Add Tested Stock
+            </div>
+
+            <!-- Workstation 2: Ward Care & Transfusions -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group">
+              <div>
+                <div class="flex items-center justify-between mb-3">
+                  <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center border border-rose-200/60 shadow-2xs group-hover:scale-105 transition-transform">
+                    <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">medical_services</span>
+                  </div>
+                  <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200/60 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span> Ward Care
+                  </span>
+                </div>
+                <h4 class="text-sm font-black text-slate-900">Nurse Care & Clinical Wards</h4>
+                <p class="text-xs text-slate-500 mt-1 font-medium">Patient blood requisitions, bedside verification & vitals.</p>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span class="text-slate-400 font-bold">Patient Demands</span>
+                  <span class="font-black text-slate-800" id="adminHubNurseSummary"><strong class="text-rose-600 font-black" id="adminHubNurseReqCount">0</strong> active requests</span>
+                </div>
+              </div>
+              <button type="button" onclick="window.switchHospitalView('requests')" class="mt-4 w-full py-2.5 rounded-xl bg-slate-50 hover:bg-rose-50 text-slate-700 hover:text-rose-800 font-extrabold text-xs border border-slate-200/80 hover:border-rose-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer btn-spring">
+                Manage Ward Requests
+                <span class="material-symbols-outlined text-sm">arrow_forward</span>
+              </button>
+            </div>
+
+            <!-- Workstation 3: Lab & TTI Screening -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between group">
+              <div>
+                <div class="flex items-center justify-between mb-3">
+                  <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-200/60 shadow-2xs group-hover:scale-105 transition-transform">
+                    <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">science</span>
+                  </div>
+                  <span class="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/60 flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span> Bio-Safety L2
+                  </span>
+                </div>
+                <h4 class="text-sm font-black text-slate-900">Laboratory & Diagnostics</h4>
+                <p class="text-xs text-slate-500 mt-1 font-medium">Mandatory 4-viral marker panel (HIV, Hep B/C, Syphilis) & quarantine.</p>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span class="text-slate-400 font-bold">TTI Diagnostics</span>
+                  <span class="font-black text-slate-800" id="adminHubLabSummary"><strong class="text-indigo-600 font-black" id="adminHubLabPendingCount">0</strong> in quarantine</span>
+                </div>
+              </div>
+              <button type="button" onclick="window.switchHospitalView('lab')" class="mt-4 w-full py-2.5 rounded-xl bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 font-extrabold text-xs border border-slate-200/80 hover:border-indigo-200 transition-all flex items-center justify-center gap-1.5 cursor-pointer btn-spring">
+                Open Lab Pipeline
+                <span class="material-symbols-outlined text-sm">arrow_forward</span>
               </button>
             </div>
           </div>
