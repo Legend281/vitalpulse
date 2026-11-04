@@ -601,20 +601,20 @@
     <!-- ============================== -->
     <div id="view-dashboard" class="space-y-6">
       <!-- Welcome Banner Card -->
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-2xl p-6 border border-slate-100 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.03)]">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white rounded-2xl p-6 border border-slate-100 shadow-xs">
         <div>
-          <div class="flex items-center gap-2 mb-1">
-            <span class="px-2.5 py-0.5 rounded-md bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-widest border border-red-200/50">Control Hub</span>
-            <span class="text-xs font-bold text-slate-400" id="dashDate">Loading...</span>
+          <div class="flex items-center gap-1.5 mb-1.5 text-xs font-semibold text-slate-500">
+            <span class="material-symbols-outlined text-sm text-slate-400">calendar_today</span>
+            <span id="dashDate">Wednesday, November 4, 2026</span>
           </div>
           <h2 class="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-            Welcome back, <span id="dashHospitalGreeting" class="text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-rose-600 to-red-500">Hospital</span>
+            <span id="dashGreetingPrefix">Good morning</span>, <span id="dashHospitalGreeting" class="text-red-600 font-black">Buea Regional Hospital</span>
           </h2>
         </div>
         <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200/60 text-emerald-800 shadow-xs">
-            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-sm"></span>
-            <span class="text-xs font-extrabold tracking-wide uppercase">System Operational</span>
+          <div class="flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-xs font-bold shadow-2xs">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>System operational</span>
           </div>
         </div>
       </div>
@@ -911,188 +911,213 @@
         </div>
       </div>
       <div id="adminDashboardSection" class="space-y-6">
-      <!-- 10X Elevated Stat Cards -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <!-- Card 1: Active Requests -->
-        <div class="bg-white rounded-2xl p-6 border-t-4 border-t-red-500 border border-slate-100 shadow-[0_10px_25px_-5px_rgba(220,38,38,0.06)] hover:shadow-[0_20px_35px_-5px_rgba(220,38,38,0.12)] hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden">
-          <div class="flex items-start justify-between">
-            <div class="min-w-0">
-              <p class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Active Requests</p>
-              <p class="text-3xl lg:text-4xl font-black text-slate-900 mt-2 tracking-tight" id="dashActiveRequests">—</p>
-              <p class="text-[11px] text-red-600 font-bold mt-1.5 flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                Awaiting fulfillment
-              </p>
-            </div>
-            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shrink-0 shadow-lg shadow-red-500/25 group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings:'FILL' 1">local_police</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 2: Low Stock Items -->
-        <div class="bg-white rounded-2xl p-6 border-t-4 border-t-amber-500 border border-slate-100 shadow-[0_10px_25px_-5px_rgba(245,158,11,0.06)] hover:shadow-[0_20px_35px_-5px_rgba(245,158,11,0.12)] hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden">
-          <div class="flex items-start justify-between">
-            <div class="min-w-0">
-              <p class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Low Stock Items</p>
-              <p class="text-3xl lg:text-4xl font-black text-slate-900 mt-2 tracking-tight" id="dashLowStock">—</p>
-              <p class="text-[11px] text-amber-600 font-bold mt-1.5 flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                Below threshold
-              </p>
-            </div>
-            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/25 group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings:'FILL' 1">inventory</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 3: Incoming Donors -->
-        <div class="bg-white rounded-2xl p-6 border-t-4 border-t-emerald-500 border border-slate-100 shadow-[0_10px_25px_-5px_rgba(16,185,129,0.06)] hover:shadow-[0_20px_35px_-5px_rgba(16,185,129,0.12)] hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden">
-          <div class="flex items-start justify-between">
-            <div class="min-w-0">
-              <p class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Incoming Donors</p>
-              <p class="text-3xl lg:text-4xl font-black text-slate-900 mt-2 tracking-tight" id="dashIncomingDonors">—</p>
-              <p class="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Assigned & en route
-              </p>
-            </div>
-            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/25 group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings:'FILL' 1">groups</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Card 4: Total Stock Units -->
-        <div class="bg-white rounded-2xl p-6 border-t-4 border-t-blue-500 border border-slate-100 shadow-[0_10px_25px_-5px_rgba(59,130,246,0.06)] hover:shadow-[0_20px_35px_-5px_rgba(59,130,246,0.12)] hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden">
-          <div class="flex items-start justify-between">
-            <div class="min-w-0">
-              <p class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Total Stock Units</p>
-              <p class="text-3xl lg:text-4xl font-black text-slate-900 mt-2 tracking-tight" id="dashTotalUnits">—</p>
-              <p class="text-[11px] text-blue-600 font-bold mt-1.5 flex items-center gap-1">
-                <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                Across all types
-              </p>
-            </div>
-            <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/25 group-hover:scale-110 transition-transform">
-              <span class="material-symbols-outlined text-white text-2xl" style="font-variation-settings:'FILL' 1">bloodtype</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Chart + High-Impact Emergency Quick Action -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- 7-Day Request Trends Chart Card -->
-        <div class="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-100 shadow-[0_10px_30px_-5px_rgba(0,0,0,0.03)] flex flex-col justify-between">
-          <div class="flex items-center justify-between mb-6">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center border border-red-100">
-                <span class="material-symbols-outlined text-red-600 text-xl">trending_up</span>
+        <!-- 4 Key Stat Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Card 1: Active Requests -->
+          <div class="bg-white rounded-2xl p-5 border-t-4 border-t-red-500 border border-slate-100 shadow-xs hover:shadow-md transition-all">
+            <div class="flex items-start justify-between">
+              <div class="min-w-0">
+                <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Active Requests</p>
+                <p class="text-3xl font-black text-slate-900 mt-1 tracking-tight" id="dashActiveRequests">—</p>
+                <p class="text-[11px] text-red-600 font-bold mt-1.5 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                  Awaiting fulfilment
+                </p>
               </div>
-              <div>
-                <h3 class="font-black text-base text-slate-900 tracking-tight">Request Trends Overview</h3>
-                <p class="text-[11px] text-slate-400 font-semibold">Live 7-Day Fulfillment Analytics</p>
+              <div class="w-10 h-10 rounded-xl bg-red-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-red-500/20">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">medical_services</span>
               </div>
             </div>
-            <div class="flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-200/60">
-              <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-              <span class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Hospital Activity</span>
+          </div>
+
+          <!-- Card 2: Low Stock Items -->
+          <div class="bg-white rounded-2xl p-5 border-t-4 border-t-amber-500 border border-slate-100 shadow-xs hover:shadow-md transition-all">
+            <div class="flex items-start justify-between">
+              <div class="min-w-0">
+                <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Low Stock Items</p>
+                <p class="text-3xl font-black text-slate-900 mt-1 tracking-tight" id="dashLowStock">—</p>
+                <p class="text-[11px] text-amber-600 font-bold mt-1.5 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  Below threshold
+                </p>
+              </div>
+              <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">inventory_2</span>
+              </div>
             </div>
           </div>
-          <div class="h-64 relative">
-            <canvas id="dashChart"></canvas>
+
+          <!-- Card 3: Incoming Donors -->
+          <div class="bg-white rounded-2xl p-5 border-t-4 border-t-emerald-500 border border-slate-100 shadow-xs hover:shadow-md transition-all">
+            <div class="flex items-start justify-between">
+              <div class="min-w-0">
+                <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Incoming Donors</p>
+                <p class="text-3xl font-black text-slate-900 mt-1 tracking-tight" id="dashIncomingDonors">—</p>
+                <p class="text-[11px] text-emerald-600 font-bold mt-1.5 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Assigned & en route
+                </p>
+              </div>
+              <div class="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">groups</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4: Total Stock Units -->
+          <div class="bg-white rounded-2xl p-5 border-t-4 border-t-blue-500 border border-slate-100 shadow-xs hover:shadow-md transition-all">
+            <div class="flex items-start justify-between">
+              <div class="min-w-0">
+                <p class="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Stock Units</p>
+                <p class="text-3xl font-black text-slate-900 mt-1 tracking-tight" id="dashTotalUnits">—</p>
+                <p class="text-[11px] text-blue-600 font-bold mt-1.5 flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                  Across all types
+                </p>
+              </div>
+              <div class="w-10 h-10 rounded-xl bg-blue-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
+                <span class="material-symbols-outlined text-xl" style="font-variation-settings:'FILL' 1">water_drop</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- High-Impact Quick Action Sidebar Column -->
-        <div class="space-y-4">
-          <!-- Primary Emergency Control Banner (Visual Anchor) -->
-          <div id="dashUrgentBanner" class="bg-gradient-to-br from-red-600 via-rose-600 to-red-700 rounded-2xl p-6 shadow-xl shadow-red-500/25 text-white relative overflow-hidden border border-red-400/30 group">
-            <div class="absolute -top-12 -right-12 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none group-hover:scale-125 transition-transform duration-500"></div>
-            <div class="relative z-10">
-              <div class="flex items-center justify-between mb-4">
-                <div class="flex items-center gap-2 px-2.5 py-1 bg-white/15 backdrop-blur-md rounded-full border border-white/20">
-                  <span class="material-symbols-outlined text-sm animate-pulse text-amber-300" style="font-variation-settings:'FILL' 1">emergency</span>
-                  <span class="text-[9px] font-black uppercase tracking-widest text-white">Emergency Action</span>
+        <!-- Main Content Grid (2 Columns: Wide Content + Smart Clinical Sidebar) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          
+          <!-- Left Column: Request Trends + Recent Activity (lg:col-span-2) -->
+          <div class="lg:col-span-2 space-y-6">
+            
+            <!-- Request Trends Card -->
+            <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-xs">
+              <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-xl bg-red-50 text-red-600 flex items-center justify-center border border-red-100">
+                    <span class="material-symbols-outlined text-lg">trending_up</span>
+                  </div>
+                  <h3 class="font-black text-base text-slate-900 tracking-tight">Request Trends</h3>
                 </div>
-                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                <div class="flex items-center gap-1.5 px-3 py-1 bg-slate-50 hover:bg-slate-100 rounded-full border border-slate-200/60 text-xs font-bold text-slate-600 cursor-pointer transition-colors">
+                  <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                  <span>Last 7 Days</span>
+                  <span class="material-symbols-outlined text-sm">keyboard_arrow_down</span>
+                </div>
               </div>
-              <h4 class="text-xl font-black mb-2 text-white tracking-tight leading-snug">Need Blood Urgently?</h4>
-              <p class="text-xs text-red-100 mb-6 leading-relaxed font-medium">Broadcast an instant emergency request to all registered compatible donors across your region.</p>
-              <button id="dashUrgentBtn" class="cursor-pointer w-full bg-white hover:bg-slate-50 text-red-700 font-extrabold py-3 px-4 rounded-xl text-sm transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]">
-                <span class="material-symbols-outlined text-lg" style="font-variation-settings:'FILL' 1">add_alert</span>
-                Place Emergency Request
+              <div class="h-64 relative">
+                <canvas id="dashChart"></canvas>
+                <div id="dashChartEmptyState" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center p-4 bg-white/80 backdrop-blur-2xs">
+                  <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-2 shadow-2xs">
+                    <span class="material-symbols-outlined text-2xl">bar_chart</span>
+                  </div>
+                  <p class="text-xs font-semibold text-slate-500">Request activity will appear here as new requests are recorded</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Activity Card -->
+            <div class="bg-white rounded-2xl p-6 border border-slate-100 shadow-xs">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+                    <span class="material-symbols-outlined text-lg">schedule</span>
+                  </div>
+                  <h3 class="font-black text-base text-slate-900 tracking-tight">Recent Activity</h3>
+                </div>
+                <button id="btnHospitalViewAllLog" type="button" class="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition-colors">
+                  View all activity
+                  <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                </button>
+              </div>
+              <div id="dashHospitalLog" class="divide-y divide-slate-100">
+                <div class="flex items-center justify-center py-10 text-slate-400">
+                  <span class="material-symbols-outlined animate-spin mr-3 text-lg">sync</span>
+                  <span class="text-xs font-semibold">Loading recent activity...</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Right Column: Sidebar Clinical Widgets (lg:col-span-1) -->
+          <div class="lg:col-span-1 space-y-4">
+            
+            <!-- Widget 1: Inventory Alerts -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs">
+              <div class="flex items-center gap-2.5 mb-3.5">
+                <span class="material-symbols-outlined text-red-500 text-xl" style="font-variation-settings:'FILL' 1">water_drop</span>
+                <h4 class="font-black text-sm text-slate-900 tracking-tight">Inventory Alerts</h4>
+              </div>
+              <div id="dashInventoryAlertsList" class="space-y-2.5">
+                <div class="flex items-center justify-center py-4 text-slate-400">
+                  <span class="material-symbols-outlined animate-spin mr-2 text-sm">sync</span>
+                  <span class="text-xs">Checking inventory...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Widget 2: Incoming Donors -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs">
+              <div class="flex items-center justify-between mb-3.5">
+                <div class="flex items-center gap-2.5">
+                  <span class="material-symbols-outlined text-emerald-600 text-xl" style="font-variation-settings:'FILL' 1">groups</span>
+                  <h4 class="font-black text-sm text-slate-900 tracking-tight">Incoming Donors</h4>
+                </div>
+                <span id="dashIncomingBadge" class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/60 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span id="dashIncomingBadgeCount">0 en route</span>
+                </span>
+              </div>
+              <div id="dashIncomingDonorsList" class="space-y-2.5">
+                <p class="text-xs text-slate-400 py-3 text-center font-medium">No donors en route right now</p>
+              </div>
+              <button type="button" onclick="window.switchHospitalView('donors')" class="mt-3.5 w-full text-center text-xs font-bold text-blue-600 hover:text-blue-700 py-1 cursor-pointer transition-colors block">
+                View donors →
               </button>
             </div>
+
+            <!-- Widget 3: Quick Links -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs">
+              <div class="flex items-center gap-2 mb-3.5">
+                <span class="material-symbols-outlined text-blue-500 text-lg">link</span>
+                <h4 class="font-black text-sm text-slate-900 tracking-tight">Quick Links</h4>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <button type="button" onclick="window.switchHospitalView('inventory')" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200/70 hover:border-blue-200 transition-all flex flex-col items-center text-center cursor-pointer group shadow-2xs">
+                  <div class="w-8 h-8 rounded-lg bg-white group-hover:bg-blue-100 text-blue-600 flex items-center justify-center mb-1.5 shadow-2xs transition-colors">
+                    <span class="material-symbols-outlined text-base">inventory_2</span>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-700 group-hover:text-blue-700 truncate w-full">Inventory</span>
+                </button>
+                <button type="button" onclick="window.switchHospitalView('requests')" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200/70 hover:border-blue-200 transition-all flex flex-col items-center text-center cursor-pointer group shadow-2xs">
+                  <div class="w-8 h-8 rounded-lg bg-white group-hover:bg-blue-100 text-blue-600 flex items-center justify-center mb-1.5 shadow-2xs transition-colors">
+                    <span class="material-symbols-outlined text-base">assignment</span>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-700 group-hover:text-blue-700 truncate w-full">My Requests</span>
+                </button>
+                <button type="button" onclick="window.switchHospitalView('donors')" class="p-3 rounded-xl bg-slate-50 hover:bg-blue-50/50 border border-slate-200/70 hover:border-blue-200 transition-all flex flex-col items-center text-center cursor-pointer group shadow-2xs">
+                  <div class="w-8 h-8 rounded-lg bg-white group-hover:bg-blue-100 text-blue-600 flex items-center justify-center mb-1.5 shadow-2xs transition-colors">
+                    <span class="material-symbols-outlined text-base">how_to_reg</span>
+                  </div>
+                  <span class="text-[10px] font-bold text-slate-700 group-hover:text-blue-700 truncate w-full">Donors</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Widget 4: Blood Compatibility Guide -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs">
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="material-symbols-outlined text-purple-600 text-lg" style="font-variation-settings:'FILL' 1">water_drop</span>
+                <h4 class="font-black text-sm text-slate-900 tracking-tight">Blood Compatibility Guide</h4>
+              </div>
+              <p class="text-xs text-slate-500 font-medium">Check which blood types are compatible.</p>
+              <button id="btnOpenCompatGuide" type="button" class="mt-3 text-xs font-bold text-purple-600 hover:text-purple-700 flex items-center gap-1 cursor-pointer transition-colors">
+                View compatibility chart →
+              </button>
+            </div>
+
           </div>
 
-          <!-- Secondary Tip Card -->
-          <div id="dashInventoryTip" class="bg-white rounded-2xl p-5 border border-slate-100 shadow-xs hover:shadow-md transition-all">
-            <div class="flex items-center gap-2.5 mb-3">
-              <div class="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center border border-amber-100">
-                <span class="material-symbols-outlined text-amber-600 text-base">lightbulb</span>
-              </div>
-              <h4 class="font-black text-sm text-slate-900">Inventory Quick Tip</h4>
-            </div>
-            <p class="text-xs text-slate-500 leading-relaxed mb-3 font-medium">Track blood bags issued to patients in real-time to maintain safe stock reserves.</p>
-            <button id="dashInventoryBtn" class="cursor-pointer w-full bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold py-2 rounded-xl text-xs transition-all flex items-center justify-center gap-2 border border-slate-200/60">
-              <span class="material-symbols-outlined text-sm">inventory_2</span>
-              Go to Inventory
-            </button>
-          </div>
         </div>
-      </div>
-
-      <!-- Activity Log -->
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100">
-          <div class="flex items-center justify-between px-6 py-5 border-b border-slate-100">
-            <div class="flex items-center gap-2.5">
-              <div class="w-1.5 h-1.5 rounded-full bg-blue-400"></div>
-              <h3 class="text-base font-bold text-slate-800 tracking-tight">Activity</h3>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full" id="dashLogCount">-- events</span>
-            </div>
-          </div>
-          <div id="dashHospitalLog" class="px-5 py-4 space-y-0 max-h-[400px] overflow-y-auto">
-            <div class="flex items-center justify-center py-12 text-slate-400">
-              <span class="material-symbols-outlined animate-spin mr-3 text-xl">sync</span>
-              <span class="text-sm font-medium">Loading activity...</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-between px-6 py-3 border-t border-slate-100">
-            <button id="btnHospitalViewAllLog" class="text-[10px] font-bold uppercase tracking-widest text-blue-500 hover:text-blue-700 transition-colors cursor-pointer">View Full Log →</button>
-            <button id="btnHospitalClearLog" class="text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-red-600 transition-colors cursor-pointer">Clear All Logs</button>
-          </div>
-        </div>
-        <div class="space-y-4">
-          <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-            <div class="flex items-center gap-2 mb-4">
-              <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
-                <span class="material-symbols-outlined text-purple-600 text-lg">medical_services</span>
-              </div>
-              <h3 class="font-extrabold text-base text-slate-900">Compatibility Guide</h3>
-            </div>
-            <p class="text-xs text-slate-500 mb-4 leading-relaxed">Quick reference for blood type compatibility. Check which blood types are compatible for transfusions.</p>
-            <button id="btnOpenCompatGuide" class="w-full bg-gradient-to-r from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 text-purple-700 font-bold py-2.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2 cursor-pointer">
-              <span class="material-symbols-outlined text-sm">visibility</span>
-              View Compatibility Chart
-            </button>
-          </div>
-          <div class="bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-6 shadow-lg shadow-amber-200/40 text-white">
-            <div class="flex items-center gap-2 mb-3">
-              <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                <span class="material-symbols-outlined text-base">info</span>
-              </div>
-              <span class="text-[10px] font-bold uppercase tracking-widest opacity-80">Did You Know?</span>
-            </div>
-            <p class="text-sm leading-relaxed opacity-95">One blood donation can save up to three lives. Regular donations help maintain a stable blood supply for emergencies.</p>
-          </div>
-        </div>
-      </div>
       </div>
     </div>
 

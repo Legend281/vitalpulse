@@ -1258,7 +1258,13 @@ export function hydrateSessionIdentity() {
     const hHeaderRoleSep = document.getElementById('hospitalHeaderRoleSeparator');
     const activeBadge = document.getElementById('activeStaffBadge');
     const dashGreeting = document.getElementById('dashHospitalGreeting');
+    const dashPrefix = document.getElementById('dashGreetingPrefix');
     const endStaffWrapper = document.getElementById('wrapperEndStaffSession');
+
+    if (dashPrefix) {
+        const hour = new Date().getHours();
+        dashPrefix.textContent = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    }
 
     const quickSwitchBtn = document.getElementById('btnStaffQuickSwitch');
     const isDirectStaffLogin = currentUser?.isStaffDirectLogin === true || staffSession?.isDirectLogin === true;
@@ -2068,8 +2074,8 @@ async function loadHospitalDashboard() {
             const activeReqs = currentReqs.filter(r => REQUEST_ACTIVE_STATUSES.includes(r.status) || (r.status && !['Fulfilled', 'Cancelled', 'Completed', 'Resolved'].includes(r.status)));
             const totalUnits = Object.values(inventory || {}).reduce((s, i) => s + (i.unitsAvailable || 0), 0);
             const lowStockTypes = Object.values(inventory || {}).filter(i => (i.unitsAvailable || 0) <= (i.minimumThreshold || 5));
-            const enRouteDonorsCount = (incomingDonors || []).filter(d => ['Donor Assigned', 'Donor En Route'].includes(d.status)).length
-                || currentReqs.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
+            const enRouteDonors = (incomingDonors || []).filter(d => ['Donor Assigned', 'Donor En Route'].includes(d.status));
+            const enRouteDonorsCount = enRouteDonors.length || currentReqs.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
 
             const activeEl = document.getElementById('dashActiveRequests');
             const lowEl = document.getElementById('dashLowStock');
@@ -2081,29 +2087,71 @@ async function loadHospitalDashboard() {
             if (incEl) incEl.textContent = enRouteDonorsCount;
             if (totalEl) totalEl.textContent = totalUnits;
 
-            const feedEl = document.getElementById('dashRequestsFeed');
-            if (feedEl) {
-                if (currentReqs.length === 0) {
-                    feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests from your hospital</p></div>';
+            // Hydrate Inventory Alerts widget
+            const alertsListEl = document.getElementById('dashInventoryAlertsList');
+            if (alertsListEl) {
+                const lowList = Object.entries(inventory || {}).filter(([_, inv]) => (inv.unitsAvailable || 0) <= (inv.minimumThreshold || 5));
+                const monitorList = Object.entries(inventory || {}).filter(([_, inv]) => {
+                    const units = inv.unitsAvailable || 0;
+                    const thresh = inv.minimumThreshold || 5;
+                    return units > thresh && units <= thresh * 1.5;
+                });
+
+                if (lowList.length === 0 && monitorList.length === 0) {
+                    alertsListEl.innerHTML = `
+                        <div class="flex items-center gap-2 p-3 rounded-xl bg-emerald-50/80 border border-emerald-100 text-emerald-800 text-xs font-bold">
+                            <span class="material-symbols-outlined text-base text-emerald-600">verified</span>
+                            All critical blood groups above safety threshold
+                        </div>`;
                 } else {
-                    feedEl.innerHTML = currentReqs.slice(0, 8).map(req => {
-                        const statusColor = req.status === 'Donor Assigned' || req.status === 'Donor En Route' ? 'bg-amber-500' : 'bg-blue-500';
-                        const statusLabel = ['Donor Assigned', 'Donor En Route'].includes(req.status) ? req.status : 'Open';
+                    let html = '';
+                    lowList.forEach(([bt]) => {
+                        html += `
+                        <div class="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-b-0">
+                            <span class="font-black text-sm text-slate-800">${bt}</span>
+                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200/60 flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                                Low Stock
+                            </span>
+                        </div>`;
+                    });
+                    monitorList.forEach(([bt]) => {
+                        html += `
+                        <div class="flex items-center justify-between py-1.5 border-b border-slate-50 last:border-b-0">
+                            <span class="font-black text-sm text-slate-800">${bt}</span>
+                            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/60 flex items-center gap-1.5">
+                                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                Monitor
+                            </span>
+                        </div>`;
+                    });
+                    alertsListEl.innerHTML = html;
+                }
+            }
+
+            // Hydrate Incoming Donors widget
+            const incBadgeCountEl = document.getElementById('dashIncomingBadgeCount');
+            const incListEl = document.getElementById('dashIncomingDonorsList');
+            if (incBadgeCountEl) {
+                incBadgeCountEl.textContent = `${enRouteDonors.length} en route`;
+            }
+            if (incListEl) {
+                if (enRouteDonors.length === 0) {
+                    incListEl.innerHTML = '<p class="text-xs text-slate-400 py-3 text-center font-medium">No donors en route right now</p>';
+                } else {
+                    incListEl.innerHTML = enRouteDonors.slice(0, 3).map(d => {
+                        const name = d.donorInfo?.name || d.donorName || d.matchedDonorName || 'Registered Donor';
+                        const statusText = d.status === 'Donor En Route' ? 'En route • Traveling to hospital' : 'Assigned • Preparing arrival';
                         return `
-                        <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors ring-2 ring-red-200">
-                            <div class="flex items-center gap-3 min-w-0">
-                                <span class="w-9 h-9 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-black text-sm shrink-0">${req.type || req.bloodType || '?'}</span>
-                                <div class="min-w-0">
-                                    <p class="text-sm font-bold text-on-surface truncate">${req.hospital || req.hospitalName || hospitalName}</p>
-                                    <p class="text-xs text-slate-500">${req.units || 1} unit${(req.units || 1) > 1 ? 's' : ''} needed</p>
-                                </div>
+                        <div class="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                            <div class="w-9 h-9 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+                                <span class="material-symbols-outlined text-lg">person</span>
                             </div>
-                            <div class="flex items-center gap-2 shrink-0">
-                                <span class="w-2 h-2 rounded-full ${statusColor} ${['Donor Assigned', 'Donor En Route'].includes(req.status) ? 'animate-pulse' : ''}"></span>
-                                <span class="text-[10px] font-bold text-slate-500 uppercase">${statusLabel}</span>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-xs sm:text-sm font-bold text-slate-900 truncate">${name}</p>
+                                <p class="text-[11px] text-slate-500 font-medium truncate">${statusText}</p>
                             </div>
-                        </div>
-                        `;
+                        </div>`;
                     }).join('');
                 }
             }
@@ -2125,32 +2173,12 @@ async function loadHospitalDashboard() {
                 console.warn('[Live Feed] Subscription setup warning:', subErr);
             }
         }
-
-        // Activity feed
-        const activityEl = document.getElementById('dashActivityFeed');
-        if (activityEl) {
-            if (recentLogs.length === 0) {
-                activityEl.innerHTML = '<div class="text-center py-8 text-slate-400"><p class="text-sm">No recent activity</p></div>';
-            } else {
-                activityEl.innerHTML = recentLogs.map(log => {
-                    const icon = log.type === 'success' ? 'check_circle' : log.type === 'warning' ? 'warning' : log.type === 'error' ? 'error' : 'info';
-                    const color = log.type === 'success' ? 'text-emerald-600' : log.type === 'warning' ? 'text-amber-600' : log.type === 'error' ? 'text-red-600' : 'text-slate-600';
-                    return `
-                    <div class="flex items-start gap-3">
-                        <span class="material-symbols-outlined text-sm ${color} mt-0.5">${icon}</span>
-                        <div class="min-w-0">
-                            <p class="text-sm font-bold text-on-surface truncate">${log.title}</p>
-                            <p class="text-xs text-slate-500 truncate">${log.description}</p>
-                            <p class="text-[10px] text-slate-400 mt-0.5">${new Date(log.timestamp).toLocaleString()}</p>
-                        </div>
-                    </div>
-                    `;
-                }).join('');
-            }
-        }
     } catch (e) {
         console.error('Failed to load hospital dashboard:', e);
     }
+
+    // Load recent activity log feed
+    loadHospitalActivityLog();
 
     // Load dashboard chart (Feature 9)
     loadDashboardChart();
@@ -7699,39 +7727,51 @@ async function loadHospitalActivityLog() {
     const hospitalName = hospitalScopeName();
 
     try {
-        const logs = await fetchRecentLogs(15);
+        const logs = await fetchRecentLogs(5, hospitalName);
         if (countEl) countEl.textContent = `${logs.length} events`;
 
-        if (logs.length === 0) {
-            logEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-2xl mb-2">history</span><p class="text-sm">No activity recorded yet</p></div>';
+        if (!logs || logs.length === 0) {
+            logEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-2xl mb-1 text-slate-300">history</span><p class="text-xs font-semibold">No recent activity recorded</p></div>';
             return;
         }
 
         logEl.innerHTML = logs.map(log => {
-            const iconMap = {
-                'success': { icon: 'check_circle', bg: 'bg-emerald-100', text: 'text-emerald-600' },
-                'warning': { icon: 'warning', bg: 'bg-amber-100', text: 'text-amber-600' },
-                'error': { icon: 'error', bg: 'bg-red-100', text: 'text-red-600' },
-                'info': { icon: 'info', bg: 'bg-blue-100', text: 'text-blue-600' }
-            };
-            const style = iconMap[log.type] || iconMap.info;
-            const time = log.timestamp ? new Date(log.timestamp).toLocaleString() : '';
+            const text = ((log.title || '') + ' ' + (log.description || '')).toLowerCase();
+            let style = { icon: 'check_circle', bg: 'bg-emerald-50 text-emerald-600' };
+            if (text.includes('en route') || text.includes('transit') || text.includes('shipping') || text.includes('way')) {
+                style = { icon: 'local_shipping', bg: 'bg-blue-50 text-blue-600' };
+            } else if (text.includes('request') || text.includes('received') || text.includes('needed') || text.includes('urgent')) {
+                style = { icon: 'description', bg: 'bg-rose-50 text-rose-600' };
+            } else if (text.includes('cancel') || text.includes('withdrew') || text.includes('rejected') || text.includes('delete')) {
+                style = { icon: 'person_cancel', bg: 'bg-amber-50 text-amber-600' };
+            }
+
+            let timeStr = 'Just now';
+            if (log.timestamp) {
+                const date = log.timestamp.toDate ? log.timestamp.toDate() : new Date(log.timestamp);
+                if (!isNaN(date.getTime())) {
+                    timeStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' • ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                }
+            }
+
             return `
-            <div class="flex items-start gap-3 p-2 hover:bg-slate-50 rounded-lg transition-colors">
-                <div class="w-7 h-7 rounded-full ${style.bg} flex items-center justify-center shrink-0">
-                    <span class="material-symbols-outlined text-xs ${style.text}">${style.icon}</span>
+            <div class="py-3.5 flex items-center justify-between gap-4 first:pt-0 last:pb-0">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-8 h-8 rounded-full ${style.bg} flex items-center justify-center shrink-0">
+                        <span class="material-symbols-outlined text-base" style="font-variation-settings:'FILL' 1">${style.icon}</span>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-xs sm:text-sm font-bold text-slate-900 truncate">${log.title || 'System event'}</p>
+                        <p class="text-[11px] text-slate-500 truncate font-medium">${log.description || ''}</p>
+                    </div>
                 </div>
-                <div class="min-w-0 flex-1">
-                    <p class="text-xs font-bold text-on-surface truncate">${log.title}</p>
-                    <p class="text-[10px] text-slate-500 leading-tight line-clamp-2">${log.description || ''}</p>
-                    <p class="text-[9px] text-slate-400 mt-0.5">${time}</p>
-                </div>
+                <span class="text-[11px] text-slate-400 font-medium shrink-0 whitespace-nowrap">${timeStr}</span>
             </div>
             `;
         }).join('');
     } catch (e) {
         console.error('Failed to load activity log:', e);
-        logEl.innerHTML = '<div class="text-center text-error text-sm py-8">Failed to load activity log.</div>';
+        logEl.innerHTML = '<div class="text-center text-slate-400 text-xs py-6">Could not load activity log.</div>';
     }
 }
 
@@ -8683,6 +8723,16 @@ async function loadDashboardChart() {
         if (emptyGradient) {
             emptyGradient.addColorStop(0, 'rgba(226, 232, 240, 0.8)');
             emptyGradient.addColorStop(1, 'rgba(241, 245, 249, 0.3)');
+        }
+
+        const emptyState = document.getElementById('dashChartEmptyState');
+        const hasData = counts.some(c => c > 0);
+        if (emptyState) {
+            if (hasData) {
+                emptyState.classList.add('hidden');
+            } else {
+                emptyState.classList.remove('hidden');
+            }
         }
 
         if (dashChartInstance) dashChartInstance.destroy();
