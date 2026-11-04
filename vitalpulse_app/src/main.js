@@ -2028,6 +2028,7 @@ async function loadHospitalDashboard() {
     hydrateSessionIdentity();
     const currentUser = getCurrentUser();
     const hospitalName = hospitalScopeName();
+    const hid = hospitalScopeId();
 
     const dateEl = document.getElementById('dashDate');
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -2035,10 +2036,23 @@ async function loadHospitalDashboard() {
     cleanupHospitalLiveFeed();
 
     try {
-        const [allRequests, inventory, recentLogs] = await Promise.all([
-            fetchActiveRequests(),
-            fetchInventory(hospitalName),
-            fetchRecentLogs(5)
+        const [myReqs, inventory, recentLogs, incomingDonors] = await Promise.all([
+            (hospitalName ? fetchHospitalRequests(hospitalName) : Promise.resolve([])).catch((e) => {
+                console.warn('[Hospital Dashboard] fetchHospitalRequests error:', e);
+                return [];
+            }),
+            fetchInventory(hospitalName, hid).catch((e) => {
+                console.warn('[Hospital Dashboard] fetchInventory error:', e);
+                return {};
+            }),
+            fetchRecentLogs(5, hospitalName).catch((e) => {
+                console.warn('[Hospital Dashboard] fetchRecentLogs error:', e);
+                return [];
+            }),
+            (hospitalName ? fetchIncomingDonors(hospitalName) : Promise.resolve([])).catch((e) => {
+                console.warn('[Hospital Dashboard] fetchIncomingDonors error:', e);
+                return [];
+            })
         ]);
 
         const isMyHospitalRequest = (r) => {
@@ -2049,53 +2063,30 @@ async function loadHospitalDashboard() {
                    (currentUser?.email && r.hospitalEmail === currentUser.email);
         };
 
-        const renderFeedAndStats = (requestsList) => {
-            const myReqs = requestsList.filter(isMyHospitalRequest);
-            const totalUnits = Object.values(inventory).reduce((s, i) => s + (i.unitsAvailable || 0), 0);
-            const lowStockTypes = Object.values(inventory).filter(i => (i.unitsAvailable || 0) <= (i.minimumThreshold || 5));
+        const renderFeedAndStats = (requestsList = []) => {
+            const currentReqs = (requestsList && requestsList.length > 0) ? requestsList.filter(isMyHospitalRequest) : (myReqs || []);
+            const activeReqs = currentReqs.filter(r => REQUEST_ACTIVE_STATUSES.includes(r.status) || (r.status && !['Fulfilled', 'Cancelled', 'Completed', 'Resolved'].includes(r.status)));
+            const totalUnits = Object.values(inventory || {}).reduce((s, i) => s + (i.unitsAvailable || 0), 0);
+            const lowStockTypes = Object.values(inventory || {}).filter(i => (i.unitsAvailable || 0) <= (i.minimumThreshold || 5));
+            const enRouteDonorsCount = (incomingDonors || []).filter(d => ['Donor Assigned', 'Donor En Route'].includes(d.status)).length
+                || currentReqs.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
 
             const activeEl = document.getElementById('dashActiveRequests');
             const lowEl = document.getElementById('dashLowStock');
             const incEl = document.getElementById('dashIncomingDonors');
             const totalEl = document.getElementById('dashTotalUnits');
 
-            if (activeEl) activeEl.textContent = myReqs.length;
+            if (activeEl) activeEl.textContent = activeReqs.length;
             if (lowEl) lowEl.textContent = lowStockTypes.length;
-            if (incEl) incEl.textContent = myReqs.filter(r => ['Donor Assigned', 'Donor En Route'].includes(r.status)).length;
+            if (incEl) incEl.textContent = enRouteDonorsCount;
             if (totalEl) totalEl.textContent = totalUnits;
-
-            // Update Clinical Workstations Quick-Access Hub badges
-            const hubNurse = document.getElementById('adminHubNurseReqCount');
-            const hubNurseSummary = document.getElementById('adminHubNurseSummary');
-            if (hubNurse) hubNurse.textContent = myReqs.length;
-            if (hubNurseSummary) hubNurseSummary.innerHTML = `<strong class="text-rose-600 font-black">${myReqs.length}</strong> active request${myReqs.length === 1 ? '' : 's'}`;
-
-            const hubLab = document.getElementById('adminHubLabPendingCount');
-            const hubLabSummary = document.getElementById('adminHubLabSummary');
-            let pendingQuarantineUnits = 0;
-            Object.values(inventory).forEach(inv => {
-                (inv.batches || []).forEach(b => {
-                    if (b.testStatus === 'Waiting for Lab Test') pendingQuarantineUnits += (b.units || 1);
-                });
-            });
-            if (hubLab) hubLab.textContent = pendingQuarantineUnits;
-            if (hubLabSummary) hubLabSummary.innerHTML = `<strong class="text-indigo-600 font-black">${pendingQuarantineUnits}</strong> in quarantine`;
-
-            const hubLobby = document.getElementById('adminHubLobbyCount');
-            const hubLobbySummary = document.getElementById('adminHubLobbySummary');
-            fetchIncomingDonors(hospitalName).then(donors => {
-                const lobbyCount = (donors || []).filter(d => d.status === 'Checked In' || d.receptionStatus === 'Calling').length;
-                const enRouteCount = (donors || []).filter(d => d.status === 'Donor En Route').length;
-                if (hubLobby) hubLobby.textContent = lobbyCount;
-                if (hubLobbySummary) hubLobbySummary.innerHTML = `<strong class="text-amber-600 font-black">${lobbyCount}</strong> waiting · <span class="text-slate-500 font-bold">${enRouteCount} en route</span>`;
-            }).catch(() => {});
 
             const feedEl = document.getElementById('dashRequestsFeed');
             if (feedEl) {
-                if (myReqs.length === 0) {
+                if (currentReqs.length === 0) {
                     feedEl.innerHTML = '<div class="flex flex-col items-center justify-center py-8 text-slate-400"><span class="material-symbols-outlined text-3xl mb-2">check_circle</span><p class="text-sm">No active requests from your hospital</p></div>';
                 } else {
-                    feedEl.innerHTML = myReqs.slice(0, 8).map(req => {
+                    feedEl.innerHTML = currentReqs.slice(0, 8).map(req => {
                         const statusColor = req.status === 'Donor Assigned' || req.status === 'Donor En Route' ? 'bg-amber-500' : 'bg-blue-500';
                         const statusLabel = ['Donor Assigned', 'Donor En Route'].includes(req.status) ? req.status : 'Open';
                         return `
@@ -2118,19 +2109,21 @@ async function loadHospitalDashboard() {
             }
         };
 
-        renderFeedAndStats(allRequests);
+        renderFeedAndStats(myReqs);
 
-        // Attach live onSnapshot listener for real-time emergency feed updates
-        try {
-            const reqRef = collection(db, 'requests');
-            hospitalLiveFeedUnsubscribe = onSnapshot(reqRef, (snapshot) => {
-                const liveList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                renderFeedAndStats(liveList);
-            }, (err) => {
-                console.warn('[Live Feed] Listener warning (falling back to static feed):', err?.message || err);
-            });
-        } catch (subErr) {
-            console.warn('[Live Feed] Subscription setup warning:', subErr);
+        // Attach live onSnapshot listener scoped to hospital for real-time updates
+        if (hospitalName) {
+            try {
+                const reqQuery = query(collection(db, 'requests'), where('hospital', '==', hospitalName));
+                hospitalLiveFeedUnsubscribe = onSnapshot(reqQuery, (snapshot) => {
+                    const liveList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                    renderFeedAndStats(liveList);
+                }, (err) => {
+                    console.warn('[Live Feed] Listener warning (falling back to static feed):', err?.message || err);
+                });
+            } catch (subErr) {
+                console.warn('[Live Feed] Subscription setup warning:', subErr);
+            }
         }
 
         // Activity feed
